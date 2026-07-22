@@ -1,8 +1,9 @@
 // ============================================================
-//  CHARTS/INDEX.JS — ГРАФИКИ РАСХОДОВ (ШАГ 7)
+//  CHARTS/INDEX.JS — ГРАФИКИ РАСХОДОВ
 // ============================================================
 
-import Chart from 'chart.js';
+// Правильный импорт Chart.js
+import Chart from 'chart.js/auto';
 import { CATEGORIES } from '../../core/config.js';
 
 let pieChart = null;
