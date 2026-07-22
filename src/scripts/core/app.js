@@ -7,6 +7,8 @@ import { useStore } from './store.js';
 import { renderExpenses, updateTotals, updateDate } from '../modules/expenses/render.js';
 import { initQuickAdd, openQuickModal } from '../modules/quick-add/index.js';
 import { filterToday, filterWeek, sumExpenses, showToast } from './utils.js';
+import { needDemoData, addDemoData } from '../modules/demo-data/index.js';
+import { needOnboarding, showOnboarding } from '../modules/onboarding/index.js';
 
 // ============================================================
 //  ЗАПУСК ПРИЛОЖЕНИЯ
@@ -23,6 +25,17 @@ async function initApp() {
         // 2. Загружаем данные в хранилище
         await useStore.getState().init();
         console.log('✅ Данные загружены');
+
+        // 2.5. Проверяем демо-данные
+        if (needDemoData()) {
+            await addDemoData();
+            console.log('✅ Демо-данные добавлены');
+        }    
+        // 2.6. Проверяем онбординг
+        if (needOnboarding()) {
+            await showOnboarding();
+            console.log('✅ Онбординг показан');
+        }
 
         // 3. Настраиваем UI
         setupUI();
