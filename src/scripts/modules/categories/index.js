@@ -2,17 +2,20 @@
 //  CATEGORIES/INDEX.JS — КАТЕГОРИИ НА ГЛАВНОМ ЭКРАНЕ
 // ============================================================
 
-import { useStore } from '../../core/store.js';
-import { CATEGORIES, CAT_KEYS } from '../../core/config.js';
+import { CAT_KEYS } from '../../core/config.js';
 
 // Получить суммы по категориям за период
 export function getCategoryTotals(expenses) {
     const totals = {};
     CAT_KEYS.forEach(key => totals[key] = 0);
 
+    if (!expenses || !Array.isArray(expenses)) {
+        return totals;
+    }
+
     expenses.forEach(e => {
-        if (totals[e.category] !== undefined) {
-            totals[e.category] += e.amount;
+        if (e && e.category && totals[e.category] !== undefined) {
+            totals[e.category] += e.amount || 0;
         }
     });
 
