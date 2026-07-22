@@ -701,15 +701,15 @@ function renderCharts(items) {
   });
 
   // ===== ЦВЕТА ДЛЯ КРУГОВОЙ ДИАГРАММЫ — каждый сектор СВОЙ цвет! =====
-  const chartColors = [
-    '#34D399', // ярко-зелёный
-    '#1a8a5a', // тёмно-зелёный
-    '#6ee7b7', // светлый
-    '#059669', // глубокий
-    '#4ade80', // мятный
-    '#86efac', // нежный
-    '#065f46'  // тёмный
-  ];
+const chartColors = [
+    '#3B82F6', // Electric Blue
+    '#60A5FA', // Light Blue
+    '#93C5FD', // Lighter Blue
+    '#2563EB', // Deep Blue
+    '#1D4ED8', // Dark Blue
+    '#BFDBFE', // Very Light Blue
+    '#1E40AF'  // Darkest Blue
+ ];
 
   const labels = [],
     data = [],
