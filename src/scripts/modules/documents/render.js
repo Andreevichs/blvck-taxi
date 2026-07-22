@@ -1,11 +1,10 @@
 // ============================================================
-//  DOCUMENTS/RENDER.JS — ОТОБРАЖЕНИЕ ДОКУМЕНТОВ
+//  DOCUMENTS/RENDER.JS — ОТОБРАЖЕНИЕ ДОКУМЕНТОВ (ШАГ 7)
 // ============================================================
 
 import { DOC_TYPES, getDocumentStatus, getDaysUntilExpiry, deleteDocument } from './index.js';
-import { formatDate } from '../../core/utils.js';
+import { formatDate, showToast } from '../../core/utils.js';
 
-// Рендеринг списка документов
 export function renderDocuments(documents) {
     const container = document.getElementById('documentsList');
     if (!container) return;
@@ -21,7 +20,6 @@ export function renderDocuments(documents) {
         return;
     }
 
-    // Сортируем по дате истечения
     const sorted = [...documents].sort((a, b) => {
         const daysA = getDaysUntilExpiry(a) ?? 999;
         const daysB = getDaysUntilExpiry(b) ?? 999;
@@ -71,21 +69,19 @@ export function renderDocuments(documents) {
     html += '</div>';
     container.innerHTML = html;
 
-    // Обработчики удаления
     container.querySelectorAll('.delete-doc-btn').forEach(btn => {
         btn.addEventListener('click', async function() {
             const id = this.dataset.id;
             if (confirm('Удалить документ?')) {
                 await deleteDocument(id);
-                // Обновляем список
                 const { getDocuments } = await import('./index.js');
                 renderDocuments(getDocuments());
+                showToast('🗑️ Документ удалён', 'warning');
             }
         });
     });
 }
 
-// Показать форму добавления документа
 export function showAddDocumentForm() {
     const modal = document.getElementById('mainModal');
     const title = document.getElementById('mainModalTitle');
@@ -125,7 +121,6 @@ export function showAddDocumentForm() {
 
     modal.classList.add('open');
 
-    // Обработчик формы
     const form = document.getElementById('docForm');
     form.addEventListener('submit', async function(e) {
         e.preventDefault();
@@ -147,4 +142,10 @@ export function showAddDocumentForm() {
         renderDocuments(getDocuments());
         showToast('✅ Документ добавлен', 'success');
     });
+
+    const closeBtn = document.getElementById('mainModalClose');
+    closeBtn.onclick = () => modal.classList.remove('open');
+    modal.onclick = (e) => {
+        if (e.target === modal) modal.classList.remove('open');
+    };
 }
