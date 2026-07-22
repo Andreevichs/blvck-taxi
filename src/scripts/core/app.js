@@ -1,149 +1,9 @@
-// ============================================================
-//  APP.JS — ГЛАВНЫЙ ФАЙЛ (ОБНОВЛЁННЫЙ, ШАГ 6)
-// ============================================================
+// Добавь эти импорты в начало файла
+import { renderNotes, setNoteFilter, showAddNoteForm } from '../modules/notes/render.js';
+import { renderDocuments, showAddDocumentForm } from '../modules/documents/render.js';
+import { updateCharts } from '../modules/charts/index.js';
 
-import { initDB } from './database.js';
-import { useStore } from './store.js';
-import { renderExpenses, updateTotals, updateDate } from '../modules/expenses/render.js';
-import { renderCategories } from '../modules/categories/render.js';
-import { renderCarCard } from '../modules/car/render.js';
-import { initQuickAdd, openQuickModal } from '../modules/quick-add/index.js';
-import { generatePDF } from '../modules/export/index.js';
-import { needDemoData, addDemoData } from '../modules/demo-data/index.js';
-import { needOnboarding, showOnboarding } from '../modules/onboarding/index.js';
-import { initReminders } from '../modules/reminders/index.js';
-import { initNotifications, sendTestNotification } from '../modules/notifications/index.js';
-import { filterToday, showToast } from './utils.js';
-
-// ============================================================
-//  ЗАПУСК ПРИЛОЖЕНИЯ
-// ============================================================
-
-async function initApp() {
-    console.log('🚀 Запуск BLVCK TAXI...');
-
-    try {
-        // 1. База данных
-        await initDB();
-        console.log('✅ База данных готова');
-
-        // 2. Загружаем данные
-        await useStore.getState().init();
-        console.log('✅ Данные загружены');
-
-        // 3. Демо-данные
-        if (needDemoData()) {
-            await addDemoData();
-            console.log('✅ Демо-данные добавлены');
-        }
-
-        // 4. Онбординг
-        if (needOnboarding()) {
-            await showOnboarding();
-            console.log('✅ Онбординг показан');
-        }
-
-        // 5. Настраиваем UI
-        setupUI();
-
-        // 6. Инициализируем быстрый ввод
-        initQuickAdd();
-
-        // 7. Инициализируем уведомления
-        await initNotifications();
-
-        // 8. Запускаем напоминания
-        initReminders();
-
-        // 9. Обновляем интерфейс
-        updateUI();
-
-        // 10. Экспортируем в глобальный объект
-        window.openQuickModal = openQuickModal;
-        window.sendTestNotification = sendTestNotification;
-
-        console.log('✅ Приложение готово!');
-    } catch (error) {
-        console.error('❌ Ошибка при запуске:', error);
-        showToast('Ошибка при запуске приложения', 'error');
-    }
-}
-
-// ============================================================
-//  НАСТРОЙКА UI
-// ============================================================
-
-function setupUI() {
-    // Welcome Screen
-    const welcomeBtn = document.getElementById('welcomeBtn');
-    const welcomeScreen = document.getElementById('welcomeScreen');
-    const appContent = document.getElementById('appContent');
-
-    if (welcomeBtn && welcomeScreen && appContent) {
-        welcomeBtn.addEventListener('click', function() {
-            welcomeScreen.classList.add('hidden');
-            appContent.style.display = 'block';
-            updateUI();
-        });
-    }
-
-    // Тема
-    const themeToggle = document.getElementById('themeToggle');
-    if (themeToggle) {
-        themeToggle.addEventListener('click', function() {
-            document.body.classList.toggle('light-theme');
-            const icon = this.querySelector('i');
-            icon.className = document.body.classList.contains('light-theme')
-                ? 'fas fa-sun'
-                : 'fas fa-moon';
-        });
-    }
-
-    // Экспорт PDF
-    const exportBtn = document.getElementById('exportBtn');
-    if (exportBtn) {
-        exportBtn.addEventListener('click', async () => {
-            await generatePDF();
-        });
-    }
-
-    // Кнопка настроек
-    const settingsBtn = document.getElementById('settingsBtn');
-    if (settingsBtn) {
-        settingsBtn.addEventListener('click', () => {
-            showToast('⚙️ Настройки будут доступны в следующей версии', 'info');
-        });
-    }
-
-    // Второстепенные кнопки
-    document.querySelectorAll('.secondary-actions button').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const action = this.textContent.trim().toLowerCase();
-            if (action.includes('график')) {
-                showToast('📊 Графики будут доступны в следующей версии', 'info');
-            } else if (action.includes('документ')) {
-                showToast('📄 Документы будут доступны в следующей версии', 'info');
-            } else if (action.includes('то')) {
-                showToast('🔧 Журнал ТО будет доступен в следующей версии', 'info');
-            } else if (action.includes('авто')) {
-                showToast('🚗 Настройки авто уже в карточке выше', 'info');
-            }
-        });
-    });
-
-    // Кнопка "Тестовое уведомление" (скрытая, для отладки)
-    // Добавляем обработчик клавиш: Ctrl+Shift+N → тест уведомления
-    document.addEventListener('keydown', (e) => {
-        if (e.ctrlKey && e.shiftKey && e.key === 'N') {
-            sendTestNotification();
-        }
-    });
-}
-
-// ============================================================
-//  ОБНОВЛЕНИЕ UI
-// ============================================================
-
+// В функции updateUI() добавь:
 function updateUI() {
     const state = useStore.getState();
 
@@ -155,32 +15,61 @@ function updateUI() {
     renderExpenses(todayExpenses, 'todayExpenses');
     renderCategories(state.expenses);
     renderCarCard();
+    renderNotes(state.notes);
+    renderDocuments(state.documents);
     updateTotals(state.todayTotal, state.weekTotal);
+    updateCharts(state.expenses);
 }
 
-// ============================================================
-//  ПОДПИСКА НА ИЗМЕНЕНИЯ
-// ============================================================
+// В функции setupUI() добавь обработчики для кнопок навигации:
+document.querySelectorAll('.secondary-actions button').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const action = this.textContent.trim().toLowerCase();
 
-useStore.subscribe((state) => {
-    const today = new Date().toISOString().split('T')[0];
-    const todayExpenses = state.expenses.filter(e => e.date === today);
-
-    renderExpenses(todayExpenses, 'todayExpenses');
-    renderCategories(state.expenses);
-    renderCarCard();
-    updateTotals(state.todayTotal, state.weekTotal);
+        if (action.includes('график')) {
+            // Показываем вкладку с графиками
+            showChartsTab();
+        } else if (action.includes('документ')) {
+            showAddDocumentForm();
+        } else if (action.includes('то')) {
+            showAddNoteForm();
+        } else if (action.includes('авто')) {
+            showToast('🚗 Настройки авто в карточке выше', 'info');
+        }
+    });
 });
 
-// ============================================================
-//  ЗАПУСК
-// ============================================================
+// Функция показа вкладки с графиками
+function showChartsTab() {
+    const modal = document.getElementById('mainModal');
+    const title = document.getElementById('mainModalTitle');
+    const body = document.getElementById('mainModalBody');
 
-document.addEventListener('DOMContentLoaded', initApp);
+    if (!modal || !title || !body) return;
 
-window.app = {
-    store: useStore,
-    openQuickModal: openQuickModal,
-    generatePDF: generatePDF,
-    sendTestNotification: sendTestNotification
-};
+    title.innerHTML = '<i class="fas fa-chart-pie" style="color:var(--accent);"></i> Графики расходов';
+
+    body.innerHTML = `
+        <div style="margin-bottom: 16px;">
+            <canvas id="pieChart" style="max-height: 200px; width: 100%;"></canvas>
+        </div>
+        <div>
+            <canvas id="barChart" style="max-height: 180px; width: 100%;"></canvas>
+        </div>
+    `;
+
+    modal.classList.add('open');
+
+    // Создаём графики после отображения
+    setTimeout(() => {
+        const state = useStore.getState();
+        updateCharts(state.expenses);
+    }, 100);
+
+    // Закрытие
+    const closeBtn = document.getElementById('mainModalClose');
+    closeBtn.addEventListener('click', () => modal.classList.remove('open'));
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.classList.remove('open');
+    });
+}
