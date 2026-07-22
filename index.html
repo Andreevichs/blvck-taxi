@@ -106,4 +106,37 @@
         <div class="modal modal-quick">
             <div class="modal-header">
                 <h2 id="quickModalTitle"><i class="fas fa-plus-circle"></i> Добавить расход</h2>
-                <button class="modal-close" id="quickModalClose"><i class="fas fa
+                <button class="modal-close" id="quickModalClose"><i class="fas fa-times"></i></button>
+            </div>
+            <form id="quickForm">
+                <input type="hidden" id="quickCategory" />
+                <div class="form-group">
+                    <label>Сумма (BYN)</label>
+                    <input type="number" id="quickAmount" placeholder="0.00" step="0.01" min="0" required autofocus />
+                </div>
+                <div class="form-group">
+                    <label>Описание (необязательно)</label>
+                    <input type="text" id="quickDesc" placeholder="Заправка на АЗС №5" />
+                </div>
+                <button type="submit" class="btn-submit"><i class="fas fa-save"></i> Сохранить</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ОСНОВНАЯ МОДАЛКА -->
+    <div class="modal-overlay" id="mainModal">
+        <div class="modal" id="mainModalContent">
+            <div class="modal-header">
+                <h2 id="mainModalTitle">Заголовок</h2>
+                <button class="modal-close" id="mainModalClose"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="mainModalBody"></div>
+        </div>
+    </div>
+
+    <!-- TOAST -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script type="module" src="/src/scripts/core/app.js"></script>
+</body>
+</html>
