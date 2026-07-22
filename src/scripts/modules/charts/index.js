@@ -1,5 +1,5 @@
 // ============================================================
-//  CHARTS/INDEX.JS — ГРАФИКИ РАСХОДОВ
+//  CHARTS/INDEX.JS — ГРАФИКИ РАСХОДОВ (ШАГ 7)
 // ============================================================
 
 import Chart from 'chart.js';
@@ -8,12 +8,10 @@ import { CATEGORIES } from '../../core/config.js';
 let pieChart = null;
 let barChart = null;
 
-// Создать круговую диаграмму
 export function createPieChart(expenses, canvasId = 'pieChart') {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
 
-    // Группируем по категориям
     const totals = {};
     expenses.forEach(e => {
         const label = CATEGORIES[e.category]?.label || e.category;
@@ -28,7 +26,6 @@ export function createPieChart(expenses, canvasId = 'pieChart') {
         data.push(1);
     }
 
-    // Цвета для диаграммы
     const colors = [
         '#ccff00', '#4ade80', '#3b82f6', '#f59e0b',
         '#ef4444', '#8b5cf6', '#ec4899', '#6b7280'
@@ -69,19 +66,16 @@ export function createPieChart(expenses, canvasId = 'pieChart') {
     return pieChart;
 }
 
-// Создать столбчатую диаграмму (топ-5 категорий)
 export function createBarChart(expenses, canvasId = 'barChart') {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
 
-    // Группируем по категориям
     const totals = {};
     expenses.forEach(e => {
         const label = CATEGORIES[e.category]?.label || e.category;
         totals[label] = (totals[label] || 0) + e.amount;
     });
 
-    // Сортируем и берём топ-5
     const sorted = Object.entries(totals)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5);
@@ -140,7 +134,6 @@ export function createBarChart(expenses, canvasId = 'barChart') {
     return barChart;
 }
 
-// Обновить графики
 export function updateCharts(expenses) {
     createPieChart(expenses);
     createBarChart(expenses);
