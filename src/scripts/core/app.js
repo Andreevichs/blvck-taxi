@@ -1,16 +1,19 @@
 // ============================================================
-//  APP.JS — ГЛАВНЫЙ ФАЙЛ (ОБНОВЛЁННЫЙ)
+//  APP.JS — ГЛАВНЫЙ ФАЙЛ (ОБНОВЛЁННЫЙ, ШАГ 6)
 // ============================================================
 
 import { initDB } from './database.js';
 import { useStore } from './store.js';
 import { renderExpenses, updateTotals, updateDate } from '../modules/expenses/render.js';
 import { renderCategories } from '../modules/categories/render.js';
+import { renderCarCard } from '../modules/car/render.js';
 import { initQuickAdd, openQuickModal } from '../modules/quick-add/index.js';
 import { generatePDF } from '../modules/export/index.js';
 import { needDemoData, addDemoData } from '../modules/demo-data/index.js';
 import { needOnboarding, showOnboarding } from '../modules/onboarding/index.js';
-import { filterToday, sumExpenses, showToast } from './utils.js';
+import { initReminders } from '../modules/reminders/index.js';
+import { initNotifications, sendTestNotification } from '../modules/notifications/index.js';
+import { filterToday, showToast } from './utils.js';
 
 // ============================================================
 //  ЗАПУСК ПРИЛОЖЕНИЯ
@@ -20,37 +23,44 @@ async function initApp() {
     console.log('🚀 Запуск BLVCK TAXI...');
 
     try {
-        // 1. Открываем базу данных
+        // 1. База данных
         await initDB();
         console.log('✅ База данных готова');
 
-        // 2. Загружаем данные в хранилище
+        // 2. Загружаем данные
         await useStore.getState().init();
         console.log('✅ Данные загружены');
 
-        // 2.5. Проверяем демо-данные
+        // 3. Демо-данные
         if (needDemoData()) {
             await addDemoData();
             console.log('✅ Демо-данные добавлены');
         }
 
-        // 2.6. Проверяем онбординг
+        // 4. Онбординг
         if (needOnboarding()) {
             await showOnboarding();
             console.log('✅ Онбординг показан');
         }
 
-        // 3. Настраиваем UI
+        // 5. Настраиваем UI
         setupUI();
 
-        // 4. Инициализируем быстрый ввод
+        // 6. Инициализируем быстрый ввод
         initQuickAdd();
 
-        // 5. Обновляем интерфейс
+        // 7. Инициализируем уведомления
+        await initNotifications();
+
+        // 8. Запускаем напоминания
+        initReminders();
+
+        // 9. Обновляем интерфейс
         updateUI();
 
-        // 6. Экспортируем функции в глобальный объект
+        // 10. Экспортируем в глобальный объект
         window.openQuickModal = openQuickModal;
+        window.sendTestNotification = sendTestNotification;
 
         console.log('✅ Приложение готово!');
     } catch (error) {
@@ -64,7 +74,7 @@ async function initApp() {
 // ============================================================
 
 function setupUI() {
-    // ---- Welcome Screen ----
+    // Welcome Screen
     const welcomeBtn = document.getElementById('welcomeBtn');
     const welcomeScreen = document.getElementById('welcomeScreen');
     const appContent = document.getElementById('appContent');
@@ -77,29 +87,35 @@ function setupUI() {
         });
     }
 
-    // ---- Переключение темы ----
+    // Тема
     const themeToggle = document.getElementById('themeToggle');
     if (themeToggle) {
         themeToggle.addEventListener('click', function() {
             document.body.classList.toggle('light-theme');
             const icon = this.querySelector('i');
-            if (document.body.classList.contains('light-theme')) {
-                icon.className = 'fas fa-sun';
-            } else {
-                icon.className = 'fas fa-moon';
-            }
+            icon.className = document.body.classList.contains('light-theme')
+                ? 'fas fa-sun'
+                : 'fas fa-moon';
         });
     }
 
-    // ---- Кнопка экспорта PDF ----
+    // Экспорт PDF
     const exportBtn = document.getElementById('exportBtn');
     if (exportBtn) {
-        exportBtn.addEventListener('click', async function() {
+        exportBtn.addEventListener('click', async () => {
             await generatePDF();
         });
     }
 
-    // ---- Кнопки навигации ----
+    // Кнопка настроек
+    const settingsBtn = document.getElementById('settingsBtn');
+    if (settingsBtn) {
+        settingsBtn.addEventListener('click', () => {
+            showToast('⚙️ Настройки будут доступны в следующей версии', 'info');
+        });
+    }
+
+    // Второстепенные кнопки
     document.querySelectorAll('.secondary-actions button').forEach(btn => {
         btn.addEventListener('click', function() {
             const action = this.textContent.trim().toLowerCase();
@@ -110,9 +126,17 @@ function setupUI() {
             } else if (action.includes('то')) {
                 showToast('🔧 Журнал ТО будет доступен в следующей версии', 'info');
             } else if (action.includes('авто')) {
-                showToast('🚗 Настройки авто будут доступны в следующей версии', 'info');
+                showToast('🚗 Настройки авто уже в карточке выше', 'info');
             }
         });
+    });
+
+    // Кнопка "Тестовое уведомление" (скрытая, для отладки)
+    // Добавляем обработчик клавиш: Ctrl+Shift+N → тест уведомления
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.shiftKey && e.key === 'N') {
+            sendTestNotification();
+        }
     });
 }
 
@@ -123,20 +147,14 @@ function setupUI() {
 function updateUI() {
     const state = useStore.getState();
 
-    // Обновляем дату
     updateDate();
 
-    // Фильтруем расходы за сегодня
     const today = new Date().toISOString().split('T')[0];
     const todayExpenses = state.expenses.filter(e => e.date === today);
 
-    // Рендерим список
     renderExpenses(todayExpenses, 'todayExpenses');
-
-    // Рендерим категории
     renderCategories(state.expenses);
-
-    // Обновляем итоги
+    renderCarCard();
     updateTotals(state.todayTotal, state.weekTotal);
 }
 
@@ -147,8 +165,10 @@ function updateUI() {
 useStore.subscribe((state) => {
     const today = new Date().toISOString().split('T')[0];
     const todayExpenses = state.expenses.filter(e => e.date === today);
+
     renderExpenses(todayExpenses, 'todayExpenses');
     renderCategories(state.expenses);
+    renderCarCard();
     updateTotals(state.todayTotal, state.weekTotal);
 });
 
@@ -161,5 +181,6 @@ document.addEventListener('DOMContentLoaded', initApp);
 window.app = {
     store: useStore,
     openQuickModal: openQuickModal,
-    generatePDF: generatePDF
+    generatePDF: generatePDF,
+    sendTestNotification: sendTestNotification
 };
