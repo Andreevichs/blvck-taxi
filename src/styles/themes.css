@@ -1,0 +1,78 @@
+/* ============================================================
+   THEMES.CSS — ТЁМНАЯ И СВЕТЛАЯ ТЕМЫ
+   ============================================================ */
+
+/* Тёмная тема (по умолчанию) */
+:root {
+    --bg-deep: #030f09;
+    --bg-surface: rgba(255, 255, 255, 0.03);
+    --bg-surface-hover: rgba(255, 255, 255, 0.06);
+    --text-primary: #f3f4f6;
+    --text-secondary: #9ca3af;
+    --text-muted: #4b5563;
+    --border-subtle: rgba(255, 255, 255, 0.04);
+}
+
+/* Светлая тема */
+body.light-theme {
+    --bg-deep: #f0f4f2;
+    --bg-surface: rgba(0, 0, 0, 0.02);
+    --bg-surface-hover: rgba(0, 0, 0, 0.04);
+    --text-primary: #1a1a1a;
+    --text-secondary: #6b7280;
+    --text-muted: #9ca3af;
+    --border-subtle: rgba(0, 0, 0, 0.06);
+    --accent: #5e7d00;
+    --accent-dim: rgba(94, 125, 0, 0.08);
+    --accent-border: rgba(94, 125, 0, 0.2);
+}
+
+body.light-theme .app-header {
+    background: rgba(240, 244, 242, 0.85);
+    border-bottom-color: rgba(0, 0, 0, 0.06);
+}
+
+body.light-theme .modal {
+    background: #f0f4f2;
+}
+
+body.light-theme .form-group input {
+    background: rgba(255, 255, 255, 0.7);
+    border-color: rgba(0, 0, 0, 0.08);
+    color: #1a1a1a;
+}
+
+body.light-theme .form-group input::placeholder {
+    color: #9ca3af;
+}
+
+body.light-theme .week-total {
+    background: rgba(255, 255, 255, 0.5);
+    border-color: rgba(0, 0, 0, 0.06);
+}
+
+body.light-theme .quick-btn {
+    background: rgba(255, 255, 255, 0.4);
+    border-color: rgba(0, 0, 0, 0.06);
+    color: #1a1a1a;
+}
+
+body.light-theme .quick-btn:hover {
+    background: rgba(255, 255, 255, 0.7);
+    border-color: var(--accent-border);
+}
+
+body.light-theme .expense-item {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(0, 0, 0, 0.04);
+}
+
+body.light-theme .empty-state i {
+    color: var(--accent);
+}
+
+body.light-theme .toast {
+    background: rgba(255, 255, 255, 0.95);
+    color: #1a1a1a;
+    border-color: var(--accent-border);
+}
