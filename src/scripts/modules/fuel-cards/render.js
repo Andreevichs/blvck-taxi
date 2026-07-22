@@ -1,9 +1,9 @@
 // ============================================================
-//  FUEL-CARDS/RENDER.JS — ОТОБРАЖЕНИЕ ТОПЛИВНЫХ КАРТ
+//  FUEL-CARDS/RENDER.JS — ОТОБРАЖЕНИЕ ТОПЛИВНЫХ КАРТ (ШАГ 8)
 // ============================================================
 
-import { FUEL_CARD_TYPES, deleteFuelCard } from './index.js';
-import { formatDate } from '../../core/utils.js';
+import { FUEL_CARD_TYPES, deleteFuelCard, addFuelCard, getFuelCards } from './index.js';
+import { showToast } from '../../core/utils.js';
 
 export function renderFuelCards(cards) {
     const container = document.getElementById('fuelCardsList');
@@ -79,7 +79,6 @@ export function renderFuelCards(cards) {
             const id = this.dataset.id;
             if (confirm('Удалить карту?')) {
                 await deleteFuelCard(id);
-                const { getFuelCards } = await import('./index.js');
                 renderFuelCards(getFuelCards());
             }
         });
@@ -139,7 +138,6 @@ export function showAddFuelCardForm() {
         const driverName = document.getElementById('fuelCardDriver').value.trim();
         const limit = parseFloat(document.getElementById('fuelCardLimit').value) || 0;
 
-        const { addFuelCard, getFuelCards } = await import('./index.js');
         await addFuelCard({ type, name, number, driverName, limit, balance: 0 });
 
         modal.classList.remove('open');
