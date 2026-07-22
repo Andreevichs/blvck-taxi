@@ -1,5 +1,5 @@
 // ============================================================
-//  APP.JS — ГЛАВНЫЙ ФАЙЛ (ШАГ 7)
+//  APP.JS — ГЛАВНЫЙ ФАЙЛ (ШАГ 8)
 // ============================================================
 
 import { initDB } from './database.js';
@@ -10,8 +10,12 @@ import { renderCarCard } from '../modules/car/render.js';
 import { renderNotes, setNoteFilter, showAddNoteForm } from '../modules/notes/render.js';
 import { renderDocuments, showAddDocumentForm } from '../modules/documents/render.js';
 import { updateCharts } from '../modules/charts/index.js';
+import { renderFuelCards, showAddFuelCardForm } from '../modules/fuel-cards/render.js';
+import { getFuelCards } from '../modules/fuel-cards/index.js';
+import { renderSubscriptionStatus, showSubscriptionPlans } from '../modules/subscription/render.js';
 import { initQuickAdd, openQuickModal } from '../modules/quick-add/index.js';
 import { generatePDF } from '../modules/export/index.js';
+import { exportToExcel } from '../modules/export/excel.js';
 import { needDemoData, addDemoData } from '../modules/demo-data/index.js';
 import { needOnboarding, showOnboarding } from '../modules/onboarding/index.js';
 import { initReminders } from '../modules/reminders/index.js';
@@ -104,6 +108,12 @@ function setupUI() {
         });
     }
 
+    // Подписка
+    const subBtn = document.getElementById('subscriptionBtn');
+    if (subBtn) {
+        subBtn.addEventListener('click', showSubscriptionPlans);
+    }
+
     // Навигация по вкладкам
     document.querySelectorAll('.secondary-actions button').forEach(btn => {
         btn.addEventListener('click', function() {
@@ -117,6 +127,8 @@ function setupUI() {
                 showAddNoteForm();
             } else if (action.includes('авто')) {
                 showToast('🚗 Настройки авто в карточке выше', 'info');
+            } else if (action.includes('карты')) {
+                showAddFuelCardForm();
             }
         });
     });
@@ -190,6 +202,8 @@ function updateUI() {
     renderCarCard();
     renderNotes(state.notes);
     renderDocuments(state.documents);
+    renderFuelCards(getFuelCards());
+    renderSubscriptionStatus();
     updateTotals(state.todayTotal, state.weekTotal);
     updateCharts(state.expenses);
 }
@@ -207,6 +221,8 @@ useStore.subscribe((state) => {
     renderCarCard();
     renderNotes(state.notes);
     renderDocuments(state.documents);
+    renderFuelCards(getFuelCards());
+    renderSubscriptionStatus();
     updateTotals(state.todayTotal, state.weekTotal);
     updateCharts(state.expenses);
 });
@@ -221,5 +237,7 @@ window.app = {
     store: useStore,
     openQuickModal: openQuickModal,
     generatePDF: generatePDF,
-    sendTestNotification: sendTestNotification
+    exportToExcel: exportToExcel,
+    sendTestNotification: sendTestNotification,
+    showSubscriptionPlans: showSubscriptionPlans
 };
