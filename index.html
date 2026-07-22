@@ -3,340 +3,199 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="theme-color" content="#121212" />
+    <meta name="theme-color" content="#030f09" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>BLVCK TAXI</title>
 
-    <link rel="manifest" href="manifest.json" />
-    <link rel="stylesheet" href="style.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/png" href="/icons/icon-192.png" />
+
+    <!-- ШРИФТЫ -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+    <!-- FONT AWESOME -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+
+    <!-- СТИЛИ -->
+    <link rel="stylesheet" href="/src/styles/main.css" />
+
+    <!-- CHART.JS (через CDN) -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js">
     </script>
 </head>
 <body>
+    <div id="app">
+        <!-- ============================================================
+        WELCOME SCREEN
+        ============================================================ -->
+        <div id="welcomeScreen">
+            <div class="welcome-content">
+                <div class="welcome-icon">
+                    <i class="fas fa-taxi"></i>
+                </div>
+                <div class="welcome-title">
+                    BLVCK <span class="highlight">TAXI</span>
+                </div>
+                <div class="welcome-subtitle">
+                    Управляй расходами за 5 секунд
+                </div>
+                <button class="welcome-btn" id="welcomeBtn">
+                    <i class="fas fa-arrow-right"></i> Начать
+                </button>
+                <div class="welcome-features">
+                    <span><i class="fas fa-circle"></i> 1 тап</span>
+                    <span><i class="fas fa-circle"></i> Без интернета</span>
+                    <span><i class="fas fa-circle"></i> Отчёт для бухгалтерии</span>
+                </div>
+            </div>
+        </div>
 
-    <!-- WELCOME SCREEN -->
-    <div id="welcomeScreen">
-        <div class="welcome-icon"><i class="fas fa-car"></i></div>
-        <div class="welcome-title">BLVCK <span class="highlight">TAXI</span></div>
-        <div class="welcome-subtitle">Управляй расходами • Следи за ТО<br>Храни документы • Экономь топливо</div>
-        <button class="welcome-btn" id="welcomeBtn"><i class="fas fa-arrow-right"></i> Начать</button>
-        <div class="welcome-features">
-            <span><i class="fas fa-circle"></i> 4 квартала</span>
-            <span><i class="fas fa-circle"></i> Графики</span>
-            <span><i class="fas fa-circle"></i> Документы</span>
+        <!-- ============================================================
+        ОСНОВНОЕ ПРИЛОЖЕНИЕ
+        ============================================================ -->
+        <div id="appContent" style="display:none;">
+
+            <!-- ШАПКА -->
+            <header class="app-header">
+                <div class="brand">
+                    <i class="fas fa-taxi"></i>
+                    <span>BLVCK TAXI</span>
+                </div>
+                <div class="header-actions">
+                    <button class="btn-icon" id="themeToggle">
+                        <i class="fas fa-moon"></i>
+                    </button>
+                    <button class="btn-icon" id="exportBtn" title="Скачать отчёт PDF">
+                        <i class="fas fa-file-pdf"></i>
+                    </button>
+                    <button class="btn-icon" id="settingsBtn" title="Настройки">
+                        <i class="fas fa-cog"></i>
+                    </button>
+                </div>
+            </header>
+
+            <!-- ГЛАВНЫЙ ЭКРАН (ПРОСТОЙ ДЛЯ ТАКСИСТА) -->
+            <main class="main-content" id="driverDashboard">
+
+                <!-- Дата и итог за день -->
+                <div class="day-header">
+                    <span class="date" id="todayDate">СЕГОДНЯ</span>
+                    <span class="total" id="dayTotal">0.00 BYN</span>
+                </div>
+
+                <!-- Список расходов за сегодня -->
+                <div id="todayExpenses" class="expense-list">
+                    <div class="empty-state">
+                        <i class="fas fa-inbox"></i>
+                        <p>Нет расходов за сегодня</p>
+                        <p class="sub">Нажмите на кнопку ниже, чтобы добавить</p>
+                    </div>
+                </div>
+
+                <!-- КАТЕГОРИИ (сетка 4) -->
+                <div id="categoryGrid" style="
+                    display: grid;
+                    grid-template-columns: repeat(4, 1fr);
+                    gap: 8px;
+                    margin: 12px 0 8px;
+                "></div>
+
+                <!-- Итог за неделю -->
+                <div class="week-total">
+                    <span>📋 За последние 7 дней</span>
+                    <span id="weekTotal">0.00 BYN</span>
+                </div>
+
+                <!-- БЫСТРЫЙ ВВОД — 4 БОЛЬШИЕ КНОПКИ -->
+                <div class="quick-actions">
+                    <button class="quick-btn fuel" data-category="fuel">
+                        <i class="fas fa-gas-pump"></i>
+                        <span>Заправка</span>
+                    </button>
+                    <button class="quick-btn repair" data-category="repair">
+                        <i class="fas fa-wrench"></i>
+                        <span>Ремонт</span>
+                    </button>
+                    <button class="quick-btn wash" data-category="wash">
+                        <i class="fas fa-spray-can"></i>
+                        <span>Мойка</span>
+                    </button>
+                    <button class="quick-btn other" data-category="other">
+                        <i class="fas fa-ellipsis-h"></i>
+                        <span>Другое</span>
+                    </button>
+                </div>
+
+                <!-- ВТОРОСТЕПЕННЫЕ ФУНКЦИИ -->
+                <div class="secondary-actions">
+                    <button onclick="window.openCharts?.()">
+                        <i class="fas fa-chart-pie"></i> Графики
+                    </button>
+                    <button onclick="window.openDocuments?.()">
+                        <i class="fas fa-folder"></i> Документы
+                    </button>
+                    <button onclick="window.openNotes?.()">
+                        <i class="fas fa-wrench"></i> Журнал ТО
+                    </button>
+                    <button onclick="window.openCar?.()">
+                        <i class="fas fa-car"></i> Авто
+                    </button>
+                </div>
+            </main>
         </div>
     </div>
 
-    <!-- HEADER -->
-    <header class="app-header">
-        <div class="brand"><i class="fas fa-car"></i> BLVCK TAXI</div>
-        <div class="header-actions">
-            <div class="quarter-selector">
-                <select id="quarterSelect"></select>
-            </div>
-            <button class="btn-icon" id="themeToggle"><i class="fas fa-moon"></i></button>
-            <button class="export-btn" id="backupExportBtn"><i class="fas fa-download"></i></button>
-            <button class="export-btn" id="backupImportBtn"><i class="fas fa-upload"></i></button>
-        </div>
-    </header>
-
-    <!-- MAIN CONTENT -->
-    <div class="container" id="app">
-
-        <!-- Quarter Badge -->
-        <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
-            <span class="quarter-total-badge" id="quarterTotalBadge"><i class="fas fa-coins"></i> 0.00 BYN</span>
-        </div>
-
-        <!-- Car Card -->
-        <div class="car-card animate-fade-up" id="carCard">
-            <div class="car-icon"><i class="fas fa-car-side"></i></div>
-            <div class="car-info">
-                <div class="car-model" id="carModel">🚗 Мой автомобиль</div>
-                <div class="car-plate" id="carPlate">Нажмите чтобы добавить</div>
-                <div class="car-stats">
-                    <span class="car-stat"><i class="fas fa-tachometer-alt"></i> Расход: <strong id="carFuelConsumption">—</strong> л/100км</span>
-                    <span class="car-stat"><i class="fas fa-road"></i> Пробег: <strong id="carMileage">—</strong> км</span>
-                    <span class="car-stat"><i class="fas fa-gas-pump"></i> Топливо: <strong id="carFuelUsed">—</strong> л</span>
-                </div>
-                <div id="oilReminderContainer"></div>
-            </div>
-            <div style="display:flex;gap:4px;flex-shrink:0;">
-                <button class="btn-icon" id="editCarBtn"><i class="fas fa-edit"></i></button>
-                <button class="btn-icon" id="resetOilBtn"><i class="fas fa-sync-alt"></i></button>
-            </div>
-        </div>
-
-        <!-- Tabs -->
-        <div class="tabs-container animate-fade-up" style="animation-delay:0.05s;">
-            <button class="tab-btn active" data-tab="dashboard"><i class="fas fa-chart-pie"></i> Обзор</button>
-            <button class="tab-btn" data-tab="documents"><i class="fas fa-folder"></i> Документы</button>
-            <button class="tab-btn" data-tab="notes"><i class="fas fa-wrench"></i> Журнал ТО</button>
-            <button class="tab-btn" data-tab="fuel"><i class="fas fa-gas-pump"></i> Топливо</button>
-        </div>
-
-        <!-- TAB: DASHBOARD -->
-        <div class="tab-content active" id="tab-dashboard">
-            <div class="grid-4 animate-fade-up" style="animation-delay:0.1s;" id="categoryGrid"></div>
-
-            <div class="grid-2 animate-fade-up" style="animation-delay:0.15s;" id="summaryGrid">
-                <div class="summary-card"><div class="label"><i class="fas fa-wallet"></i> Всего</div><div class="value" id="totalExpenses">0.00</div><div class="sub">BYN</div></div>
-                <div class="summary-card"><div class="label"><i class="fas fa-receipt"></i> Записей</div><div class="value" id="entryCount">0</div><div class="sub">в квартале</div></div>
-                <div class="summary-card"><div class="label"><i class="fas fa-layer-group"></i> Категорий</div><div class="value" id="categoryCount">0</div><div class="sub">с расходами</div></div>
-                <div class="summary-card"><div class="label"><i class="fas fa-arrow-up"></i> Среднее</div><div class="value" id="avgExpense">0.00</div><div class="sub">BYN</div></div>
-            </div>
-
-            <div class="quarter-stats-section animate-fade-up" style="animation-delay:0.2s;">
-                <div class="section-title"><i class="fas fa-chart-simple"></i> По кварталам</div>
-                <div class="quarter-stats-grid" id="quarterStatsGrid"></div>
-                <div class="quarter-chart-container"><canvas id="quarterBarChart"></canvas></div>
-                <div class="quarter-summary-row" id="quarterSummaryRow"></div>
-            </div>
-
-            <div class="charts-grid animate-fade-up" style="animation-delay:0.25s;">
-                <div class="chart-card"><div class="chart-title"><i class="fas fa-chart-pie"></i> Категории</div><canvas id="pieChart"></canvas></div>
-                <div class="chart-card"><div class="chart-title"><i class="fas fa-chart-bar"></i> Топ расходов</div><canvas id="barChart"></canvas></div>
-            </div>
-
-            <div class="insights-section animate-fade-up" style="animation-delay:0.3s;">
-                <div class="section-title"><i class="fas fa-lightbulb"></i> Советы</div>
-                <div id="insightsContainer"></div>
-            </div>
-
-            <div class="expense-section animate-fade-up" style="animation-delay:0.35s;">
-                <div class="section-header">
-                    <h3><i class="fas fa-list-ul"></i> Расходы</h3>
-                    <span class="badge" id="listBadge">0</span>
-                </div>
-                <div id="expenseList"></div>
-            </div>
-        </div>
-
-        <!-- TAB: DOCUMENTS -->
-        <div class="tab-content" id="tab-documents">
-            <div class="documents-section animate-fade-up">
-                <div class="section-header">
-                    <h3><i class="fas fa-folder"></i> Умный сейф</h3>
-                    <span class="badge" id="docBadge">0</span>
-                </div>
-                <div id="documentsList"></div>
-
-                <div class="note-form" id="docForm">
-                    <div class="full-width form-group">
-                        <label><i class="fas fa-tag"></i> Тип</label>
-                        <select id="docType">
-                            <option value="insurance_go">Страховка ГО</option>
-                            <option value="green_card">Зелёная карта</option>
-                            <option value="tech_inspection">Техосмотр</option>
-                            <option value="medical">Медсправка</option>
-                            <option value="license">Лицензия</option>
-                            <option value="rental">Аренда</option>
-                            <option value="health_insurance">Страховка жизни</option>
-                            <option value="waybill">Путевой лист</option>
-                            <option value="other">Другое</option>
-                        </select>
-                    </div>
-                    <div class="full-width form-group">
-                        <label><i class="fas fa-heading"></i> Название</label>
-                        <input type="text" id="docTitle" placeholder="Название документа" />
-                    </div>
-                    <div class="form-group">
-                        <label><i class="fas fa-calendar"></i> Истекает</label>
-                        <input type="date" id="docExpiryDate" />
-                    </div>
-                    <div class="form-group">
-                        <label><i class="fas fa-money-bill"></i> Стоимость</label>
-                        <input type="number" id="docAmount" placeholder="BYN" step="0.01" min="0" />
-                    </div>
-                    <div class="full-width form-group">
-                        <label><i class="fas fa-camera"></i> Фото</label>
-                        <input type="file" id="docPhotoInput" accept="image/*" capture="environment" />
-                        <div id="docPhotoPreview" style="display:none;margin-top:6px;font-size:10px;color:var(--success);">
-                            <i class="fas fa-check-circle"></i> Загружено
-                        </div>
-                    </div>
-                    <button class="btn-add-note" id="addDocBtn"><i class="fas fa-plus"></i> Добавить</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- TAB: NOTES -->
-        <div class="tab-content" id="tab-notes">
-            <div class="notes-section animate-fade-up">
-                <div class="section-header">
-                    <h3><i class="fas fa-wrench"></i> Журнал ТО</h3>
-                    <span class="badge" id="notesBadge">0</span>
-                </div>
-                <div class="notes-filter" id="notesFilter">
-                    <button class="active" data-filter="all">Все</button>
-                    <button data-filter="oil">Масло</button>
-                    <button data-filter="filters">Фильтры</button>
-                    <button data-filter="suspension">Подвеска</button>
-                    <button data-filter="maintenance">ТО</button>
-                    <button data-filter="parts">Запчасти</button>
-                </div>
-                <div id="notesList"></div>
-
-                <div class="note-form" id="noteForm">
-                    <div class="full-width form-group">
-                        <label><i class="fas fa-tag"></i> Тип</label>
-                        <select id="noteType">
-                            <option value="maintenance">ТО</option>
-                            <option value="oil">Масло</option>
-                            <option value="filters">Фильтры</option>
-                            <option value="suspension">Подвеска</option>
-                            <option value="parts">Запчасти</option>
-                        </select>
-                    </div>
-                    <div class="full-width form-group">
-                        <label><i class="fas fa-heading"></i> Заголовок</label>
-                        <input type="text" id="noteTitle" placeholder="Заголовок" />
-                    </div>
-                    <div class="full-width form-group">
-                        <label><i class="fas fa-align-left"></i> Описание</label>
-                        <textarea id="noteDesc" placeholder="Описание..." rows="2"></textarea>
-                    </div>
-                    <div class="full-width" id="partsFields" style="display:none;">
-                        <div class="form-row-3">
-                            <div class="form-group">
-                                <label>Деталь</label>
-                                <input type="text" id="partName" />
-                            </div>
-                            <div class="form-group">
-                                <label>Артикул</label>
-                                <input type="text" id="partArticle" />
-                            </div>
-                            <div class="form-group">
-                                <label>Пробег</label>
-                                <input type="number" id="partMileage" step="1" min="0" />
-                            </div>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label><i class="fas fa-calendar"></i> Дата</label>
-                        <input type="date" id="noteDate" />
-                    </div>
-                    <div class="form-group">
-                        <label><i class="fas fa-money-bill"></i> Стоимость</label>
-                        <input type="number" id="noteAmount" placeholder="BYN" step="0.01" min="0" />
-                    </div>
-                    <button class="btn-add-note" id="addNoteBtn"><i class="fas fa-plus"></i> Добавить</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- TAB: FUEL -->
-        <div class="tab-content" id="tab-fuel">
-            <div class="expense-section animate-fade-up">
-                <div class="section-header">
-                    <h3><i class="fas fa-gas-pump"></i> Динамика расхода</h3>
-                    <span class="badge" id="fuelBadge">0</span>
-                </div>
-                <div id="fuelList"></div>
-                <div class="quarter-chart-container" style="height:140px;margin-top:14px;"><canvas id="fuelChart"></canvas></div>
-            </div>
-        </div>
-
-        <div class="footer"><i class="fas fa-database"></i> BLVCK TAXI • IndexedDB • PWA</div>
-    </div>
-
-    <!-- FAB -->
-    <button class="fab" id="fabAdd"><i class="fas fa-plus"></i></button>
-
-    <!-- EXPENSE MODAL -->
-    <div class="modal-overlay" id="modalOverlay">
-        <div class="modal">
+    <!-- ============================================================
+    МОДАЛКА БЫСТРОГО ВВОДА
+    ============================================================ -->
+    <div class="modal-overlay" id="quickModal">
+        <div class="modal modal-quick">
             <div class="modal-header">
-                <h2 id="modalTitle"><i class="fas fa-plus-circle"></i> Новый расход</h2>
-                <button class="modal-close" id="modalClose"><i class="fas fa-times"></i></button>
+                <h2 id="quickModalTitle"><i class="fas fa-plus-circle"></i> Добавить расход</h2>
+                <button class="modal-close" id="quickModalClose"><i class="fas fa-times"></i></button>
             </div>
-            <form id="expenseForm" autocomplete="off">
-                <input type="hidden" id="editId" />
-                <div class="form-row">
-                    <div class="form-group">
-                        <label><i class="fas fa-tag"></i> Категория</label>
-                        <select id="formCategory" required>
-                            <option value="fuel">⛽ Бензин</option>
-                            <option value="insurance">🛡️ Страховка</option>
-                            <option value="wash">🧼 Мойка</option>
-                            <option value="fszn">🏛️ ФСЗН</option>
-                            <option value="medic">🩺 Медик</option>
-                            <option value="repair">🔧 Ремонт</option>
-                            <option value="parts">⚙️ Запчасти</option>
-                            <option value="other">📌 Прочие</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label><i class="fas fa-calendar"></i> Дата</label>
-                        <input type="date" id="formDate" required max="" />
-                    </div>
+            <form id="quickForm">
+                <input type="hidden" id="quickCategory" />
+                <div class="form-group">
+                    <label>Сумма (BYN)</label>
+                    <input type="number" id="quickAmount" placeholder="0.00" step="0.01" min="0" required autofocus />
                 </div>
                 <div class="form-group">
-                    <label><i class="fas fa-money-bill"></i> Сумма (BYN)</label>
-                    <input type="number" id="formAmount" placeholder="0.00" step="0.01" min="0" required />
+                    <label>Описание (необязательно)</label>
+                    <input type="text" id="quickDesc" placeholder="Заправка на АЗС №5" />
                 </div>
-                <div class="form-group" id="litersGroup" style="display:none;">
-                    <label><i class="fas fa-tint"></i> Литры</label>
-                    <input type="number" id="formLiters" placeholder="0.00" step="0.01" min="0" />
-                </div>
-                <div class="form-group" id="mileageGroup" style="display:none;">
-                    <label><i class="fas fa-road"></i> Пробег (км)</label>
-                    <input type="number" id="formMileage" placeholder="0" step="1" min="0" />
-                </div>
-                <div class="form-group">
-                    <label><i class="fas fa-pen"></i> Описание</label>
-                    <input type="text" id="formDesc" placeholder="Заправка, ТО..." />
-                </div>
-                <button type="submit" class="btn-submit" id="submitBtn"><i class="fas fa-save"></i> Сохранить</button>
+                <button type="submit" class="btn-submit">
+                    <i class="fas fa-save"></i> Сохранить
+                </button>
             </form>
         </div>
     </div>
 
-    <!-- CAR MODAL -->
-    <div class="modal-overlay" id="carModalOverlay">
-        <div class="modal">
+    <!-- ============================================================
+    ОСНОВНАЯ МОДАЛКА (для будущих функций)
+    ============================================================ -->
+    <div class="modal-overlay" id="mainModal">
+        <div class="modal" id="mainModalContent">
             <div class="modal-header">
-                <h2><i class="fas fa-car"></i> Мой автомобиль</h2>
-                <button class="modal-close" id="carModalClose"><i class="fas fa-times"></i></button>
+                <h2 id="mainModalTitle">Заголовок</h2>
+                <button class="modal-close" id="mainModalClose"><i class="fas fa-times"></i></button>
             </div>
-            <form id="carForm" autocomplete="off">
-                <div class="form-group">
-                    <label><i class="fas fa-car"></i> Модель</label>
-                    <input type="text" id="carModelInput" placeholder="Toyota Camry" />
-                </div>
-                <div class="form-group">
-                    <label><i class="fas fa-id-card"></i> Госномер</label>
-                    <input type="text" id="carPlateInput" placeholder="АА 1234-7" />
-                </div>
-                <div class="form-group">
-                    <label><i class="fas fa-tachometer-alt"></i> Расход (л/100км)</label>
-                    <input type="number" id="carFuelInput" placeholder="7.5" step="0.1" min="0" />
-                </div>
-                <div class="form-group">
-                    <label><i class="fas fa-oil-can"></i> Интервал масла (км)</label>
-                    <input type="number" id="carOilIntervalInput" placeholder="10000" step="100" min="1000" />
-                </div>
-                <button type="submit" class="btn-submit"><i class="fas fa-save"></i> Сохранить</button>
-            </form>
+            <div id="mainModalBody"></div>
         </div>
     </div>
 
-    <!-- PHOTO PREVIEW -->
-    <div class="photo-preview-overlay" id="photoPreviewOverlay">
-        <div class="photo-preview-content">
-            <button class="photo-preview-close" id="photoPreviewClose"><i class="fas fa-times"></i></button>
-            <img id="photoPreviewImg" src="" alt="Фото" />
-        </div>
-    </div>
-
-    <!-- TOAST -->
+    <!-- ============================================================
+    TOAST (УВЕДОМЛЕНИЯ)
+    ============================================================ -->
     <div class="toast-container" id="toastContainer"></div>
 
-    <!-- HIDDEN IMPORT INPUT -->
-    <input type="file" id="importFileInput" accept=".json" style="display:none;" />
+    <!-- ============================================================
+    ОСНОВНОЙ СКРИПТ
+    ============================================================ -->
+    <script type="module" src="/src/scripts/core/app.js"></script>
 
-    <script src="app.js"></script>
 </body>
 </html>
