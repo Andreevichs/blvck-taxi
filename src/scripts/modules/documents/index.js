@@ -1,73 +1,50 @@
 // ============================================================
-//  DOCUMENTS/INDEX.JS — УПРАВЛЕНИЕ ДОКУМЕНТАМИ
+//  NOTES/INDEX.JS — УПРАВЛЕНИЕ ЗАПИСЯМИ ТО
 // ============================================================
 
 import { useStore } from '../../core/store.js';
 import { showToast, generateId } from '../../core/utils.js';
-import { db } from '../../core/database.js';
+import db from '../../core/database.js';
 
-// Типы документов
-export const DOC_TYPES = {
-    insurance_go: { label: 'Страховка ГО', icon: 'fa-shield-alt' },
-    green_card: { label: 'Зелёная карта', icon: 'fa-passport' },
-    tech_inspection: { label: 'Техосмотр', icon: 'fa-car' },
-    medical: { label: 'Медсправка', icon: 'fa-user-md' },
-    license: { label: 'Лицензия', icon: 'fa-certificate' },
-    rental: { label: 'Договор аренды', icon: 'fa-file-contract' },
-    waybill: { label: 'Путевой лист', icon: 'fa-clipboard-list' },
-    other: { label: 'Другое', icon: 'fa-folder' }
+// Типы записей ТО
+export const NOTE_TYPES = {
+    maintenance: { label: 'ТО', icon: 'fa-tools' },
+    oil: { label: 'Замена масла', icon: 'fa-oil-can' },
+    filters: { label: 'Замена фильтров', icon: 'fa-filter' },
+    suspension: { label: 'Ремонт подвески', icon: 'fa-car-crash' },
+    parts: { label: 'Запчасти', icon: 'fa-cogs' }
 };
 
-// Получить все документы
-export function getDocuments() {
-    return useStore.getState().documents || [];
+// Получить все записи
+export function getNotes() {
+    return useStore.getState().notes || [];
 }
 
-// Добавить документ
-export async function addDocument(data) {
-    const doc = {
+// Добавить запись
+export async function addNote(data) {
+    const note = {
         ...data,
         id: generateId(),
         createdAt: new Date().toISOString()
     };
 
-    await db.documents.add(doc);
+    await db.notes.add(note);
 
     const state = useStore.getState();
-    const documents = [...state.documents, doc];
-    useStore.setState({ documents });
+    const notes = [...state.notes, note];
+    useStore.setState({ notes });
 
-    showToast('📄 Документ добавлен', 'success');
-    return doc;
+    showToast('📝 Запись добавлена в журнал ТО', 'success');
+    return note;
 }
 
-// Удалить документ
-export async function deleteDocument(id) {
-    await db.documents.delete(id);
+// Удалить запись
+export async function deleteNote(id) {
+    await db.notes.delete(id);
 
     const state = useStore.getState();
-    const documents = state.documents.filter(d => d.id !== id);
-    useStore.setState({ documents });
+    const notes = state.notes.filter(n => n.id !== id);
+    useStore.setState({ notes });
 
-    showToast('🗑️ Документ удалён', 'warning');
-}
-
-// Проверить, сколько дней до истечения
-export function getDaysUntilExpiry(doc) {
-    if (!doc.expiryDate) return null;
-    const target = new Date(doc.expiryDate);
-    target.setHours(0, 0, 0, 0);
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    return Math.ceil((target - now) / (1000 * 60 * 60 * 24));
-}
-
-// Получить статус документа
-export function getDocumentStatus(doc) {
-    const days = getDaysUntilExpiry(doc);
-    if (days === null) return 'unknown';
-    if (days > 30) return 'green';
-    if (days > 7) return 'yellow';
-    if (days >= 0) return 'orange';
-    return 'red';
+    showToast('🗑️ Запись удалена', 'warning');
 }
