@@ -4,7 +4,7 @@
 
 import { useStore } from '../../core/store.js';
 import { showToast, generateId } from '../../core/utils.js';
-import { db } from '../../core/database.js';
+import db from '../../core/database.js';
 
 // Типы записей ТО
 export const NOTE_TYPES = {
