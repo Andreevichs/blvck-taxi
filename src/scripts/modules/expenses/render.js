@@ -3,7 +3,9 @@
 // ============================================================
 
 import { CATEGORIES } from '../../core/config.js';
-import { formatDate, formatTime } from '../../core/utils.js';
+import { formatDate, formatTime, showToast } from '../../core/utils.js';
+import { useStore } from '../../core/store.js';
+import { openEditModal } from './edit.js';
 
 // Рендеринг списка расходов
 export function renderExpenses(expenses, containerId = 'todayExpenses') {
@@ -28,75 +30,57 @@ export function renderExpenses(expenses, containerId = 'todayExpenses') {
     sorted.forEach(exp => {
         const cat = CATEGORIES[exp.category] || CATEGORIES.other;
         const time = formatTime(exp.createdAt);
+        const icon = cat.icon || 'fa-circle';
 
-        // Добавь кнопку удаления и редактирования в рендеринг
-
-// В функции renderExpenses замени блок .expense-item на:
-
-html += `
-    <div class="expense-item animate-fade-up" data-id="${exp.id}">
-        <div class="left">
-            <div class="icon">
-                <i class="fas ${cat.icon}"></i>
+        html += `
+            <div class="expense-item animate-fade-up" data-id="${exp.id}">
+                <div class="left">
+                    <div class="icon">
+                        <i class="fas ${icon}"></i>
+                    </div>
+                    <div class="info">
+                        <div class="cat">${cat.label}</div>
+                        <div class="desc">${exp.description || 'Без описания'}</div>
+                        <div class="time">${time}</div>
+                    </div>
+                </div>
+                <div class="amount">${exp.amount.toFixed(2)} BYN</div>
+                <div style="display:flex;gap:4px;align-items:center;">
+                    <button class="btn-icon-small edit-btn" data-id="${exp.id}" title="Редактировать">
+                        <i class="fas fa-pen"></i>
+                    </button>
+                    <button class="btn-icon-small delete-btn" data-id="${exp.id}" title="Удалить">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
             </div>
-            <div class="info">
-                <div class="cat">${cat.label}</div>
-                <div class="desc">${exp.description || 'Без описания'}</div>
-                <div class="time">${time}</div>
-            </div>
-        </div>
-        <div class="amount">${exp.amount.toFixed(2)} BYN</div>
-        <div style="display:flex;gap:4px;align-items:center;">
-            <button class="btn-icon-small edit-btn" data-id="${exp.id}" style="
-                width: 26px;
-                height: 26px;
-                border-radius: 50%;
-                border: 1px solid rgba(255,255,255,0.06);
-                background: transparent;
-                color: var(--text-muted);
-                cursor: pointer;
-                font-size: 11px;
-                transition: all 0.2s;
-            ">
-                <i class="fas fa-pen"></i>
-            </button>
-            <button class="btn-icon-small delete-btn" data-id="${exp.id}" style="
-                width: 26px;
-                height: 26px;
-                border-radius: 50%;
-                border: 1px solid rgba(255,255,255,0.06);
-                background: transparent;
-                color: var(--text-muted);
-                cursor: pointer;
-                font-size: 11px;
-                transition: all 0.2s;
-            ">
-                <i class="fas fa-trash"></i>
-            </button>
-        </div>
-    </div>
-`;
-
-// Добавь обработчики после рендеринга
-container.querySelectorAll('.delete-btn').forEach(btn => {
-    btn.addEventListener('click', async function(e) {
-        e.stopPropagation();
-        const id = this.dataset.id;
-        if (confirm('Удалить этот расход?')) {
-            const state = useStore.getState();
-            await state.deleteExpense(id);
-            showToast('🗑️ Расход удалён', 'warning');
-        }
+        `;
     });
-});
 
-container.querySelectorAll('.edit-btn').forEach(btn => {
-    btn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        const id = this.dataset.id;
-        openEditModal(id);
+    container.innerHTML = html;
+
+    // Обработчики удаления
+    container.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', async function(e) {
+            e.stopPropagation();
+            const id = this.dataset.id;
+            if (confirm('Удалить этот расход?')) {
+                const state = useStore.getState();
+                await state.deleteExpense(id);
+                showToast('🗑️ Расход удалён', 'warning');
+            }
+        });
     });
-});
+
+    // Обработчики редактирования
+    container.querySelectorAll('.edit-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const id = this.dataset.id;
+            openEditModal(id);
+        });
+    });
+}
 
 // Обновление итогов
 export function updateTotals(todayTotal, weekTotal) {
