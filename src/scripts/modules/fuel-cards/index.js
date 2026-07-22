@@ -1,12 +1,11 @@
 // ============================================================
-//  FUEL-CARDS/INDEX.JS — УПРАВЛЕНИЕ ТОПЛИВНЫМИ КАРТАМИ
+//  FUEL-CARDS/INDEX.JS — УПРАВЛЕНИЕ ТОПЛИВНЫМИ КАРТАМИ (ШАГ 8)
 // ============================================================
 
 import { useStore } from '../../core/store.js';
-import { showToast, generateId } from '../../core/utils.js';
-import { db } from '../../core/database.js';
+import { showToast } from '../../core/utils.js';
+import * as db from '../../core/database.js';
 
-// Типы топливных карт
 export const FUEL_CARD_TYPES = {
     belneftekhim: { label: 'Белнефтехим', icon: 'fa-oil-can' },
     a100: { label: 'А-100', icon: 'fa-gas-pump' },
@@ -15,34 +14,30 @@ export const FUEL_CARD_TYPES = {
     other: { label: 'Другая', icon: 'fa-credit-card' }
 };
 
-// Получить все топливные карты
 export function getFuelCards() {
     return useStore.getState().fuelCards || [];
 }
 
-// Добавить топливную карту
 export async function addFuelCard(data) {
     const card = {
         ...data,
-        id: generateId(),
-        createdAt: new Date().toISOString(),
         balance: data.balance || 0,
-        limit: data.limit || 0
+        limit: data.limit || 0,
+        createdAt: new Date().toISOString()
     };
 
-    await db.fuelCards.add(card);
+    const result = await db.addFuelCard(card);
 
     const state = useStore.getState();
-    const fuelCards = [...(state.fuelCards || []), card];
+    const fuelCards = [...(state.fuelCards || []), result];
     useStore.setState({ fuelCards });
 
     showToast('💳 Топливная карта добавлена', 'success');
-    return card;
+    return result;
 }
 
-// Удалить топливную карту
 export async function deleteFuelCard(id) {
-    await db.fuelCards.delete(id);
+    await db.deleteFuelCard(id);
 
     const state = useStore.getState();
     const fuelCards = (state.fuelCards || []).filter(c => c.id !== id);
@@ -51,7 +46,6 @@ export async function deleteFuelCard(id) {
     showToast('🗑️ Карта удалена', 'warning');
 }
 
-// Обновить баланс карты
 export async function updateFuelCardBalance(id, amount) {
     const state = useStore.getState();
     const cards = state.fuelCards || [];
@@ -63,7 +57,7 @@ export async function updateFuelCardBalance(id, amount) {
         balance: (card.balance || 0) + amount
     };
 
-    await db.fuelCards.put(updated);
+    await db.updateFuelCard(id, updated);
 
     const fuelCards = cards.map(c => c.id === id ? updated : c);
     useStore.setState({ fuelCards });
