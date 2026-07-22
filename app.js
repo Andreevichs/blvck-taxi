@@ -135,6 +135,31 @@ function clearStore(storeName) {
 }
 
 // ============================================================
+//  ФОНОВЫЕ ЧАСТИЦЫ
+// ============================================================
+function createParticles() {
+    const container = document.createElement('div');
+    container.className = 'particles-container';
+    document.body.prepend(container);
+
+    const count = 15;
+    for (let i = 0; i < count; i++) {
+        const dot = document.createElement('div');
+        dot.className = 'particle-dot';
+        dot.style.left = Math.random() * 100 + '%';
+        dot.style.width = (Math.random() * 4 + 2) + 'px';
+        dot.style.height = dot.style.width;
+        dot.style.animationDuration = (Math.random() * 20 + 15) + 's';
+        dot.style.animationDelay = (Math.random() * 20) + 's';
+        container.appendChild(dot);
+    }
+}
+
+// Вызови при загрузке
+document.addEventListener('DOMContentLoaded', function() {
+    createParticles();
+
+// ============================================================
 //  CATEGORIES
 // ============================================================
 const CATEGORIES = {
