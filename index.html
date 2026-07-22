@@ -9,7 +9,7 @@
     <title>BLVCK TAXI</title>
 
     <link rel="manifest" href="manifest.json" />
-    <link rel="apple-touch-icon" href="https://via.placeholder.com/192x192/0A0A0A/FF6B00?text=BT" />
+    <link rel="apple-touch-icon" href="https://via.placeholder.com/192x192/0A0A0A/34D399?text=BT" />
 
     <!-- CDN: Font Awesome + Chart.js -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
@@ -116,7 +116,7 @@
             </div>
             <div class="car-actions">
                 <button id="editCarBtn"><i class="fas fa-edit"></i> Изменить</button>
-                <button id="resetOilBtn" style="border-color:rgba(255,107,0,0.04);color:var(--text-secondary);">
+                <button id="resetOilBtn">
                     <i class="fas fa-sync-alt"></i> Сброс масла
                 </button>
             </div>
@@ -192,7 +192,7 @@
 
             <div class="insights-section animate-fade-up" id="insightsSection">
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
-                    <i class="fas fa-lightbulb" style="color:var(--orange); font-size:16px;"></i>
+                    <i class="fas fa-lightbulb" style="color:var(--green); font-size:16px;"></i>
                     <span style="font-weight:600; font-size:12px;color:#fff; text-transform:uppercase; letter-spacing:0.5px;">Советы</span>
                 </div>
                 <div id="insightsContainer">
@@ -233,9 +233,8 @@
                         <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">Добавьте документ — страховку, техосмотр, лицензию...</p>
                     </div>
                 </div>
-                <div class="note-form" id="docForm">
-                    <input type="hidden" id="editDocId" value="" />
-                    <div class="full-width">
+                <div class="doc-form">
+                    <div class="form-group full-width">
                         <select id="docType">
                             <option value="insurance_go">Страховка ГО</option>
                             <option value="green_card">Зелёная карта</option>
@@ -248,25 +247,25 @@
                             <option value="other">Другое</option>
                         </select>
                     </div>
-                    <div class="full-width">
+                    <div class="form-group full-width">
                         <input type="text" id="docTitle" placeholder="Название документа" />
                     </div>
-                    <div>
+                    <div class="form-group">
                         <input type="date" id="docExpiryDate" />
                     </div>
-                    <div>
+                    <div class="form-group">
                         <input type="number" id="docAmount" placeholder="Стоимость (BYN)" step="0.01" min="0" />
                     </div>
-                    <div class="full-width">
+                    <div class="form-group full-width">
                         <label style="font-size:11px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;display:block;">
                             <i class="fas fa-camera"></i> Фото документа
                         </label>
-                        <input type="file" id="docPhotoInput" accept="image/*" capture="environment" style="width:100%;padding:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,107,0,0.04);color:#fff;font-family:var(--font);font-size:13px;" />
-                        <div id="docPhotoPreview" style="margin-top:8px;display:none;border:1px solid rgba(255,107,0,0.04);padding:4px;text-align:center;color:var(--text-muted);font-size:12px;">
+                        <input type="file" id="docPhotoInput" accept="image/*" capture="environment" />
+                        <div id="docPhotoPreview" style="margin-top:8px;display:none;padding:8px;text-align:center;color:var(--text-secondary);font-size:12px;border:1px solid rgba(52,211,153,0.04);border-radius:8px;">
                             <i class="fas fa-check-circle" style="color:var(--green);"></i> Фото загружено
                         </div>
                     </div>
-                    <button class="btn-add-note" id="addDocBtn">
+                    <button class="btn-add" id="addDocBtn">
                         <i class="fas fa-plus"></i> Добавить документ
                     </button>
                 </div>
@@ -295,9 +294,8 @@
                         <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">Добавьте запись о работе, ремонте или замене деталей</p>
                     </div>
                 </div>
-                <div class="note-form" id="noteForm">
-                    <input type="hidden" id="editNoteId" value="" />
-                    <div class="full-width">
+                <div class="note-form">
+                    <div class="form-group full-width">
                         <select id="noteType">
                             <option value="maintenance">ТО</option>
                             <option value="oil">Замена масла</option>
@@ -306,27 +304,27 @@
                             <option value="parts">Запчасти</option>
                         </select>
                     </div>
-                    <div class="full-width">
+                    <div class="form-group full-width">
                         <input type="text" id="noteTitle" placeholder="Заголовок" />
                     </div>
-                    <div class="full-width">
+                    <div class="form-group full-width">
                         <textarea id="noteDesc" placeholder="Описание работы" rows="2"></textarea>
                     </div>
-                    <div class="full-width" id="partsFields" style="display:none;">
-                        <div class="form-row-3">
+                    <div class="form-group full-width" id="partsFields" style="display:none;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
                             <input type="text" id="partName" placeholder="Название детали" />
                             <input type="text" id="partArticle" placeholder="Артикул" />
                             <input type="number" id="partMileage" placeholder="Пробег (км)" step="1" min="0" />
                         </div>
                     </div>
-                    <div>
+                    <div class="form-group">
                         <input type="date" id="noteDate" />
                     </div>
-                    <div>
-                        <input type="number" id="noteAmount" placeholder="Стоимость" step="0.01" min="0" />
+                    <div class="form-group">
+                        <input type="number" id="noteAmount" placeholder="Стоимость (BYN)" step="0.01" min="0" />
                     </div>
-                    <button class="btn-add-note" id="addNoteBtn">
-                        <i class="fas fa-plus"></i> Добавить
+                    <button class="btn-add" id="addNoteBtn">
+                        <i class="fas fa-plus"></i> Добавить запись
                     </button>
                 </div>
             </div>
