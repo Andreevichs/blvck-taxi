@@ -2,12 +2,22 @@
 //  CATEGORIES/RENDER.JS — ОТОБРАЖЕНИЕ КАТЕГОРИЙ
 // ============================================================
 
-import { CATEGORIES } from '../../core/config.js';
+import { CATEGORIES, CAT_KEYS } from '../../core/config.js';
 import { getCategoryTotals } from './index.js';
 
 export function renderCategories(expenses) {
     const container = document.getElementById('categoryGrid');
     if (!container) return;
+
+    // Проверка: если expenses undefined или не массив
+    if (!expenses || !Array.isArray(expenses)) {
+        container.innerHTML = `
+            <div style="grid-column:1/-1; text-align:center; color:var(--text-muted); font-size:12px; padding:12px;">
+                Добавьте расходы, чтобы увидеть категории
+            </div>
+        `;
+        return;
+    }
 
     const totals = getCategoryTotals(expenses);
     const hasData = Object.values(totals).some(v => v > 0);
@@ -21,20 +31,8 @@ export function renderCategories(expenses) {
         return;
     }
 
-    // Показываем только те категории, где есть расходы
-    const activeKeys = CATEGORIES.keys.filter(key => totals[key] > 0);
-
-    if (activeKeys.length === 0) {
-        container.innerHTML = `
-            <div style="grid-column:1/-1; text-align:center; color:var(--text-muted); font-size:12px; padding:12px;">
-                Нет расходов по категориям
-            </div>
-        `;
-        return;
-    }
-
     let html = '';
-    CATEGORIES.keys.forEach(key => {
+    CAT_KEYS.forEach(key => {
         const cat = CATEGORIES[key];
         const amount = totals[key] || 0;
 
@@ -68,9 +66,10 @@ export function renderCategories(expenses) {
     container.querySelectorAll('.cat-card').forEach(card => {
         card.addEventListener('click', function() {
             const category = this.dataset.category;
-            // Открываем модалку быстрого ввода с выбранной категорией
             if (window.openQuickModal) {
                 window.openQuickModal(category);
+            } else {
+                alert('Функция быстрого ввода будет доступна позже');
             }
         });
     });
