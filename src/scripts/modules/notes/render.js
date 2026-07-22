@@ -1,24 +1,21 @@
 // ============================================================
-//  NOTES/RENDER.JS — ОТОБРАЖЕНИЕ ЖУРНАЛА ТО
+//  NOTES/RENDER.JS — ОТОБРАЖЕНИЕ ЖУРНАЛА ТО (ШАГ 7)
 // ============================================================
 
 import { NOTE_TYPES, deleteNote } from './index.js';
-import { formatDate } from '../../core/utils.js';
+import { formatDate, showToast } from '../../core/utils.js';
 
 let currentFilter = 'all';
 
-// Рендеринг записей ТО
 export function renderNotes(notes) {
     const container = document.getElementById('notesList');
     if (!container) return;
 
-    // Фильтрация
     let filtered = notes;
     if (currentFilter !== 'all') {
         filtered = notes.filter(n => n.type === currentFilter);
     }
 
-    // Сортировка по дате (сначала новые)
     const sorted = [...filtered].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
 
     if (sorted.length === 0) {
@@ -63,7 +60,6 @@ export function renderNotes(notes) {
 
     container.innerHTML = html;
 
-    // Обработчики удаления
     container.querySelectorAll('.delete-note-btn').forEach(btn => {
         btn.addEventListener('click', async function() {
             const id = this.dataset.id;
@@ -71,25 +67,23 @@ export function renderNotes(notes) {
                 await deleteNote(id);
                 const { getNotes } = await import('./index.js');
                 renderNotes(getNotes());
+                showToast('🗑️ Запись удалена', 'warning');
             }
         });
     });
 }
 
-// Установить фильтр
 export function setNoteFilter(filter) {
     currentFilter = filter;
 
-    // Обновляем активную кнопку
     document.querySelectorAll('.notes-filter button').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.filter === filter);
     });
 
-    const { getNotes } = await import('./index.js');
+    const { getNotes } =  import('./index.js');
     renderNotes(getNotes());
 }
 
-// Показать форму добавления записи ТО
 export function showAddNoteForm() {
     const modal = document.getElementById('mainModal');
     const title = document.getElementById('mainModalTitle');
@@ -141,14 +135,12 @@ export function showAddNoteForm() {
 
     modal.classList.add('open');
 
-    // Показываем поля для деталей и пробега
     const typeSelect = document.getElementById('noteType');
     typeSelect.addEventListener('change', function() {
         document.getElementById('partsFields').style.display = this.value === 'parts' ? 'block' : 'none';
         document.getElementById('mileageField').style.display = this.value === 'parts' ? 'block' : 'none';
     });
 
-    // Обработчик формы
     const form = document.getElementById('noteForm');
     form.addEventListener('submit', async function(e) {
         e.preventDefault();
