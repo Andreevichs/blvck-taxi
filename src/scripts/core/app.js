@@ -1,14 +1,16 @@
 // ============================================================
-//  APP.JS — ГЛАВНЫЙ ФАЙЛ ПРИЛОЖЕНИЯ
+//  APP.JS — ГЛАВНЫЙ ФАЙЛ (ОБНОВЛЁННЫЙ)
 // ============================================================
 
 import { initDB } from './database.js';
 import { useStore } from './store.js';
 import { renderExpenses, updateTotals, updateDate } from '../modules/expenses/render.js';
+import { renderCategories } from '../modules/categories/render.js';
 import { initQuickAdd, openQuickModal } from '../modules/quick-add/index.js';
-import { filterToday, filterWeek, sumExpenses, showToast } from './utils.js';
+import { generatePDF } from '../modules/export/index.js';
 import { needDemoData, addDemoData } from '../modules/demo-data/index.js';
 import { needOnboarding, showOnboarding } from '../modules/onboarding/index.js';
+import { filterToday, sumExpenses, showToast } from './utils.js';
 
 // ============================================================
 //  ЗАПУСК ПРИЛОЖЕНИЯ
@@ -30,7 +32,8 @@ async function initApp() {
         if (needDemoData()) {
             await addDemoData();
             console.log('✅ Демо-данные добавлены');
-        }    
+        }
+
         // 2.6. Проверяем онбординг
         if (needOnboarding()) {
             await showOnboarding();
@@ -45,6 +48,9 @@ async function initApp() {
 
         // 5. Обновляем интерфейс
         updateUI();
+
+        // 6. Экспортируем функции в глобальный объект
+        window.openQuickModal = openQuickModal;
 
         console.log('✅ Приложение готово!');
     } catch (error) {
@@ -67,7 +73,6 @@ function setupUI() {
         welcomeBtn.addEventListener('click', function() {
             welcomeScreen.classList.add('hidden');
             appContent.style.display = 'block';
-            // При первом запуске обновляем UI
             updateUI();
         });
     }
@@ -86,11 +91,11 @@ function setupUI() {
         });
     }
 
-    // ---- Кнопка экспорта (пока заглушка) ----
+    // ---- Кнопка экспорта PDF ----
     const exportBtn = document.getElementById('exportBtn');
     if (exportBtn) {
-        exportBtn.addEventListener('click', function() {
-            showToast('📄 Экспорт отчёта будет доступен в следующей версии', 'info');
+        exportBtn.addEventListener('click', async function() {
+            await generatePDF();
         });
     }
 
@@ -122,10 +127,14 @@ function updateUI() {
     updateDate();
 
     // Фильтруем расходы за сегодня
-    const todayExpenses = state.expenses.filter(e => e.date === new Date().toISOString().split('T')[0]);
+    const today = new Date().toISOString().split('T')[0];
+    const todayExpenses = state.expenses.filter(e => e.date === today);
 
     // Рендерим список
     renderExpenses(todayExpenses, 'todayExpenses');
+
+    // Рендерим категории
+    renderCategories(state.expenses);
 
     // Обновляем итоги
     updateTotals(state.todayTotal, state.weekTotal);
@@ -135,11 +144,11 @@ function updateUI() {
 //  ПОДПИСКА НА ИЗМЕНЕНИЯ
 // ============================================================
 
-// Подписываемся на изменения хранилища
 useStore.subscribe((state) => {
-    // Обновляем UI при любых изменениях
-    const todayExpenses = state.expenses.filter(e => e.date === new Date().toISOString().split('T')[0]);
+    const today = new Date().toISOString().split('T')[0];
+    const todayExpenses = state.expenses.filter(e => e.date === today);
     renderExpenses(todayExpenses, 'todayExpenses');
+    renderCategories(state.expenses);
     updateTotals(state.todayTotal, state.weekTotal);
 });
 
@@ -147,11 +156,10 @@ useStore.subscribe((state) => {
 //  ЗАПУСК
 // ============================================================
 
-// Ждём загрузку DOM
 document.addEventListener('DOMContentLoaded', initApp);
 
-// Экспортируем для использования в консоли (отладка)
 window.app = {
     store: useStore,
-    openQuickModal: openQuickModal
+    openQuickModal: openQuickModal,
+    generatePDF: generatePDF
 };
