@@ -1,6 +1,6 @@
 /* ============================================================
    BLVCK TAXI — СТИЛИ
-   Зелёный акцент + эффект рассечения
+   Зелёный акцент + эффект рассечения + анимация фона
    ============================================================ */
 
 /* ============================================================
@@ -8,17 +8,28 @@
    ============================================================ */
 :root {
     --bg-primary: #0A0A0A;
-    --bg-secondary: #111111;
-    --bg-card: rgba(255, 255, 255, 0.02);
-    --bg-card-hover: rgba(255, 255, 255, 0.04);
-    --border-card: rgba(255, 255, 255, 0.04);
-    --border-card-hover: rgba(0, 230, 118, 0.15);
+    --bg-secondary: #0f1a15;
+    --bg-card: rgba(52, 211, 153, 0.02);
+    --bg-card-hover: rgba(52, 211, 153, 0.04);
+    --border-card: rgba(52, 211, 153, 0.04);
+    --border-card-hover: rgba(52, 211, 153, 0.12);
 
-    --green: #00E676;
-    --green-dark: #00C853;
-    --green-dim: rgba(0, 230, 118, 0.08);
-    --green-glow: 0 0 40px rgba(0, 230, 118, 0.08);
-    --green-glow-strong: 0 0 60px rgba(0, 230, 118, 0.15);
+    /* Основные цвета */
+    --green: #34D399;
+    --green-dark: #1a8a5a;
+    --green-light: #6ee7b7;
+    --green-dim: rgba(52, 211, 153, 0.08);
+    --green-glow: 0 0 40px rgba(52, 211, 153, 0.06);
+    --green-glow-strong: 0 0 60px rgba(52, 211, 153, 0.12);
+
+    /* Цвета для диаграммы — каждый сектор свой */
+    --chart-1: #34D399;
+    --chart-2: #1a8a5a;
+    --chart-3: #6ee7b7;
+    --chart-4: #059669;
+    --chart-5: #4ade80;
+    --chart-6: #86efac;
+    --chart-7: #065f46;
 
     --red: #EF4444;
     --yellow: #FBBF24;
@@ -28,10 +39,10 @@
 
     --text-primary: #FFFFFF;
     --text-secondary: #A0A0A0;
-    --text-muted: #555555;
+    --text-muted: #3a4a44;
 
-    --radius-glass: 0px;
-    --transition: 0.4s cubic-bezier(0.2, 0.9, 0.4, 1);
+    --radius-glass: 12px;
+    --transition: 0.5s cubic-bezier(0.2, 0.9, 0.4, 1);
     --font: 'Inter', -apple-system, system-ui, sans-serif;
 }
 
@@ -60,7 +71,7 @@ body {
 }
 
 /* ============================================================
-   ФОНОВАЯ АНИМАЦИЯ
+   ФОНОВАЯ АНИМАЦИЯ — ГРАДИЕНТЫ И ПУЛЬСАЦИЯ
    ============================================================ */
 body::before {
     content: '';
@@ -69,9 +80,9 @@ body::before {
     z-index: 0;
     pointer-events: none;
     background:
-        radial-gradient(ellipse at 10% 20%, rgba(0, 230, 118, 0.03) 0%, transparent 50%),
-        radial-gradient(ellipse at 90% 80%, rgba(0, 230, 118, 0.02) 0%, transparent 50%),
-        radial-gradient(ellipse at 50% 50%, rgba(0, 230, 118, 0.01) 0%, transparent 70%);
+        radial-gradient(ellipse at 10% 20%, rgba(52, 211, 153, 0.03) 0%, transparent 50%),
+        radial-gradient(ellipse at 90% 80%, rgba(52, 211, 153, 0.02) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 50%, rgba(52, 211, 153, 0.01) 0%, transparent 70%);
     animation: backgroundPulse 8s ease-in-out infinite alternate;
 }
 
@@ -82,41 +93,58 @@ body::after {
     z-index: 0;
     pointer-events: none;
     background:
-        radial-gradient(circle at 20% 30%, rgba(0, 230, 118, 0.015) 0%, transparent 40%),
-        radial-gradient(circle at 70% 60%, rgba(0, 230, 118, 0.01) 0%, transparent 40%),
-        radial-gradient(circle at 40% 80%, rgba(0, 230, 118, 0.005) 0%, transparent 30%);
+        radial-gradient(circle at 20% 30%, rgba(52, 211, 153, 0.015) 0%, transparent 40%),
+        radial-gradient(circle at 70% 60%, rgba(52, 211, 153, 0.01) 0%, transparent 40%),
+        radial-gradient(circle at 40% 80%, rgba(52, 211, 153, 0.005) 0%, transparent 30%);
     animation: bgMove 12s ease-in-out infinite alternate;
 }
 
 @keyframes backgroundPulse {
-    0% {
-        opacity: 0.5;
-    }
-    100% {
-        opacity: 1;
-    }
+    0% { opacity: 0.5; }
+    100% { opacity: 1; }
 }
 
 @keyframes bgMove {
-    0% {
-        transform: translate(0, 0) scale(1);
-    }
-    33% {
-        transform: translate(30px, -20px) scale(1.1);
-    }
-    66% {
-        transform: translate(-20px, 30px) scale(0.9);
-    }
-    100% {
-        transform: translate(10px, -10px) scale(1.05);
-    }
+    0% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(30px, -20px) scale(1.1); }
+    66% { transform: translate(-20px, 30px) scale(0.9); }
+    100% { transform: translate(10px, -10px) scale(1.05); }
 }
 
-.container,
-.app-header,
-.fab {
-    position: relative;
-    z-index: 1;
+/* ============================================================
+   ЧАСТИЦЫ НА ФОНЕ
+   ============================================================ */
+.particles-container {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.particle-dot {
+    position: absolute;
+    border-radius: 50%;
+    background: var(--green);
+    opacity: 0;
+    animation: particleFloat linear infinite;
+}
+
+@keyframes particleFloat {
+    0% {
+        transform: translateY(100vh) scale(0) rotate(0deg);
+        opacity: 0;
+    }
+    10% {
+        opacity: 0.15;
+    }
+    90% {
+        opacity: 0.15;
+    }
+    100% {
+        transform: translateY(-10vh) scale(1) rotate(720deg);
+        opacity: 0;
+    }
 }
 
 /* ============================================================
@@ -131,6 +159,7 @@ body::after {
 }
 ::-webkit-scrollbar-thumb {
     background: var(--green);
+    border-radius: 10px;
 }
 
 /* ============================================================
@@ -139,61 +168,35 @@ body::after {
 @keyframes fadeUp {
     from {
         opacity: 0;
-        transform: translateY(30px);
+        transform: translateY(40px) scale(0.97);
     }
     to {
         opacity: 1;
-        transform: translateY(0);
+        transform: translateY(0) scale(1);
     }
 }
 @keyframes fadeIn {
-    from {
-        opacity: 0;
-    }
-    to {
-        opacity: 1;
-    }
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 @keyframes floatGreen {
     0%,
     100% {
         transform: translateY(0px);
-        filter: drop-shadow(0 0 20px rgba(0, 230, 118, 0.1));
+        filter: drop-shadow(0 0 20px rgba(52, 211, 153, 0.1));
     }
     50% {
-        transform: translateY(-6px);
-        filter: drop-shadow(0 0 40px rgba(0, 230, 118, 0.2));
+        transform: translateY(-8px);
+        filter: drop-shadow(0 0 50px rgba(52, 211, 153, 0.25));
     }
 }
 @keyframes pulseGreen {
     0%,
     100% {
-        box-shadow: 0 0 20px rgba(0, 230, 118, 0.05);
+        box-shadow: 0 0 30px rgba(52, 211, 153, 0.03);
     }
     50% {
-        box-shadow: 0 0 50px rgba(0, 230, 118, 0.12);
-    }
-}
-@keyframes particlesFloat {
-    0% {
-        transform: translateY(0px) scale(1);
-        opacity: 0.2;
-    }
-    50% {
-        transform: translateY(-25px) scale(1.3);
-        opacity: 0.6;
-    }
-    100% {
-        transform: translateY(0px) scale(1);
-        opacity: 0.2;
-    }
-}
-@keyframes shine {
-    0% {
-        background-position: -200% center;
-    }
-    100% {
-        background-position: 200% center;
+        box-shadow: 0 0 80px rgba(52, 211, 153, 0.1);
     }
 }
 @keyframes shimmer {
@@ -204,17 +207,39 @@ body::after {
         background-position: 200% 0;
     }
 }
+@keyframes breathe {
+    0%,
+    100% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+}
+
+.animate-fade-up {
+    animation: fadeUp 0.7s ease forwards;
+}
+.animate-fade-in {
+    animation: fadeIn 0.5s ease forwards;
+}
 
 /* ============================================================
-   ЭФФЕКТ РАССЕЧЕНИЯ / ЗЕРКАЛА
+   ЭФФЕКТ РАССЕЧЕНИЯ / ЗЕРКАЛА / СТЕКЛА
    ============================================================ */
+.cat-card,
+.summary-card,
+.doc-card,
+.note-item,
+.car-card,
+.expense-item {
+    position: relative;
+    overflow: hidden;
+}
+
+/* Эффект стекла — блик */
 .cat-card::before,
 .summary-card::before,
 .doc-card::before,
 .note-item::before,
 .car-card::before,
-.btn-submit::before,
-.welcome-btn::before {
+.expense-item::before {
     content: '';
     position: absolute;
     top: 0;
@@ -223,93 +248,55 @@ body::after {
     height: 100%;
     background: linear-gradient(90deg,
             transparent 0%,
-            rgba(255, 255, 255, 0.03) 30%,
-            rgba(255, 255, 255, 0.08) 50%,
-            rgba(255, 255, 255, 0.03) 70%,
+            rgba(255, 255, 255, 0.02) 30%,
+            rgba(255, 255, 255, 0.06) 50%,
+            rgba(255, 255, 255, 0.02) 70%,
             transparent 100%);
     background-size: 200% 100%;
     pointer-events: none;
-    z-index: 0;
-    transition: opacity 0.5s;
+    z-index: 2;
     opacity: 0;
+    transition: opacity 0.6s;
 }
 
 .cat-card:hover::before,
 .summary-card:hover::before,
 .doc-card:hover::before,
 .note-item:hover::before,
-.car-card:hover::before {
+.car-card:hover::before,
+.expense-item:hover::before {
     opacity: 1;
     animation: shimmer 2s ease-in-out infinite;
 }
 
-/* Зеркальный эффект для кнопок */
-.btn-submit,
-.welcome-btn,
-.fab {
-    position: relative;
-    overflow: hidden;
-}
-
-.btn-submit::after,
-.welcome-btn::after,
-.fab::after {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.05), transparent 60%);
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.5s;
-}
-
-.btn-submit:hover::after,
-.welcome-btn:hover::after,
-.fab:hover::after {
-    opacity: 1;
-}
-
-/* Эффект "стекла" на карточках */
-.car-card,
-.summary-card,
-.cat-card,
-.doc-card,
-.expense-item,
-.note-item {
-    position: relative;
-    overflow: hidden;
-}
-
-.car-card::after,
-.summary-card::after,
+/* Эффект зеркала — правый блик */
 .cat-card::after,
+.summary-card::after,
 .doc-card::after,
-.expense-item::after,
-.note-item::after {
+.note-item::after,
+.car-card::after,
+.expense-item::after {
     content: '';
     position: absolute;
     top: 0;
     right: 0;
-    width: 60%;
+    width: 40%;
     height: 100%;
     background: linear-gradient(135deg,
             transparent 40%,
-            rgba(255, 255, 255, 0.02) 50%,
+            rgba(255, 255, 255, 0.03) 50%,
             transparent 60%);
     pointer-events: none;
     opacity: 0;
-    transition: opacity 0.5s;
+    transition: opacity 0.6s;
 }
 
-.car-card:hover::after,
-.summary-card:hover::after,
 .cat-card:hover::after,
+.summary-card:hover::after,
 .doc-card:hover::after,
-.expense-item:hover::after,
-.note-item:hover::after {
+.note-item:hover::after,
+.car-card:hover::after,
+.expense-item:hover::after {
     opacity: 1;
 }
 
@@ -325,13 +312,16 @@ body::after {
     align-items: center;
     justify-content: center;
     flex-direction: column;
-    transition: opacity 0.8s ease, transform 0.8s ease;
+    transition: opacity 1s ease, transform 1s ease;
+    background-image:
+        radial-gradient(circle at 30% 40%, rgba(52, 211, 153, 0.04) 0%, transparent 60%),
+        radial-gradient(circle at 70% 60%, rgba(52, 211, 153, 0.02) 0%, transparent 60%);
     overflow: hidden;
 }
 
 #welcomeScreen.hidden {
     opacity: 0;
-    transform: scale(1.03);
+    transform: scale(1.05) rotate(-2deg);
     pointer-events: none;
 }
 
@@ -347,80 +337,37 @@ body::after {
     position: absolute;
     border-radius: 50%;
     background: var(--green);
-    opacity: 0.15;
-    animation: particlesFloat 5s ease-in-out infinite;
+    opacity: 0;
+    animation: wpFloat 6s ease-in-out infinite;
 }
 
-.particle:nth-child(1) {
-    left: 10%;
-    top: 20%;
-    animation-delay: 0s;
-    width: 6px;
-    height: 6px;
+@keyframes wpFloat {
+    0% {
+        transform: translateY(0) scale(0.3);
+        opacity: 0;
+    }
+    20% {
+        opacity: 0.15;
+    }
+    80% {
+        opacity: 0.15;
+    }
+    100% {
+        transform: translateY(-50px) scale(1.2);
+        opacity: 0;
+    }
 }
-.particle:nth-child(2) {
-    left: 25%;
-    top: 70%;
-    animation-delay: 1.2s;
-    width: 4px;
-    height: 4px;
-}
-.particle:nth-child(3) {
-    left: 50%;
-    top: 15%;
-    animation-delay: 0.6s;
-    width: 8px;
-    height: 8px;
-}
-.particle:nth-child(4) {
-    left: 70%;
-    top: 55%;
-    animation-delay: 2s;
-    width: 5px;
-    height: 5px;
-}
-.particle:nth-child(5) {
-    left: 85%;
-    top: 30%;
-    animation-delay: 1.5s;
-    width: 7px;
-    height: 7px;
-}
-.particle:nth-child(6) {
-    left: 40%;
-    top: 85%;
-    animation-delay: 0.8s;
-    width: 4px;
-    height: 4px;
-}
-.particle:nth-child(7) {
-    left: 15%;
-    top: 45%;
-    animation-delay: 2.5s;
-    width: 5px;
-    height: 5px;
-}
-.particle:nth-child(8) {
-    left: 60%;
-    top: 40%;
-    animation-delay: 1.8s;
-    width: 6px;
-    height: 6px;
-}
-.particle:nth-child(9) {
-    left: 5%;
-    top: 10%;
-    animation-delay: 3s;
-    width: 3px;
-    height: 3px;
-}
-.particle:nth-child(10) {
-    left: 95%;
-    top: 90%;
-    animation-delay: 2.2s;
-    width: 5px;
-    height: 5px;
-}
+
+.particle:nth-child(1) { left: 10%; top: 20%; animation-delay: 0s; width: 6px; height: 6px; }
+.particle:nth-child(2) { left: 25%; top: 70%; animation-delay: 1.2s; width: 4px; height: 4px; }
+.particle:nth-child(3) { left: 50%; top: 15%; animation-delay: 0.6s; width: 8px; height: 8px; }
+.particle:nth-child(4) { left: 70%; top: 55%; animation-delay: 2s; width: 5px; height: 5px; }
+.particle:nth-child(5) { left: 85%; top: 30%; animation-delay: 1.5s; width: 7px; height: 7px; }
+.particle:nth-child(6) { left: 40%; top: 85%; animation-delay: 0.8s; width: 4px; height: 4px; }
+.particle:nth-child(7) { left: 15%; top: 45%; animation-delay: 2.5s; width: 5px; height: 5px; }
+.particle:nth-child(8) { left: 60%; top: 40%; animation-delay: 1.8s; width: 6px; height: 6px; }
+.particle:nth-child(9) { left: 5%; top: 10%; animation-delay: 3s; width: 3px; height: 3px; }
+.particle:nth-child(10) { left: 95%; top: 90%; animation-delay: 2.2s; width: 5px; height: 5px; }
 
 .welcome-content {
     text-align: center;
@@ -450,7 +397,7 @@ body::after {
 
 .welcome-title .highlight {
     color: var(--green);
-    text-shadow: 0 0 40px rgba(0, 230, 118, 0.15);
+    text-shadow: 0 0 40px rgba(52, 211, 153, 0.15);
     animation: pulseGreen 3s ease-in-out infinite;
 }
 
@@ -498,16 +445,27 @@ body::after {
     transition: var(--transition);
     z-index: -1;
 }
+.welcome-btn::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.05), transparent 60%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.5s;
+}
 
 .welcome-btn:hover {
     border-color: var(--green);
-    box-shadow: 0 0 60px rgba(0, 230, 118, 0.1);
-    transform: translateY(-2px);
+    box-shadow: 0 0 60px rgba(52, 211, 153, 0.1);
+    transform: translateY(-3px);
 }
-
-.welcome-btn:active {
-    transform: scale(0.97);
-}
+.welcome-btn:hover::before { opacity: 0.05; }
+.welcome-btn:hover::after { opacity: 1; }
+.welcome-btn:active { transform: scale(0.97); }
 
 .welcome-features {
     display: flex;
@@ -543,7 +501,7 @@ body::after {
     background: rgba(10, 10, 10, 0.92);
     backdrop-filter: blur(20px) saturate(1.6);
     -webkit-backdrop-filter: blur(20px) saturate(1.6);
-    border-bottom: 1px solid rgba(0, 230, 118, 0.04);
+    border-bottom: 1px solid rgba(52, 211, 153, 0.04);
     padding: 16px 20px 12px;
     display: flex;
     align-items: center;
@@ -566,7 +524,7 @@ body::after {
 .app-header .brand i {
     font-size: 20px;
     color: var(--green);
-    filter: drop-shadow(0 0 20px rgba(0, 230, 118, 0.05));
+    filter: drop-shadow(0 0 20px rgba(52, 211, 153, 0.05));
 }
 
 .header-actions {
@@ -581,13 +539,14 @@ body::after {
     align-items: center;
     gap: 6px;
     background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     padding: 4px 6px 4px 12px;
     transition: var(--transition);
+    border-radius: 8px;
 }
 
 .quarter-selector:hover {
-    border-color: rgba(0, 230, 118, 0.1);
+    border-color: rgba(52, 211, 153, 0.1);
 }
 
 .quarter-selector label {
@@ -624,7 +583,7 @@ body::after {
 
 .btn-icon {
     background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     color: var(--text-secondary);
     width: 34px;
     height: 34px;
@@ -634,17 +593,18 @@ body::after {
     cursor: pointer;
     transition: var(--transition);
     font-size: 14px;
+    border-radius: 8px;
 }
 
 .btn-icon:hover {
-    background: rgba(0, 230, 118, 0.04);
+    background: rgba(52, 211, 153, 0.04);
     color: var(--green);
-    border-color: rgba(0, 230, 118, 0.1);
+    border-color: rgba(52, 211, 153, 0.1);
 }
 
 .export-btn {
     background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     color: var(--text-secondary);
     padding: 4px 14px;
     font-family: var(--font);
@@ -657,24 +617,26 @@ body::after {
     gap: 6px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    border-radius: 8px;
 }
 
 .export-btn:hover {
-    background: rgba(0, 230, 118, 0.04);
+    background: rgba(52, 211, 153, 0.04);
     color: var(--green);
-    border-color: rgba(0, 230, 118, 0.1);
+    border-color: rgba(52, 211, 153, 0.1);
 }
 
 .quarter-total-badge {
     font-size: 13px;
     font-weight: 600;
-    background: rgba(0, 230, 118, 0.04);
-    border: 1px solid rgba(0, 230, 118, 0.06);
+    background: rgba(52, 211, 153, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.06);
     padding: 4px 16px;
     color: var(--green);
     white-space: nowrap;
     letter-spacing: 0.5px;
-    box-shadow: 0 0 30px rgba(0, 230, 118, 0.02);
+    box-shadow: 0 0 30px rgba(52, 211, 153, 0.02);
+    border-radius: 20px;
 }
 
 /* ============================================================
@@ -683,7 +645,7 @@ body::after {
 .tabs-container {
     display: flex;
     gap: 0;
-    border-bottom: 1px solid rgba(0, 230, 118, 0.04);
+    border-bottom: 1px solid rgba(52, 211, 153, 0.04);
     margin-bottom: 24px;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -734,6 +696,8 @@ body::after {
     max-width: 720px;
     margin: 0 auto;
     padding: 20px 16px;
+    position: relative;
+    z-index: 1;
 }
 
 /* ============================================================
@@ -741,7 +705,7 @@ body::after {
    ============================================================ */
 .car-card {
     background: rgba(255, 255, 255, 0.01);
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     padding: 20px 20px;
     margin-bottom: 24px;
     transition: var(--transition);
@@ -750,12 +714,14 @@ body::after {
     gap: 16px;
     flex-wrap: wrap;
     cursor: pointer;
+    border-radius: var(--radius-glass);
 }
 
 .car-card:hover {
-    border-color: rgba(0, 230, 118, 0.06);
+    border-color: rgba(52, 211, 153, 0.08);
     background: rgba(255, 255, 255, 0.02);
-    transform: translateY(-2px);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 40px rgba(52, 211, 153, 0.02);
 }
 
 .car-card .car-icon {
@@ -766,8 +732,9 @@ body::after {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     color: var(--green);
+    border-radius: 12px;
 }
 
 .car-card .car-info {
@@ -820,7 +787,7 @@ body::after {
 
 .car-card .car-actions button {
     background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     color: var(--text-secondary);
     padding: 4px 12px;
     font-size: 11px;
@@ -833,12 +800,13 @@ body::after {
     gap: 4px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    border-radius: 8px;
 }
 
 .car-card .car-actions button:hover {
-    background: rgba(0, 230, 118, 0.04);
+    background: rgba(52, 211, 153, 0.04);
     color: var(--green);
-    border-color: rgba(0, 230, 118, 0.08);
+    border-color: rgba(52, 211, 153, 0.08);
 }
 
 .oil-reminder {
@@ -846,22 +814,23 @@ body::after {
     align-items: center;
     gap: 6px;
     padding: 2px 12px;
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     font-size: 11px;
     font-weight: 500;
     margin-top: 4px;
     letter-spacing: 0.3px;
     text-transform: uppercase;
+    border-radius: 20px;
 }
 
 .oil-reminder.good {
     color: var(--text-secondary);
-    border-color: rgba(0, 230, 118, 0.04);
+    border-color: rgba(52, 211, 153, 0.04);
 }
 
 .oil-reminder.warning {
     color: var(--green);
-    border-color: rgba(0, 230, 118, 0.1);
+    border-color: rgba(52, 211, 153, 0.1);
     animation: pulseGreen 2s ease-in-out infinite;
 }
 
@@ -894,18 +863,20 @@ body::after {
 
 .cat-card {
     background: rgba(255, 255, 255, 0.01);
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     padding: 14px 6px;
     text-align: center;
     cursor: pointer;
     transition: var(--transition);
     animation: fadeUp 0.5s ease forwards;
+    border-radius: var(--radius-glass);
 }
 
 .cat-card:hover {
-    border-color: rgba(0, 230, 118, 0.08);
+    border-color: rgba(52, 211, 153, 0.08);
     background: rgba(255, 255, 255, 0.02);
     transform: translateY(-4px);
+    box-shadow: 0 8px 30px rgba(52, 211, 153, 0.02);
 }
 
 .cat-card:active {
@@ -922,6 +893,7 @@ body::after {
     margin: 0 auto 6px;
     color: var(--text-secondary);
     transition: var(--transition);
+    border-radius: 12px;
 }
 
 .cat-card:hover .icon {
@@ -941,10 +913,11 @@ body::after {
     font-weight: 500;
     color: var(--text-muted);
     padding: 1px 8px;
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     margin-top: 4px;
     display: inline-block;
     letter-spacing: 0.3px;
+    border-radius: 12px;
 }
 
 /* ============================================================
@@ -965,10 +938,11 @@ body::after {
 
 .summary-card {
     background: rgba(255, 255, 255, 0.01);
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     padding: 14px 12px;
     transition: var(--transition);
     position: relative;
+    border-radius: var(--radius-glass);
 }
 
 .summary-card::after {
@@ -988,9 +962,10 @@ body::after {
 }
 
 .summary-card:hover {
-    border-color: rgba(0, 230, 118, 0.08);
+    border-color: rgba(52, 211, 153, 0.08);
     background: rgba(255, 255, 255, 0.02);
-    transform: translateY(-4px);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 30px rgba(52, 211, 153, 0.02);
 }
 
 .summary-card .label {
@@ -1031,14 +1006,15 @@ body::after {
    ============================================================ */
 .quarter-stats-section {
     background: rgba(255, 255, 255, 0.01);
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     padding: 16px;
     margin-bottom: 24px;
     transition: var(--transition);
+    border-radius: var(--radius-glass);
 }
 
 .quarter-stats-section:hover {
-    border-color: rgba(0, 230, 118, 0.06);
+    border-color: rgba(52, 211, 153, 0.06);
 }
 
 .quarter-stats-section .section-title {
@@ -1072,15 +1048,16 @@ body::after {
 
 .quarter-stat-card {
     background: rgba(255, 255, 255, 0.01);
-    border: 1px solid rgba(0, 230, 118, 0.03);
+    border: 1px solid rgba(52, 211, 153, 0.03);
     padding: 10px;
     text-align: center;
     transition: var(--transition);
+    border-radius: 8px;
 }
 
 .quarter-stat-card:hover {
-    background: rgba(0, 230, 118, 0.02);
-    border-color: rgba(0, 230, 118, 0.06);
+    background: rgba(52, 211, 153, 0.02);
+    border-color: rgba(52, 211, 153, 0.06);
 }
 
 .quarter-stat-card .q-label {
@@ -1112,8 +1089,8 @@ body::after {
 }
 
 .quarter-stat-card.best {
-    border-color: rgba(0, 230, 118, 0.06);
-    background: rgba(0, 230, 118, 0.02);
+    border-color: rgba(52, 211, 153, 0.06);
+    background: rgba(52, 211, 153, 0.02);
 }
 
 .quarter-stat-card.best .q-total {
@@ -1143,7 +1120,7 @@ body::after {
     flex-wrap: wrap;
     margin-top: 12px;
     padding-top: 12px;
-    border-top: 1px solid rgba(0, 230, 118, 0.04);
+    border-top: 1px solid rgba(52, 211, 153, 0.04);
 }
 
 .quarter-summary-row .stat-item {
@@ -1179,13 +1156,14 @@ body::after {
 
 .chart-card {
     background: rgba(255, 255, 255, 0.01);
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     padding: 16px;
     transition: var(--transition);
+    border-radius: var(--radius-glass);
 }
 
 .chart-card:hover {
-    border-color: rgba(0, 230, 118, 0.06);
+    border-color: rgba(52, 211, 153, 0.06);
 }
 
 .chart-card .chart-title {
@@ -1216,14 +1194,15 @@ body::after {
    ============================================================ */
 .expense-section {
     background: rgba(255, 255, 255, 0.01);
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     padding: 16px;
     margin-bottom: 20px;
     transition: var(--transition);
+    border-radius: var(--radius-glass);
 }
 
 .expense-section:hover {
-    border-color: rgba(0, 230, 118, 0.06);
+    border-color: rgba(52, 211, 153, 0.06);
 }
 
 .expense-section .section-header {
@@ -1253,11 +1232,12 @@ body::after {
 .expense-section .section-header .badge {
     font-size: 11px;
     font-weight: 500;
-    background: rgba(0, 230, 118, 0.02);
+    background: rgba(52, 211, 153, 0.02);
     padding: 2px 12px;
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     color: var(--text-secondary);
     letter-spacing: 0.3px;
+    border-radius: 12px;
 }
 
 .expense-item {
@@ -1265,10 +1245,11 @@ body::after {
     align-items: center;
     justify-content: space-between;
     padding: 10px 0;
-    border-bottom: 1px solid rgba(0, 230, 118, 0.02);
+    border-bottom: 1px solid rgba(52, 211, 153, 0.02);
     transition: var(--transition);
     animation: fadeUp 0.4s ease forwards;
     gap: 10px;
+    border-radius: 4px;
 }
 
 .expense-item:last-child {
@@ -1277,7 +1258,7 @@ body::after {
 
 .expense-item:hover {
     padding-left: 6px;
-    background: rgba(0, 230, 118, 0.02);
+    background: rgba(52, 211, 153, 0.02);
 }
 
 .expense-item .left {
@@ -1297,7 +1278,8 @@ body::after {
     font-size: 14px;
     flex-shrink: 0;
     color: var(--green);
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
+    border-radius: 8px;
 }
 
 .expense-item .info {
@@ -1334,10 +1316,11 @@ body::after {
     font-size: 11px;
     font-weight: 500;
     color: var(--text-secondary);
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     padding: 1px 10px;
     white-space: nowrap;
     letter-spacing: 0.3px;
+    border-radius: 12px;
 }
 
 .expense-item .amount {
@@ -1359,6 +1342,7 @@ body::after {
     transition: var(--transition);
     font-size: 13px;
     flex-shrink: 0;
+    border-radius: 4px;
 }
 
 .expense-item .delete-btn:hover {
@@ -1371,14 +1355,15 @@ body::after {
    ============================================================ */
 .insights-section {
     background: rgba(255, 255, 255, 0.01);
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     padding: 16px;
     margin-bottom: 20px;
     transition: var(--transition);
+    border-radius: var(--radius-glass);
 }
 
 .insights-section:hover {
-    border-color: rgba(0, 230, 118, 0.06);
+    border-color: rgba(52, 211, 153, 0.06);
 }
 
 .insights-section .insight-item {
@@ -1386,7 +1371,7 @@ body::after {
     align-items: center;
     gap: 12px;
     padding: 6px 0;
-    border-bottom: 1px solid rgba(0, 230, 118, 0.02);
+    border-bottom: 1px solid rgba(52, 211, 153, 0.02);
 }
 
 .insights-section .insight-item:last-child {
@@ -1416,14 +1401,15 @@ body::after {
    ============================================================ */
 .documents-section {
     background: rgba(255, 255, 255, 0.01);
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     padding: 16px;
     margin-bottom: 20px;
     transition: var(--transition);
+    border-radius: var(--radius-glass);
 }
 
 .documents-section:hover {
-    border-color: rgba(0, 230, 118, 0.06);
+    border-color: rgba(52, 211, 153, 0.06);
 }
 
 .doc-grid {
@@ -1440,16 +1426,19 @@ body::after {
 
 .doc-card {
     background: rgba(255, 255, 255, 0.01);
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     padding: 14px;
     transition: var(--transition);
     cursor: pointer;
     position: relative;
+    border-radius: var(--radius-glass);
 }
 
 .doc-card:hover {
-    border-color: rgba(0, 230, 118, 0.08);
+    border-color: rgba(52, 211, 153, 0.08);
     background: rgba(255, 255, 255, 0.02);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(52, 211, 153, 0.02);
 }
 
 .doc-card .doc-status {
@@ -1463,7 +1452,7 @@ body::after {
 
 .doc-card .doc-status.green {
     background: var(--green);
-    box-shadow: 0 0 20px rgba(0, 230, 118, 0.2);
+    box-shadow: 0 0 20px rgba(52, 211, 153, 0.2);
 }
 
 .doc-card .doc-status.yellow {
@@ -1506,13 +1495,14 @@ body::after {
     margin-top: 6px;
     padding: 2px 10px;
     display: inline-block;
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     letter-spacing: 0.3px;
+    border-radius: 12px;
 }
 
 .doc-card .doc-days.green {
     color: var(--green);
-    border-color: rgba(0, 230, 118, 0.2);
+    border-color: rgba(52, 211, 153, 0.2);
 }
 
 .doc-card .doc-days.yellow {
@@ -1530,7 +1520,7 @@ body::after {
     width: 100%;
     height: 60px;
     background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1539,6 +1529,7 @@ body::after {
     cursor: pointer;
     transition: var(--transition);
     overflow: hidden;
+    border-radius: 8px;
 }
 
 .doc-card .doc-photo img {
@@ -1548,7 +1539,7 @@ body::after {
 }
 
 .doc-card .doc-photo:hover {
-    border-color: rgba(0, 230, 118, 0.1);
+    border-color: rgba(52, 211, 153, 0.1);
     color: var(--green);
 }
 
@@ -1560,7 +1551,7 @@ body::after {
 
 .doc-card .doc-actions button {
     background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     color: var(--text-secondary);
     padding: 2px 10px;
     font-size: 10px;
@@ -1573,12 +1564,13 @@ body::after {
     gap: 4px;
     text-transform: uppercase;
     letter-spacing: 0.3px;
+    border-radius: 6px;
 }
 
 .doc-card .doc-actions button:hover {
-    background: rgba(0, 230, 118, 0.04);
+    background: rgba(52, 211, 153, 0.04);
     color: var(--green);
-    border-color: rgba(0, 230, 118, 0.08);
+    border-color: rgba(52, 211, 153, 0.08);
 }
 
 .doc-card .doc-actions .delete-doc-btn:hover {
@@ -1591,14 +1583,15 @@ body::after {
    ============================================================ */
 .notes-section {
     background: rgba(255, 255, 255, 0.01);
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     padding: 16px;
     margin-bottom: 20px;
     transition: var(--transition);
+    border-radius: var(--radius-glass);
 }
 
 .notes-section:hover {
-    border-color: rgba(0, 230, 118, 0.06);
+    border-color: rgba(52, 211, 153, 0.06);
 }
 
 .notes-filter {
@@ -1610,7 +1603,7 @@ body::after {
 
 .notes-filter button {
     padding: 2px 12px;
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     background: transparent;
     color: var(--text-secondary);
     font-family: var(--font);
@@ -1620,16 +1613,18 @@ body::after {
     transition: var(--transition);
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    border-radius: 20px;
 }
 
 .notes-filter button:hover {
     color: var(--green);
-    border-color: rgba(0, 230, 118, 0.08);
+    border-color: rgba(52, 211, 153, 0.08);
 }
 
 .notes-filter button.active {
     color: var(--green);
-    border-color: rgba(0, 230, 118, 0.1);
+    border-color: rgba(52, 211, 153, 0.1);
+    background: rgba(52, 211, 153, 0.02);
 }
 
 .note-item {
@@ -1637,9 +1632,10 @@ body::after {
     align-items: flex-start;
     gap: 12px;
     padding: 10px 0;
-    border-bottom: 1px solid rgba(0, 230, 118, 0.02);
+    border-bottom: 1px solid rgba(52, 211, 153, 0.02);
     animation: fadeUp 0.4s ease forwards;
     transition: var(--transition);
+    border-radius: 4px;
 }
 
 .note-item:last-child {
@@ -1648,7 +1644,7 @@ body::after {
 
 .note-item:hover {
     padding-left: 6px;
-    background: rgba(0, 230, 118, 0.02);
+    background: rgba(52, 211, 153, 0.02);
 }
 
 .note-item .note-icon {
@@ -1658,10 +1654,11 @@ body::after {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     color: var(--green);
     font-size: 13px;
     margin-top: 2px;
+    border-radius: 8px;
 }
 
 .note-item .note-content {
@@ -1701,13 +1698,14 @@ body::after {
 }
 
 .note-item .note-content .note-meta .note-type {
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     padding: 0 8px;
     font-size: 9px;
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--green);
+    border-radius: 10px;
 }
 
 .note-item .note-amount {
@@ -1728,6 +1726,7 @@ body::after {
     transition: var(--transition);
     font-size: 13px;
     flex-shrink: 0;
+    border-radius: 4px;
 }
 
 .note-item .delete-note-btn:hover {
@@ -1767,13 +1766,14 @@ body::after {
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 0 40px rgba(0, 230, 118, 0.1);
+    box-shadow: 0 0 40px rgba(52, 211, 153, 0.1);
     animation: pulseGreen 2s ease-in-out infinite;
+    border-radius: 50%;
 }
 
 .fab:hover {
-    transform: scale(1.1);
-    box-shadow: 0 0 60px rgba(0, 230, 118, 0.2);
+    transform: scale(1.1) rotate(90deg);
+    box-shadow: 0 0 60px rgba(52, 211, 153, 0.2);
 }
 
 .fab:active {
@@ -1802,7 +1802,7 @@ body::after {
 
 .modal {
     background: #0A0A0A;
-    border-top: 1px solid rgba(0, 230, 118, 0.04);
+    border-top: 1px solid rgba(52, 211, 153, 0.04);
     max-width: 500px;
     width: 100%;
     padding: 24px 20px 32px;
@@ -1810,6 +1810,14 @@ body::after {
     max-height: 92vh;
     overflow-y: auto;
     box-shadow: 0 -20px 80px rgba(0, 0, 0, 0.6);
+    border-radius: 0;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
 }
 
 .modal-header h2 {
@@ -1828,7 +1836,7 @@ body::after {
 
 .modal-close {
     background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     color: var(--text-secondary);
     width: 36px;
     height: 36px;
@@ -1838,23 +1846,72 @@ body::after {
     display: flex;
     align-items: center;
     justify-content: center;
+    border-radius: 8px;
 }
 
 .modal-close:hover {
-    background: rgba(0, 230, 118, 0.04);
+    background: rgba(52, 211, 153, 0.04);
     color: var(--green);
-    border-color: rgba(0, 230, 118, 0.08);
+    border-color: rgba(52, 211, 153, 0.08);
+}
+
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .form-group label i {
+    margin-right: 6px;
     color: var(--green);
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(52, 211, 153, 0.04);
+    color: #fff;
+    font-family: var(--font);
+    font-size: 14px;
+    font-weight: 400;
+    transition: var(--transition);
+    outline: none;
+    border-radius: 8px;
 }
 
 .form-group input:focus,
 .form-group select:focus,
 .form-group textarea:focus {
     border-color: var(--green);
-    box-shadow: 0 0 0 4px rgba(0, 230, 118, 0.04);
+    box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.04);
+}
+
+.form-group textarea {
+    resize: vertical;
+    min-height: 50px;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+@media (max-width: 480px) {
+    .form-row {
+        grid-template-columns: 1fr;
+    }
 }
 
 .btn-submit {
@@ -1875,14 +1932,32 @@ body::after {
     margin-top: 4px;
     text-transform: uppercase;
     letter-spacing: 1px;
-    box-shadow: 0 0 40px rgba(0, 230, 118, 0.03);
+    box-shadow: 0 0 40px rgba(52, 211, 153, 0.03);
+    border-radius: 12px;
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-submit::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.05), transparent 60%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.5s;
 }
 
 .btn-submit:hover {
     transform: translateY(-3px);
-    box-shadow: 0 0 60px rgba(0, 230, 118, 0.08);
+    box-shadow: 0 0 60px rgba(52, 211, 153, 0.08);
 }
-
+.btn-submit:hover::after {
+    opacity: 1;
+}
 .btn-submit:active {
     transform: scale(0.98);
 }
@@ -1902,7 +1977,7 @@ body::after {
 .toast {
     background: rgba(10, 10, 10, 0.95);
     backdrop-filter: blur(20px);
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
     padding: 10px 24px;
     box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
     color: #fff;
@@ -1915,6 +1990,7 @@ body::after {
     pointer-events: auto;
     transition: var(--transition);
     letter-spacing: 0.3px;
+    border-radius: 12px;
 }
 
 .toast i {
@@ -1952,7 +2028,8 @@ body::after {
     max-width: 100%;
     max-height: 90vh;
     object-fit: contain;
-    border: 1px solid rgba(0, 230, 118, 0.04);
+    border: 1px solid rgba(52, 211, 153, 0.04);
+    border-radius: 12px;
 }
 
 .photo-preview-close {
@@ -1981,19 +2058,19 @@ body.light-theme {
     --bg-card: rgba(0, 0, 0, 0.02);
     --bg-card-hover: rgba(0, 0, 0, 0.04);
     --border-card: rgba(0, 0, 0, 0.06);
-    --border-card-hover: rgba(0, 230, 118, 0.12);
+    --border-card-hover: rgba(52, 211, 153, 0.12);
 
     --text-primary: #1A1A1A;
     --text-secondary: #666666;
     --text-muted: #999999;
 
-    --green: #00C853;
-    --green-dark: #009624;
+    --green: #059669;
+    --green-dark: #047857;
 }
 
 body.light-theme .app-header {
     background: rgba(245, 245, 245, 0.92);
-    border-bottom-color: rgba(0, 230, 118, 0.04);
+    border-bottom-color: rgba(52, 211, 153, 0.04);
 }
 
 body.light-theme .app-header .brand {
@@ -2044,6 +2121,65 @@ body.light-theme .expense-item .info .cat {
 
 body.light-theme .welcome-title {
     color: var(--text-primary);
+}
+
+body.light-theme .modal {
+    background: #F5F5F5;
+}
+body.light-theme .modal-header h2 {
+    color: var(--text-primary);
+}
+body.light-theme .form-group input,
+body.light-theme .form-group select,
+body.light-theme .form-group textarea {
+    background: rgba(0, 0, 0, 0.02);
+    color: var(--text-primary);
+    border-color: rgba(0, 0, 0, 0.06);
+}
+body.light-theme .form-group input:focus,
+body.light-theme .form-group select:focus,
+body.light-theme .form-group textarea:focus {
+    border-color: var(--green);
+}
+
+body.light-theme .modal-close {
+    color: var(--text-secondary);
+    border-color: rgba(0, 0, 0, 0.06);
+}
+body.light-theme .modal-close:hover {
+    color: var(--green);
+}
+
+body.light-theme .toast {
+    background: rgba(245, 245, 245, 0.95);
+    color: var(--text-primary);
+    border-color: rgba(0, 0, 0, 0.06);
+}
+
+body.light-theme .fab {
+    background: linear-gradient(135deg, var(--green), var(--green-dark));
+}
+
+/* ============================================================
+   EMPTY STATE
+   ============================================================ */
+.empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-secondary);
+}
+
+.empty-state i {
+    font-size: 40px;
+    color: var(--green);
+    margin-bottom: 12px;
+    opacity: 0.1;
+}
+
+.empty-state p {
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0.3px;
 }
 
 /* ============================================================
@@ -2148,7 +2284,7 @@ body.light-theme .welcome-title {
     color: var(--text-muted);
     font-size: 10px;
     font-weight: 400;
-    border-top: 1px solid rgba(0, 230, 118, 0.04);
+    border-top: 1px solid rgba(52, 211, 153, 0.04);
     letter-spacing: 0.5px;
     text-transform: uppercase;
 }
@@ -2171,4 +2307,5 @@ body.light-theme .welcome-title {
 .notes-section::-webkit-scrollbar-thumb,
 .documents-section::-webkit-scrollbar-thumb {
     background: var(--green);
+    border-radius: 10px;
 }
