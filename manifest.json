@@ -1,0 +1,26 @@
+{
+  "name": "BLVCK TAXI — Управление расходами таксиста",
+  "short_name": "BLVCK TAXI",
+  "description": "Учёт расходов, топлива, ТО и документов для таксистов",
+  "start_url": "/blvck-taxi/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0A0A0A",
+  "theme_color": "#0A0A0A",
+  "categories": ["finance", "productivity", "transportation"],
+  "lang": "ru",
+  "icons": [
+    {
+      "src": "https://via.placeholder.com/192x192/0A0A0A/FF6B00?text=BT",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://via.placeholder.com/512x512/0A0A0A/FF6B00?text=BT",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

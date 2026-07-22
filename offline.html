@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BLVCK TAXI — Офлайн</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #0A0A0A;
+            color: #fff;
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+            text-align: center;
+        }
+        .offline-content {
+            max-width: 400px;
+        }
+        .offline-icon {
+            font-size: 80px;
+            color: #FF6B00;
+            margin-bottom: 24px;
+        }
+        h1 {
+            font-size: 32px;
+            font-weight: 800;
+            margin-bottom: 12px;
+            letter-spacing: -1px;
+        }
+        p {
+            color: #A0A0A0;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+        .btn {
+            padding: 12px 36px;
+            border: 1px solid #FF6B00;
+            background: transparent;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.3s;
+            text-decoration: none;
+            display: inline-block;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .btn:hover {
+            background: rgba(255, 107, 0, 0.05);
+            border-color: #FF6B00;
+            box-shadow: 0 0 40px rgba(255, 107, 0, 0.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-content">
+        <div class="offline-icon">
+            <i class="fas fa-wifi"></i>
+        </div>
+        <h1>Нет соединения</h1>
+        <p>Вы офлайн. Приложение работает в автономном режиме.<br>Данные, сохранённые локально, доступны.</p>
+        <a href="/blvck-taxi/" class="btn">Вернуться</a>
+    </div>
+</body>
+</html>
