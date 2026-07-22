@@ -75,6 +75,17 @@ export async function deleteExpense(id) {
     await db.expenses.delete(id);
 }
 
+// Обновить расход
+export async function updateExpense(id, data) {
+    const expense = await db.expenses.get(id);
+    if (!expense) {
+        throw new Error('Расход не найден');
+    }
+    const updated = { ...expense, ...data };
+    await db.expenses.put(updated);
+    return updated;
+}
+
 // ============================================================
 //  АВТОМОБИЛЬ (CAR)
 // ============================================================
