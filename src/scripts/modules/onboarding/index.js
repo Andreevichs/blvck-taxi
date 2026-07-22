@@ -1,13 +1,12 @@
 // ============================================================
-//  ONBOARDING/INDEX.JS — ОНБОРДИНГ (3 ШАГА)
+//  ONBOARDING/INDEX.JS — ОНБОРДИНГ (ШАГ 9)
 // ============================================================
 
-// Шаги онбординга
 const STEPS = [
     {
         icon: 'fa-plus-circle',
         title: 'Добавляй расходы за 5 секунд',
-        description: 'Нажми на кнопку "Заправка" или "Ремонт" и введи сумму'
+        description: 'Нажми на кнопку "Заправка", "Ремонт" или "Мойка" и введи сумму. Всё!'
     },
     {
         icon: 'fa-eye',
@@ -17,28 +16,25 @@ const STEPS = [
     {
         icon: 'fa-file-pdf',
         title: 'Отчёт для бухгалтерии',
-        description: 'В конце месяца нажми на иконку 📄 и скачай отчёт в PDF'
+        description: 'В конце месяца нажми на иконку 📄 в шапке и скачай отчёт в PDF'
     }
 ];
 
-// Проверка, нужно ли показывать онбординг
 export function needOnboarding() {
     const hasSeen = localStorage.getItem('blvck_taxi_onboarding_seen');
     return !hasSeen;
 }
 
-// Показать онбординг
 export function showOnboarding() {
     return new Promise((resolve) => {
-        // Создаём затемнение
         const overlay = document.createElement('div');
         overlay.className = 'onboarding-overlay';
         overlay.style.cssText = `
             position: fixed;
             inset: 0;
             z-index: 9998;
-            background: rgba(3, 15, 9, 0.92);
-            backdrop-filter: blur(12px);
+            background: rgba(3, 15, 9, 0.94);
+            backdrop-filter: blur(16px);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -56,7 +52,7 @@ export function showOnboarding() {
             overlay.innerHTML = `
                 <div class="onboarding-step" style="
                     text-align: center;
-                    max-width: 320px;
+                    max-width: 340px;
                     width: 100%;
                     animation: fadeUp 0.4s ease forwards;
                 ">
@@ -113,11 +109,9 @@ export function showOnboarding() {
                 </div>
             `;
 
-            // Анимация кнопки
             const btn = overlay.querySelector('.onboarding-btn');
             btn.addEventListener('click', () => {
                 if (isLast) {
-                    // Завершаем онбординг
                     localStorage.setItem('blvck_taxi_onboarding_seen', 'true');
                     overlay.style.opacity = '0';
                     setTimeout(() => {
@@ -130,7 +124,7 @@ export function showOnboarding() {
                 }
             });
 
-            // Кнопка "Пропустить" в углу
+            // Кнопка "Пропустить"
             if (!isLast) {
                 const skipBtn = document.createElement('button');
                 skipBtn.textContent = 'Пропустить';
