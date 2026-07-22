@@ -5,6 +5,10 @@
 import { useStore } from '../../core/store.js';
 import { formatDate } from '../../core/utils.js';
 import { CATEGORIES } from '../../core/config.js';
+import { generatePDF } from './pdf.js';
+import { exportToExcel } from './excel.js';
+
+export { generatePDF, exportToExcel };
 
 // Генерация PDF отчёта
 export async function generatePDF() {
