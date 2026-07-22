@@ -1,5 +1,5 @@
 // ============================================================
-//  DATABASE.JS — РАБОТА С БАЗОЙ ДАННЫХ (ШАГ 8)
+//  DATABASE.JS — РАБОТА С БАЗОЙ ДАННЫХ
 // ============================================================
 
 import Dexie from 'dexie';
@@ -17,7 +17,10 @@ db.version(1).stores({
     fuelCards: '++id, type, name, number, driverName, balance, limit, createdAt'
 });
 
-// Открываем базу
+// ============================================================
+//  ИНИЦИАЛИЗАЦИЯ
+// ============================================================
+
 export async function initDB() {
     try {
         await db.open();
@@ -184,5 +187,11 @@ export async function updateFuelCard(id, data) {
 export async function deleteFuelCard(id) {
     await db.fuelCards.delete(id);
 }
+
+// ============================================================
+//  ЭКСПОРТ ОБЪЕКТА db ДЛЯ ИСПОЛЬЗОВАНИЯ В ДРУГИХ МОДУЛЯХ
+// ============================================================
+
+export { db };
 
 export default db;
