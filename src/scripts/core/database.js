@@ -1,5 +1,5 @@
 // ============================================================
-//  DATABASE.JS — РАБОТА С БАЗОЙ ДАННЫХ (INDEXEDDB)
+//  DATABASE.JS — РАБОТА С БАЗОЙ ДАННЫХ (ШАГ 8)
 // ============================================================
 
 import Dexie from 'dexie';
@@ -9,20 +9,12 @@ const db = new Dexie('BlvckTaxiDB');
 
 // Версия 1 — структура таблиц
 db.version(1).stores({
-    // Расходы: id, дата, категория, сумма, описание
     expenses: '++id, date, category, amount, description, createdAt',
-    
-    // Автомобиль: id, модель, номер, расход топлива, интервал масла
-    car: 'id, model, plate, fuelConsumption, oilInterval',
-    
-    // Записи ТО: id, дата, тип, заголовок, описание, стоимость
-    notes: '++id, date, type, title, description, amount',
-    
-    // Документы: id, тип, название, дата истечения, стоимость, фото
-    documents: '++id, type, title, expiryDate, amount, photo',
-    
-    // Подписка: id, дата окончания, статус
-    subscription: 'id, expiryDate, status'
+    car: 'id, model, plate, fuelConsumption, oilInterval, oilLastReset',
+    notes: '++id, date, type, title, description, amount, partName, partMileage, createdAt',
+    documents: '++id, type, title, expiryDate, amount, photo, createdAt',
+    subscription: 'id, expiryDate, status',
+    fuelCards: '++id, type, name, number, driverName, balance, limit, createdAt'
 });
 
 // Открываем базу
@@ -41,17 +33,14 @@ export async function initDB() {
 //  РАСХОДЫ (EXPENSES)
 // ============================================================
 
-// Получить все расходы
 export async function getExpenses() {
     return await db.expenses.toArray();
 }
 
-// Получить расходы за день
 export async function getExpensesByDate(date) {
     return await db.expenses.where('date').equals(date).toArray();
 }
 
-// Получить расходы за период
 export async function getExpensesByPeriod(startDate, endDate) {
     return await db.expenses
         .where('date')
@@ -59,7 +48,6 @@ export async function getExpensesByPeriod(startDate, endDate) {
         .toArray();
 }
 
-// Добавить расход
 export async function addExpense(data) {
     const expense = {
         ...data,
@@ -70,17 +58,13 @@ export async function addExpense(data) {
     return expense;
 }
 
-// Удалить расход
 export async function deleteExpense(id) {
     await db.expenses.delete(id);
 }
 
-// Обновить расход
 export async function updateExpense(id, data) {
     const expense = await db.expenses.get(id);
-    if (!expense) {
-        throw new Error('Расход не найден');
-    }
+    if (!expense) throw new Error('Расход не найден');
     const updated = { ...expense, ...data };
     await db.expenses.put(updated);
     return updated;
@@ -90,11 +74,9 @@ export async function updateExpense(id, data) {
 //  АВТОМОБИЛЬ (CAR)
 // ============================================================
 
-// Получить данные авто
 export async function getCar() {
     const car = await db.car.get('main');
     if (!car) {
-        // Если данных нет, создаём пустые
         const defaultCar = {
             id: 'main',
             model: '',
@@ -109,7 +91,6 @@ export async function getCar() {
     return car;
 }
 
-// Сохранить данные авто
 export async function saveCar(data) {
     await db.car.put({ ...data, id: 'main' });
 }
@@ -125,7 +106,8 @@ export async function getNotes() {
 export async function addNote(data) {
     const note = {
         ...data,
-        id: Date.now() + '_' + Math.random().toString(36).slice(2, 6)
+        id: Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        createdAt: new Date().toISOString()
     };
     await db.notes.add(note);
     return note;
@@ -146,7 +128,8 @@ export async function getDocuments() {
 export async function addDocument(data) {
     const doc = {
         ...data,
-        id: Date.now() + '_' + Math.random().toString(36).slice(2, 6)
+        id: Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        createdAt: new Date().toISOString()
     };
     await db.documents.add(doc);
     return doc;
@@ -170,6 +153,36 @@ export async function getSubscription() {
 
 export async function saveSubscription(data) {
     await db.subscription.put({ ...data, id: 'main' });
+}
+
+// ============================================================
+//  ТОПЛИВНЫЕ КАРТЫ (FUEL CARDS)
+// ============================================================
+
+export async function getFuelCards() {
+    return await db.fuelCards.toArray();
+}
+
+export async function addFuelCard(data) {
+    const card = {
+        ...data,
+        id: Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        createdAt: new Date().toISOString()
+    };
+    await db.fuelCards.add(card);
+    return card;
+}
+
+export async function updateFuelCard(id, data) {
+    const card = await db.fuelCards.get(id);
+    if (!card) throw new Error('Карта не найдена');
+    const updated = { ...card, ...data };
+    await db.fuelCards.put(updated);
+    return updated;
+}
+
+export async function deleteFuelCard(id) {
+    await db.fuelCards.delete(id);
 }
 
 export default db;
