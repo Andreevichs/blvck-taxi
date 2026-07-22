@@ -1,5 +1,5 @@
 // ============================================================
-//  STORE.JS — ХРАНИЛИЩЕ СОСТОЯНИЯ (ШАГ 7)
+//  STORE.JS — ХРАНИЛИЩЕ СОСТОЯНИЯ (ШАГ 8)
 // ============================================================
 
 import { create } from 'zustand';
@@ -11,6 +11,7 @@ export const useStore = create((set, get) => ({
     car: null,
     notes: [],
     documents: [],
+    fuelCards: [],
     subscription: null,
     isLoading: true,
     isSubscribed: false,
@@ -22,11 +23,12 @@ export const useStore = create((set, get) => ({
         set({ isLoading: true });
 
         try {
-            const [expenses, car, notes, documents, subscription] = await Promise.all([
+            const [expenses, car, notes, documents, fuelCards, subscription] = await Promise.all([
                 db.getExpenses(),
                 db.getCar(),
                 db.getNotes(),
                 db.getDocuments(),
+                db.getFuelCards(),
                 db.getSubscription()
             ]);
 
@@ -49,6 +51,7 @@ export const useStore = create((set, get) => ({
                 car,
                 notes,
                 documents,
+                fuelCards: fuelCards || [],
                 subscription,
                 isSubscribed,
                 todayTotal,
