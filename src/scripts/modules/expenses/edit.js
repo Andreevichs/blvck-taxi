@@ -4,7 +4,7 @@
 
 import { useStore } from '../../core/store.js';
 import { CATEGORIES } from '../../core/config.js';
-import { formatDate } from '../../core/utils.js';
+import { showToast } from '../../core/utils.js';
 
 // Открыть модалку редактирования
 export function openEditModal(expenseId) {
@@ -31,7 +31,6 @@ export function openEditModal(expenseId) {
         justify-content: center;
     `;
 
-    // Строим HTML
     modal.innerHTML = `
         <div class="modal" style="
             background: var(--bg-deep);
@@ -125,8 +124,7 @@ export function openEditModal(expenseId) {
             date: date || oldExpense.date
         };
 
-        // TODO: добавить обновление в database.js
-        // Пока просто удаляем и добавляем заново
+        // Удаляем и добавляем заново
         await state.deleteExpense(id);
         await state.addExpense({
             date: updated.date,
@@ -135,7 +133,7 @@ export function openEditModal(expenseId) {
             description: updated.description,
             liters: updated.liters || null,
             mileage: updated.mileage || null,
-            createdAt: updated.createdAt
+            createdAt: updated.createdAt || new Date().toISOString()
         });
 
         // Закрываем модалку
