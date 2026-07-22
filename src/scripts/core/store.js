@@ -112,6 +112,47 @@ export const useStore = create((set, get) => ({
         });
     },
 
+    // Добавь это действие в useStore
+
+// Обновить расход
+updateExpense: async (id, data) => {
+    const { date, category, amount, description } = data;
+
+    // Находим старый расход
+    const oldExpense = state.expenses.find(e => e.id === id);
+    if (!oldExpense) return;
+
+    // Обновляем в базе
+    const updated = {
+        ...oldExpense,
+        date: date || oldExpense.date,
+        category: category || oldExpense.category,
+        amount: amount || oldExpense.amount,
+        description: description !== undefined ? description : oldExpense.description
+    };
+
+    // TODO: использовать updateExpense из database.js
+    // Пока пересоздаём
+    await state.deleteExpense(id);
+    await state.addExpense({
+        date: updated.date,
+        category: updated.category,
+        amount: updated.amount,
+        description: updated.description,
+        liters: updated.liters || null,
+        mileage: updated.mileage || null,
+        createdAt: updated.createdAt || new Date().toISOString()
+    });
+
+    // Обновляем локальное состояние
+    set((state) => {
+        const expenses = state.expenses.map(e => e.id === id ? updated : e);
+        // Пересчитываем итоги...
+        // (код пересчёта как в addExpense)
+        return { expenses };
+    });
+}
+
     // Обновить автомобиль
     updateCar: async (data) => {
         await db.saveCar(data);
