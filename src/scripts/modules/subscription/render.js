@@ -1,9 +1,10 @@
 // ============================================================
-//  SUBSCRIPTION/RENDER.JS — UI ПОДПИСКИ
+//  SUBSCRIPTION/RENDER.JS — UI ПОДПИСКИ (ШАГ 8)
 // ============================================================
 
 import { PLANS, buySubscription, isSubscribed } from './index.js';
 import { formatDate } from '../../core/utils.js';
+import { useStore } from '../../core/store.js';
 
 export function renderSubscriptionStatus() {
     const container = document.getElementById('subscriptionStatus');
@@ -29,7 +30,7 @@ export function renderSubscriptionStatus() {
                     <span style="color:var(--accent);font-weight:600;">⭐ PRO</span>
                     <span style="color:var(--text-secondary);font-size:12px;margin-left:8px;">до ${date}</span>
                 </div>
-                <button onclick="showSubscriptionPlans()" style="
+                <button onclick="window.showSubscriptionPlans()" style="
                     background:var(--accent);
                     color:#000;
                     border:none;
@@ -45,7 +46,7 @@ export function renderSubscriptionStatus() {
         `;
     } else {
         container.innerHTML = `
-            <button onclick="showSubscriptionPlans()" style="
+            <button onclick="window.showSubscriptionPlans()" style="
                 width:100%;
                 background:var(--accent);
                 color:#000;
@@ -164,7 +165,6 @@ export function showSubscriptionPlans() {
     body.innerHTML = html;
     modal.classList.add('open');
 
-    // Делаем функцию глобальной
     window.buyPlan = (planId) => {
         const plan = PLANS.find(p => p.id === planId);
         if (plan) {
@@ -179,3 +179,6 @@ export function showSubscriptionPlans() {
         if (e.target === modal) modal.classList.remove('open');
     };
 }
+
+// Делаем функцию глобальной
+window.showSubscriptionPlans = showSubscriptionPlans;
