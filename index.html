@@ -47,14 +47,18 @@
             <header class="app-header">
                 <div class="brand"><i class="fas fa-taxi"></i> BLVCK TAXI</div>
                 <div class="header-actions">
+                    <button class="btn-icon" id="subscriptionBtn" title="Подписка PRO"><i class="fas fa-star"></i></button>
                     <button class="btn-icon" id="themeToggle"><i class="fas fa-moon"></i></button>
                     <button class="btn-icon" id="exportBtn" title="Скачать отчёт PDF"><i class="fas fa-file-pdf"></i></button>
                     <button class="btn-icon" id="settingsBtn" title="Настройки"><i class="fas fa-cog"></i></button>
                 </div>
             </header>
 
+            <!-- СТАТУС ПОДПИСКИ -->
+            <div id="subscriptionStatus" style="margin:12px 0;"></div>
+
             <!-- КАРТОЧКА АВТОМОБИЛЯ -->
-            <div id="carCard" style="margin: 12px 0;"></div>
+            <div id="carCard" style="margin:12px 0;"></div>
 
             <!-- ГЛАВНЫЙ ЭКРАН -->
             <main class="main-content" id="driverDashboard">
@@ -91,11 +95,13 @@
                     <button><i class="fas fa-folder"></i> Документы</button>
                     <button><i class="fas fa-wrench"></i> Журнал ТО</button>
                     <button><i class="fas fa-car"></i> Авто</button>
+                    <button><i class="fas fa-credit-card"></i> Карты</button>
                 </div>
 
-                <!-- Скрытые контейнеры для рендеринга -->
+                <!-- СКРЫТЫЕ КОНТЕЙНЕРЫ -->
                 <div id="notesList" style="display:none;"></div>
                 <div id="documentsList" style="display:none;"></div>
+                <div id="fuelCardsList" style="margin:12px 0;"></div>
 
             </main>
         </div>
