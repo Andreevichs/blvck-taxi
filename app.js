@@ -49,6 +49,27 @@ function showToast(message, type = 'info') {
 }
 
 // ============================================================
+//  ФОНОВЫЕ ЧАСТИЦЫ
+// ============================================================
+function createParticles() {
+    const container = document.createElement('div');
+    container.className = 'particles-container';
+    document.body.prepend(container);
+
+    const count = 15;
+    for (let i = 0; i < count; i++) {
+        const dot = document.createElement('div');
+        dot.className = 'particle-dot';
+        dot.style.left = Math.random() * 100 + '%';
+        dot.style.width = (Math.random() * 4 + 2) + 'px';
+        dot.style.height = dot.style.width;
+        dot.style.animationDuration = (Math.random() * 20 + 15) + 's';
+        dot.style.animationDelay = (Math.random() * 20) + 's';
+        container.appendChild(dot);
+    }
+}
+
+// ============================================================
 //  DATABASE — IndexedDB
 // ============================================================
 const DB_NAME = 'TaxiExpensesDB';
@@ -133,31 +154,6 @@ function clearStore(storeName) {
     request.onerror = () => reject(request.error);
   });
 }
-
-// ============================================================
-//  ФОНОВЫЕ ЧАСТИЦЫ
-// ============================================================
-function createParticles() {
-    const container = document.createElement('div');
-    container.className = 'particles-container';
-    document.body.prepend(container);
-
-    const count = 15;
-    for (let i = 0; i < count; i++) {
-        const dot = document.createElement('div');
-        dot.className = 'particle-dot';
-        dot.style.left = Math.random() * 100 + '%';
-        dot.style.width = (Math.random() * 4 + 2) + 'px';
-        dot.style.height = dot.style.width;
-        dot.style.animationDuration = (Math.random() * 20 + 15) + 's';
-        dot.style.animationDelay = (Math.random() * 20) + 's';
-        container.appendChild(dot);
-    }
-}
-
-// Вызови при загрузке
-document.addEventListener('DOMContentLoaded', function() {
-    createParticles();
 
 // ============================================================
 //  CATEGORIES
@@ -615,7 +611,7 @@ function renderCarCard() {
   const status = getOilStatus();
   let html = '';
   if (status.status === 'unknown' || !carData?.oilInterval) {
-    html = `<span class="oil-reminder" style="border-color:rgba(255,107,0,0.04);color:var(--text-muted);">
+    html = `<span class="oil-reminder" style="border-color:rgba(52,211,153,0.04);color:var(--text-muted);">
               <i class="fas fa-oil-can"></i> Укажите интервал
             </span>`;
   } else if (status.status === 'good') {
@@ -704,21 +700,34 @@ function renderCharts(items) {
     if (map[e.category] !== undefined) map[e.category] += e.amount;
   });
 
+  // ===== ЦВЕТА ДЛЯ КРУГОВОЙ ДИАГРАММЫ — каждый сектор СВОЙ цвет! =====
+  const chartColors = [
+    '#34D399', // ярко-зелёный
+    '#1a8a5a', // тёмно-зелёный
+    '#6ee7b7', // светлый
+    '#059669', // глубокий
+    '#4ade80', // мятный
+    '#86efac', // нежный
+    '#065f46'  // тёмный
+  ];
+
   const labels = [],
     data = [],
     colors = [];
+  let colorIndex = 0;
   CAT_KEYS.forEach(k => {
     if (map[k] > 0) {
       labels.push(CATEGORIES[k].label);
       data.push(map[k]);
-      colors.push('rgba(255,107,0,0.6)');
+      colors.push(chartColors[colorIndex % chartColors.length]);
+      colorIndex++;
     }
   });
 
   if (data.length === 0) {
     labels.push('Нет данных');
     data.push(1);
-    colors.push('rgba(255,107,0,0.05)');
+    colors.push('rgba(52,211,153,0.05)');
   }
 
   if (pieChartInstance) pieChartInstance.destroy();
@@ -752,18 +761,19 @@ function renderCharts(items) {
     }
   });
 
+  // ===== СТОЛБЧАТАЯ ДИАГРАММА — зелёные столбцы =====
   const sorted = CAT_KEYS
     .filter(k => map[k] > 0)
     .sort((a, b) => map[b] - map[a])
     .slice(0, 5);
   const barLabels = sorted.map(k => CATEGORIES[k].label);
   const barData = sorted.map(k => map[k]);
-  const barColors = sorted.map(k => 'rgba(255,107,0,0.3)');
+  const barColors = sorted.map(k => 'rgba(52,211,153,0.3)');
 
   if (barLabels.length === 0) {
     barLabels.push('Нет данных');
     barData.push(1);
-    barColors.push('rgba(255,107,0,0.05)');
+    barColors.push('rgba(52,211,153,0.05)');
   }
 
   if (barChartInstance) barChartInstance.destroy();
@@ -775,9 +785,9 @@ function renderCharts(items) {
         label: 'BYN',
         data: barData,
         backgroundColor: barColors,
-        borderColor: 'rgba(255,107,0,0.2)',
+        borderColor: 'rgba(52,211,153,0.4)',
         borderWidth: 1,
-        borderRadius: 0,
+        borderRadius: 4,
         barPercentage: 0.6,
       }]
     },
@@ -795,7 +805,7 @@ function renderCharts(items) {
             font: { family: 'Inter', size: 9 },
             callback: v => v.toFixed(0),
           },
-          grid: { color: 'rgba(255,107,0,0.02)' }
+          grid: { color: 'rgba(52,211,153,0.04)' }
         },
         x: {
           ticks: {
@@ -979,12 +989,12 @@ function renderQuarterChart(allData) {
   const labels = allData.map(d => getQuarterLabel(d.quarter));
   const data = allData.map(d => d.total);
   const colors = allData.map((d, i) => {
-    if (d.total === 0) return 'rgba(255,107,0,0.02)';
-    return 'rgba(255,107,0,0.15)';
+    if (d.total === 0) return 'rgba(52,211,153,0.02)';
+    return 'rgba(52,211,153,0.15)';
   });
   const borderColors = allData.map((d, i) => {
-    if (d.total === 0) return 'rgba(255,107,0,0.03)';
-    return 'rgba(255,107,0,0.3)';
+    if (d.total === 0) return 'rgba(52,211,153,0.03)';
+    return 'rgba(52,211,153,0.3)';
   });
 
   quarterChartInstance = new Chart(ctx, {
@@ -997,7 +1007,7 @@ function renderQuarterChart(allData) {
         backgroundColor: colors,
         borderColor: borderColors,
         borderWidth: 1,
-        borderRadius: 0,
+        borderRadius: 4,
         barPercentage: 0.5,
       }]
     },
@@ -1015,7 +1025,7 @@ function renderQuarterChart(allData) {
             font: { size: 9, family: 'Inter' },
             callback: v => v.toFixed(0),
           },
-          grid: { color: 'rgba(255,107,0,0.02)' }
+          grid: { color: 'rgba(52,211,153,0.04)' }
         },
         x: {
           ticks: {
@@ -1128,7 +1138,7 @@ function renderFuelTab() {
           </div>
         </div>
         <span class="liters-badge">${liters} л</span>
-        <span class="liters-badge" style="color:var(--orange);">${consumption !== '—' ? consumption + ' л/100км' : ''}</span>
+        <span class="liters-badge" style="color:var(--green);">${consumption !== '—' ? consumption + ' л/100км' : ''}</span>
         <div class="amount">${amt}</div>
       </div>
     `;
@@ -1180,11 +1190,11 @@ function renderFuelChart(fuelEntries) {
       datasets: [{
         label: 'Расход (л/100км)',
         data: values,
-        borderColor: 'rgba(255,107,0,0.6)',
-        backgroundColor: 'rgba(255,107,0,0.02)',
+        borderColor: 'rgba(52,211,153,0.6)',
+        backgroundColor: 'rgba(52,211,153,0.02)',
         fill: true,
         tension: 0.3,
-        pointBackgroundColor: 'rgba(255,107,0,0.8)',
+        pointBackgroundColor: 'rgba(52,211,153,0.8)',
         pointBorderColor: '#0A0A0A',
         pointBorderWidth: 1,
         pointRadius: 3,
@@ -1210,7 +1220,7 @@ function renderFuelChart(fuelEntries) {
             font: { size: 9, family: 'Inter' },
             callback: v => v.toFixed(1),
           },
-          grid: { color: 'rgba(255,107,0,0.02)' }
+          grid: { color: 'rgba(52,211,153,0.04)' }
         },
         x: {
           ticks: {
@@ -1276,7 +1286,7 @@ function renderDocuments() {
         <div class="doc-name">${doc.title || typeInfo.label}</div>
         <div class="doc-details">До: ${dateStr}</div>
         <div class="doc-days ${status}">${statusLabel}</div>
-        ${amount ? `<div class="doc-details" style="color:var(--orange);">${amount} BYN</div>` : ''}
+        ${amount ? `<div class="doc-details" style="color:var(--green);">${amount} BYN</div>` : ''}
         ${photoHtml}
         <div class="doc-actions">
           <button onclick="deleteDocument('${doc.id}')" class="delete-doc-btn">
@@ -1379,6 +1389,9 @@ window.openPhotoPreview = function(photoData) {
 //  INIT
 // ============================================================
 document.addEventListener('DOMContentLoaded', function() {
+  // Создаём фоновые частицы
+  createParticles();
+
   // Welcome screen
   document.getElementById('welcomeBtn').addEventListener('click', function() {
     document.getElementById('welcomeScreen').classList.add('hidden');
