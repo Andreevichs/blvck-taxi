@@ -11,40 +11,27 @@
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" type="image/png" href="/icons/icon-192.png" />
 
-    <!-- ШРИФТЫ -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
 
-    <!-- FONT AWESOME -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
 
-    <!-- СТИЛИ -->
     <link rel="stylesheet" href="/src/styles/main.css" />
 
-    <!-- CHART.JS (через CDN) -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js">
     </script>
 </head>
 <body>
     <div id="app">
-        <!-- ============================================================
-        WELCOME SCREEN
-        ============================================================ -->
+
+        <!-- WELCOME SCREEN -->
         <div id="welcomeScreen">
             <div class="welcome-content">
-                <div class="welcome-icon">
-                    <i class="fas fa-taxi"></i>
-                </div>
-                <div class="welcome-title">
-                    BLVCK <span class="highlight">TAXI</span>
-                </div>
-                <div class="welcome-subtitle">
-                    Управляй расходами за 5 секунд
-                </div>
-                <button class="welcome-btn" id="welcomeBtn">
-                    <i class="fas fa-arrow-right"></i> Начать
-                </button>
+                <div class="welcome-icon"><i class="fas fa-taxi"></i></div>
+                <div class="welcome-title">BLVCK <span class="highlight">TAXI</span></div>
+                <div class="welcome-subtitle">Управляй расходами за 5 секунд</div>
+                <button class="welcome-btn" id="welcomeBtn"><i class="fas fa-arrow-right"></i> Начать</button>
                 <div class="welcome-features">
                     <span><i class="fas fa-circle"></i> 1 тап</span>
                     <span><i class="fas fa-circle"></i> Без интернета</span>
@@ -53,43 +40,30 @@
             </div>
         </div>
 
-        <!-- ============================================================
-        ОСНОВНОЕ ПРИЛОЖЕНИЕ
-        ============================================================ -->
+        <!-- ОСНОВНОЕ ПРИЛОЖЕНИЕ -->
         <div id="appContent" style="display:none;">
 
             <!-- ШАПКА -->
             <header class="app-header">
-                <div class="brand">
-                    <i class="fas fa-taxi"></i>
-                    <span>BLVCK TAXI</span>
-                </div>
+                <div class="brand"><i class="fas fa-taxi"></i> BLVCK TAXI</div>
                 <div class="header-actions">
-                    <button class="btn-icon" id="themeToggle">
-                        <i class="fas fa-moon"></i>
-                    </button>
-                    <button class="btn-icon" id="exportBtn" title="Скачать отчёт PDF">
-                        <i class="fas fa-file-pdf"></i>
-                    </button>
-                    <button class="btn-icon" id="settingsBtn" title="Настройки">
-                        <i class="fas fa-cog"></i>
-                    </button>
+                    <button class="btn-icon" id="themeToggle"><i class="fas fa-moon"></i></button>
+                    <button class="btn-icon" id="exportBtn" title="Скачать отчёт PDF"><i class="fas fa-file-pdf"></i></button>
+                    <button class="btn-icon" id="settingsBtn" title="Настройки"><i class="fas fa-cog"></i></button>
                 </div>
             </header>
 
             <!-- КАРТОЧКА АВТОМОБИЛЯ -->
             <div id="carCard" style="margin: 12px 0;"></div>
 
-            <!-- ГЛАВНЫЙ ЭКРАН (ПРОСТОЙ ДЛЯ ТАКСИСТА) -->
+            <!-- ГЛАВНЫЙ ЭКРАН -->
             <main class="main-content" id="driverDashboard">
 
-                <!-- Дата и итог за день -->
                 <div class="day-header">
                     <span class="date" id="todayDate">СЕГОДНЯ</span>
                     <span class="total" id="dayTotal">0.00 BYN</span>
                 </div>
 
-                <!-- Список расходов за сегодня -->
                 <div id="todayExpenses" class="expense-list">
                     <div class="empty-state">
                         <i class="fas fa-inbox"></i>
@@ -98,107 +72,38 @@
                     </div>
                 </div>
 
-                <!-- КАТЕГОРИИ (сетка 4) -->
-                <div id="categoryGrid" style="
-                    display: grid;
-                    grid-template-columns: repeat(4, 1fr);
-                    gap: 8px;
-                    margin: 12px 0 8px;
-                "></div>
+                <div id="categoryGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0 8px;"></div>
 
-                <!-- Итог за неделю -->
                 <div class="week-total">
                     <span>📋 За последние 7 дней</span>
                     <span id="weekTotal">0.00 BYN</span>
                 </div>
 
-                <!-- БЫСТРЫЙ ВВОД — 4 БОЛЬШИЕ КНОПКИ -->
                 <div class="quick-actions">
-                    <button class="quick-btn fuel" data-category="fuel">
-                        <i class="fas fa-gas-pump"></i>
-                        <span>Заправка</span>
-                    </button>
-                    <button class="quick-btn repair" data-category="repair">
-                        <i class="fas fa-wrench"></i>
-                        <span>Ремонт</span>
-                    </button>
-                    <button class="quick-btn wash" data-category="wash">
-                        <i class="fas fa-spray-can"></i>
-                        <span>Мойка</span>
-                    </button>
-                    <button class="quick-btn other" data-category="other">
-                        <i class="fas fa-ellipsis-h"></i>
-                        <span>Другое</span>
-                    </button>
+                    <button class="quick-btn fuel" data-category="fuel"><i class="fas fa-gas-pump"></i><span>Заправка</span></button>
+                    <button class="quick-btn repair" data-category="repair"><i class="fas fa-wrench"></i><span>Ремонт</span></button>
+                    <button class="quick-btn wash" data-category="wash"><i class="fas fa-spray-can"></i><span>Мойка</span></button>
+                    <button class="quick-btn other" data-category="other"><i class="fas fa-ellipsis-h"></i><span>Другое</span></button>
                 </div>
 
-                <!-- ВТОРОСТЕПЕННЫЕ ФУНКЦИИ -->
                 <div class="secondary-actions">
-                    <button onclick="window.openCharts?.()">
-                        <i class="fas fa-chart-pie"></i> Графики
-                    </button>
-                    <button onclick="window.openDocuments?.()">
-                        <i class="fas fa-folder"></i> Документы
-                    </button>
-                    <button onclick="window.openNotes?.()">
-                        <i class="fas fa-wrench"></i> Журнал ТО
-                    </button>
-                    <button onclick="window.openCar?.()">
-                        <i class="fas fa-car"></i> Авто
-                    </button>
+                    <button><i class="fas fa-chart-pie"></i> Графики</button>
+                    <button><i class="fas fa-folder"></i> Документы</button>
+                    <button><i class="fas fa-wrench"></i> Журнал ТО</button>
+                    <button><i class="fas fa-car"></i> Авто</button>
                 </div>
+
+                <!-- Скрытые контейнеры для рендеринга -->
+                <div id="notesList" style="display:none;"></div>
+                <div id="documentsList" style="display:none;"></div>
+
             </main>
         </div>
     </div>
 
-    <!-- ============================================================
-    МОДАЛКА БЫСТРОГО ВВОДА
-    ============================================================ -->
+    <!-- МОДАЛКА БЫСТРОГО ВВОДА -->
     <div class="modal-overlay" id="quickModal">
         <div class="modal modal-quick">
             <div class="modal-header">
                 <h2 id="quickModalTitle"><i class="fas fa-plus-circle"></i> Добавить расход</h2>
-                <button class="modal-close" id="quickModalClose"><i class="fas fa-times"></i></button>
-            </div>
-            <form id="quickForm">
-                <input type="hidden" id="quickCategory" />
-                <div class="form-group">
-                    <label>Сумма (BYN)</label>
-                    <input type="number" id="quickAmount" placeholder="0.00" step="0.01" min="0" required autofocus />
-                </div>
-                <div class="form-group">
-                    <label>Описание (необязательно)</label>
-                    <input type="text" id="quickDesc" placeholder="Заправка на АЗС №5" />
-                </div>
-                <button type="submit" class="btn-submit">
-                    <i class="fas fa-save"></i> Сохранить
-                </button>
-            </form>
-        </div>
-    </div>
-
-    <!-- ============================================================
-    ОСНОВНАЯ МОДАЛКА (для будущих функций)
-    ============================================================ -->
-    <div class="modal-overlay" id="mainModal">
-        <div class="modal" id="mainModalContent">
-            <div class="modal-header">
-                <h2 id="mainModalTitle">Заголовок</h2>
-                <button class="modal-close" id="mainModalClose"><i class="fas fa-times"></i></button>
-            </div>
-            <div id="mainModalBody"></div>
-        </div>
-    </div>
-
-    <!-- ============================================================
-    TOAST (УВЕДОМЛЕНИЯ)
-    ============================================================ -->
-    <div class="toast-container" id="toastContainer"></div>
-
-    <!-- ============================================================
-    ОСНОВНОЙ СКРИПТ
-    ============================================================ -->
-    <script type="module" src="/src/scripts/core/app.js"></script>
-
-</body>
-</html>
+                <button class="modal-close" id="quickModalClose"><i class="fas fa
