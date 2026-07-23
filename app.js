@@ -1,7 +1,30 @@
 /* =========================================================
    BLVCK TAXI — весь комбайн, vanilla, без зависимостей
    Данные: IndexedDB (локально). Офлайн. Без сервера. Бесплатно.
+   + Telegram Mini App (тонкий слой, сервер НЕ нужен)
    ========================================================= */
+
+/* ===== TELEGRAM MINI APP ===== */
+const TG = window.Telegram?.WebApp;
+const haptic    = (t="light") => { try{ TG?.HapticFeedback?.impactOccurred(t); }catch{} };
+const hapticOk  = () => { try{ TG?.HapticFeedback?.notificationOccurred?.("success"); }catch{} };
+const hapticBad = () => { try{ TG?.HapticFeedback?.notificationOccurred?.("error"); }catch{} };
+function setupTelegram(){
+  if(!TG) return;                       // открыто в обычном браузере — ничего не делаем
+  try{
+    TG.ready();                          // говорим Telegram «готовы»
+    TG.expand();                         // раскрываем на весь экран
+    syncTgColors();                      // цвет шапки = наш фон
+    const u = TG.initDataUnsafe?.user;   // имя для приветствия (без сервера — только UI)
+    if(u?.first_name) localStorage.setItem("blvck_tg_name", u.first_name);
+    TG.BackButton.onClick(()=> closeModal()); // системная «назад» закрывает модалки
+  }catch(e){ console.warn("TG init", e); }
+}
+function syncTgColors(){
+  if(!TG) return;
+  const c = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "#0a0a0f";
+  try{ TG.setBackgroundColor(c); TG.setHeaderColor(c); }catch{}
+}
 
 /* ---------- состояние ---------- */
 const CATS = {
@@ -76,28 +99,6 @@ const dbAll    = (s)           => reqP(tx(s).getAll());
 const dbClear  = (s)           => reqP(tx(s,"readwrite").clear());
 
 /* ---------- рендер: оболочка ---------- */
-function render(){
-  const app = $("#app");
-  app.style.animation = "none"; void app.offsetWidth; app.style.animation = "";
-  app.innerHTML = ({
-    dash: screenDash, stats: screenStats, car: screenCar,
-    docs: screenDocs, settings: screenSettings,
-  }[state.screen])();
-  renderTabs();
-}
-function renderTabs(){
-  $("#tabbar").innerHTML = `<div class="inner">${TABS.map(t=>`
-    <button class="tab ${state.screen===t.id?"on":""}" data-action="nav" data-to="${t.id}">
-      <span class="ti">${t.ico}</span><span>${t.t}</span>
-    </button>`).join("")}</div>`;
-}
-
-/* ---------- экран: ГЛАВНАЯ ---------- */
-function screenDash(){
-  return Promise.all([dbAll("expenses"), dbGet("car",1), dbAll("documents")])
-    .then ? "" : ""; // (рендер синхронный, данные тянем ниже через async-обёртку)
-}
-/* Чтобы не усложнять — делаем все экраны async и рендерим через renderAsync */
 async function renderAsync(){
   const app = $("#app");
   app.style.animation = "none"; void app.offsetWidth; app.style.animation = "";
@@ -108,7 +109,14 @@ async function renderAsync(){
   app.innerHTML = html;
   renderTabs();
 }
+function renderTabs(){
+  $("#tabbar").innerHTML = `<div class="inner">${TABS.map(t=>`
+    <button class="tab ${state.screen===t.id?"on":""}" data-action="nav" data-to="${t.id}">
+      <span class="ti">${t.ico}</span><span>${t.t}</span>
+    </button>`).join("")}</div>`;
+}
 
+/* ---------- экран: ГЛАВНАЯ ---------- */
 async function screenDash(){
   const exps = await dbAll("expenses");
   const car  = await dbGet("car",1);
@@ -118,7 +126,6 @@ async function screenDash(){
   const thisMonth = exps.filter(e => new Date(e.date) >= monthStart);
   const spentMonth = thisMonth.reduce((s,e)=>s+Number(e.amount||0),0);
   const spentAll   = exps.reduce((s,e)=>s+Number(e.amount||0),0);
-  const km = car?.currentMileage || 0;
 
   // напоминания
   const alerts = [];
@@ -130,7 +137,7 @@ async function screenDash(){
     else if(days <= 30) alerts.push({bad:false, t:`Скоро истечёт: ${esc(d.name)}`, s:`осталось ${days} дн. (${fmtDate(d.expiryDate)})`});
   });
   if(car && car.oilInterval && car.lastOilMileage!=null){
-    const left = Number(car.oilInterval) - (km - Number(car.lastOilMileage));
+    const left = Number(car.oilInterval) - (Number(car.currentMileage||0) - Number(car.lastOilMileage));
     if(left <= 0) alerts.push({bad:true, t:"Пора менять масло", s:`пробег после замены превышен на ${-left} км`});
     else if(left <= 1000) alerts.push({bad:false, t:"Скоро замена масла", s:`осталось ~${left} км`});
   }
@@ -140,13 +147,13 @@ async function screenDash(){
   return `
     <div class="row between">
       <div class="logo">BLVCK<span style="color:var(--text)"> TAXI</span></div>
-      <button class="btn sm ghost" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙":"️"}</button>
+      <button class="btn sm ghost" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙":"☀️"}</button>
     </div>
     <p class="muted small" style="margin:2px 0 0">твой карманный учёт расходов</p>
 
     ${alerts.map(a=>`
       <div class="alert ${a.bad?"bad":""}">
-        <span>${a.bad?"⚠️":"🔔"}</span>
+        <span>${a.bad?"⚠️":""}</span>
         <div><div style="font-weight:700">${a.t}</div><div class="small muted">${a.s}</div></div>
       </div>`).join("")}
 
@@ -190,14 +197,11 @@ async function screenStats(){
   const exps = await dbAll("expenses");
   const filtered = filterByRange(exps, state.range);
 
-  // по категориям
   const byCat = {};
   filtered.forEach(e=> byCat[e.category] = (byCat[e.category]||0) + Number(e.amount||0));
-  // по месяцам
   const byMonth = {};
   filtered.forEach(e=>{ const m=e.date.slice(0,7); byMonth[m]=(byMonth[m]||0)+Number(e.amount||0); });
   const months = Object.keys(byMonth).sort();
-
   const total = Object.values(byCat).reduce((a,b)=>a+b,0);
 
   return `
@@ -267,8 +271,8 @@ function bars(data){
     const x = pad + i*bw + bw*0.15;
     const y = H-pad-h;
     return `<g>
-      <rect x="${x}" y="${y}" width="${bw*0.7}" height="${h}" rx="5"
-        fill="url(#g1)"><animate attributeName="height" from="0" to="${h}" dur=".5s" fill="freeze"/>
+      <rect x="${x}" y="${y}" width="${bw*0.7}" height="${h}" rx="5" fill="url(#g1)">
+        <animate attributeName="height" from="0" to="${h}" dur=".5s" fill="freeze"/>
         <animate attributeName="y" from="${H-pad}" to="${y}" dur=".5s" fill="freeze"/></rect>
       <text x="${x+bw*0.35}" y="${H-5}" text-anchor="middle" fill="var(--muted)" font-size="9">${d.label}</text>
     </g>`;
@@ -302,16 +306,15 @@ async function screenCar(){
       </div>
     </div>
     <div class="h2">Расход топлива (оценка)</div>
-    <div class="glass card">${fuelEstimate()}</div>
+    <div class="glass card">${await fuelEstimate()}</div>
   `;
 }
 async function fuelEstimate(){
-  // грубая оценка по заправкам: сумма литров? у нас нет литров — покажем сумму на км по пробегу
   const exps = (await dbAll("expenses")).filter(e=>e.category==="fuel" && e.mileage);
-  if(exps.length<2) return `<div class="empty">Добавь ≥2 заправки с пробегом — посчитаю ₽/км</div>`;
+  if(exps.length<2) return `<div class="empty">Добавь ≥2 заправки с пробегом — посчитаю стоимость км</div>`;
   const s = exps.slice().sort((a,b)=>a.mileage-b.mileage);
   const km = s.at(-1).mileage - s[0].mileage;
-  const sum = s.slice(1).reduce((a,e)=>a+Number(e.amount||0),0); // затраты между замерами
+  const sum = s.slice(1).reduce((a,e)=>a+Number(e.amount||0),0);
   if(km<=0) return `<div class="empty">Мало данных</div>`;
   return `<div class="row between"><span class="muted">Стоимость км</span><b>${money(sum/km)}</b></div>
           <div class="row between"><span class="muted">Замерено на</span><span>${km.toLocaleString("ru-RU")} км</span></div>`;
@@ -333,7 +336,7 @@ async function screenDocs(){
         const days = d.expiryDate? Math.round((new Date(d.expiryDate)-new Date())/86400000):null;
         const warn = days!=null && days<=30;
         return `<div class="item">
-          <div class="ic">${warn?(days<0?"⛔":"⏰"):"📄"}</div>
+          <div class="ic">${warn?(days<0?"⛔":""):"📄"}</div>
           <div class="meta"><div class="t">${esc(d.name)}</div>
             <div class="s">${d.expiryDate?("до "+fmtDate(d.expiryDate)+(days!=null?(days<0?" · просрочено":" · "+days+" дн."):"")):"бессрочно"}</div></div>
           <button class="del" data-action="delDoc" data-id="${d.id}">🗑</button>
@@ -353,6 +356,7 @@ async function screenDocs(){
 /* ---------- экран: НАСТРОЙКИ ---------- */
 async function screenSettings(){
   const exps = await dbAll("expenses");
+  const tgName = localStorage.getItem("blvck_tg_name");
   return `
     <div class="h1">Настройки</div>
 
@@ -363,6 +367,15 @@ async function screenSettings(){
       <div class="row between"><span>Валюта</span>
         <div class="chips">${CURS.map(c=>`<span class="chip ${c===cur()?"on":""}" data-action="setCur" data-cur="${c}">${c}</span>`).join("")}</div></div>
     </div>
+
+    ${TG ? `
+    <div class="h2">Telegram</div>
+    <div class="glass card">
+      <div class="row between"><span>Ты вошёл как</span><b>${esc(tgName||"—")}</b></div>
+      <p class="muted small" style="margin:8px 2px 0">Данные хранятся только в этом Telegram на этом устройстве.</p>
+      <div class="divider"></div>
+      <button class="btn" data-action="tgClose">✖️ Закрыть приложение</button>
+    </div>` : ``}
 
     <div class="h2">Резервная копия</div>
     <div class="glass card">
@@ -387,8 +400,12 @@ function openModal(html){
   const m = $("#modal");
   m.innerHTML = `<div class="modal">${html}</div>`;
   m.hidden = false;
+  try{ TG?.BackButton?.show(); }catch{}      // TG: системная «назад» = закрыть модалку
 }
-function closeModal(){ $("#modal").hidden = true; $("#modal").innerHTML = ""; }
+function closeModal(){
+  $("#modal").hidden = true; $("#modal").innerHTML = "";
+  try{ TG?.BackButton?.hide(); }catch{}      // TG: прячем «назад»
+}
 
 function modalExpense(cat){
   state.modalCat = cat;
@@ -449,7 +466,7 @@ async function modalCar(){
 /* ---------- действия ---------- */
 async function saveExpense(){
   const amount = parseFloat($("#m_amount").value);
-  if(!amount || amount<=0){ toast("Введи сумму"); return; }
+  if(!amount || amount<=0){ toast("Введи сумму"); hapticBad(); return; }
   const mileage = parseFloat($("#m_mileage").value);
   const e = {
     id: uid(), category: state.modalCat, amount,
@@ -458,28 +475,27 @@ async function saveExpense(){
     note: $("#m_note").value.trim(),
   };
   await dbAdd("expenses", e);
-  // апдейт пробега авто
   if(e.mileage){
     const car = await dbGet("car",1) || {id:1};
     if(!car.currentMileage || e.mileage > car.currentMileage){ car.currentMileage = e.mileage; await dbPut("car",car); }
   }
-  closeModal(); toast("Расход добавлен"); renderAsync();
+  closeModal(); toast("Расход добавлен"); hapticOk(); renderAsync();
 }
 async function saveMaint(){
   const title = $("#m_title").value.trim();
-  if(!title){ toast("Введи описание"); return; }
+  if(!title){ toast("Введи описание"); hapticBad(); return; }
   const mileage = parseFloat($("#m_mileage").value);
   await dbAdd("maintenance",{ id:uid(), title, date:$("#m_date").value||today(),
     mileage: mileage>0?mileage:null, note:$("#m_note").value.trim() });
-  closeModal(); toast("Событие ТО добавлено"); renderAsync();
+  closeModal(); toast("Событие ТО добавлено"); hapticOk(); renderAsync();
 }
 async function saveDoc(){
   const name = $("#m_name").value.trim();
-  if(!name){ toast("Введи название"); return; }
+  if(!name){ toast("Введи название"); hapticBad(); return; }
   await dbAdd("documents",{ id:uid(), name,
     issueDate:$("#m_issue").value||null, expiryDate:$("#m_expiry").value||null,
     note:$("#m_note").value.trim() });
-  closeModal(); toast("Документ добавлен"); renderAsync();
+  closeModal(); toast("Документ добавлен"); hapticOk(); renderAsync();
 }
 async function saveCar(){
   const car = {
@@ -491,7 +507,7 @@ async function saveCar(){
     lastOilMileage:parseFloat($("#m_oilkm").value)||0,
     oilInterval:parseFloat($("#m_oilint").value)||10000,
   };
-  await dbPut("car",car); closeModal(); toast("Авто сохранено"); renderAsync();
+  await dbPut("car",car); closeModal(); toast("Авто сохранено"); hapticOk(); renderAsync();
 }
 
 /* ---------- бэкап / восстановление ---------- */
@@ -503,7 +519,7 @@ async function exportBackup(){
   a.href = URL.createObjectURL(blob);
   a.download = `blvck-taxi-backup-${today()}.json`;
   a.click(); URL.revokeObjectURL(a.href);
-  toast("Копия сохранена");
+  toast("Копия сохранена"); hapticOk();
 }
 function importBackup(){ $("#restoreInput").click(); }
 async function handleRestoreFile(file){
@@ -512,13 +528,13 @@ async function handleRestoreFile(file){
     const data = JSON.parse(await file.text());
     if(!confirm("Заменить ВСЕ текущие данные данными из файла?")) return;
     for(const s of STORES){ await dbClear(s); for(const v of (data[s]||[])) await dbPut(s,v); }
-    toast("Данные восстановлены"); renderAsync();
-  }catch(e){ toast("Ошибка файла"); }
+    toast("Данные восстановлены"); hapticOk(); renderAsync();
+  }catch(e){ toast("Ошибка файла"); hapticBad(); }
 }
 async function wipe(){
   if(!confirm("Удалить ВСЕ данные приложения? Это необратимо.")) return;
   for(const s of STORES) await dbClear(s);
-  toast("Всё удалено"); renderAsync();
+  toast("Всё удалено"); hapticOk(); renderAsync();
 }
 
 /* ---------- тема / валюта ---------- */
@@ -527,12 +543,13 @@ function applyTheme(){
   document.documentElement.dataset.theme = t;
   const meta = document.querySelector('meta[name="theme-color"]');
   if(meta) meta.content = t==="dark" ? "#0a0a0f" : "#eef0f7";
+  syncTgColors();   // TG: подгоняем шапку под тему
 }
 function toggleTheme(){
   const t = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-  localStorage.setItem("blvck_theme", t); applyTheme(); renderAsync();
+  localStorage.setItem("blvck_theme", t); applyTheme(); haptic(); renderAsync();
 }
-function setCur(c){ localStorage.setItem("blvck_cur", c); renderAsync(); }
+function setCur(c){ localStorage.setItem("blvck_cur", c); haptic(); renderAsync(); }
 
 /* ---------- частицы ---------- */
 function makeParticles(){
@@ -551,6 +568,7 @@ function makeParticles(){
 document.addEventListener("click", async (ev)=>{
   const el = ev.target.closest("[data-action]"); if(!el) return;
   const a = el.dataset.action;
+  haptic("light");   // TG: тактильный отклик на каждый тап (в браузере — no-op)
   switch(a){
     case "nav":        state.screen = el.dataset.to; renderAsync(); break;
     case "quick":      modalExpense(el.dataset.cat); break;
@@ -570,10 +588,10 @@ document.addEventListener("click", async (ev)=>{
     case "export":     exportBackup(); break;
     case "import":     importBackup(); break;
     case "wipe":       wipe(); break;
+    case "tgClose":    try{ TG?.close(); }catch{} break;   // TG: закрыть Mini App
     case "close":      closeModal(); break;
   }
 });
-// клик по затемнению модалки закрывает её
 $("#modal").addEventListener("click", e=>{ if(e.target.id==="modal") closeModal(); });
 $("#restoreInput").addEventListener("change", e=> handleRestoreFile(e.target.files[0]));
 
@@ -581,6 +599,7 @@ $("#restoreInput").addEventListener("change", e=> handleRestoreFile(e.target.fil
 (async function init(){
   applyTheme();
   makeParticles();
+  setupTelegram();        // TG: инициализация Mini App
   await openDB();
   await renderAsync();
   if("serviceWorker" in navigator){
