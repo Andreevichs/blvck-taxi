@@ -2,6 +2,7 @@
    BLVCK TAXI — весь комбайн, vanilla, без зависимостей
    Данные: IndexedDB (локально). Офлайн. Без сервера. Бесплатно.
    + Telegram Mini App (тонкий слой, сервер НЕ нужен)
+   + раздел ФСЗН для ИП (прикидка-трекер, НЕ официальный расчёт)
    ========================================================= */
 
 /* ===== TELEGRAM MINI APP ===== */
@@ -10,14 +11,14 @@ const haptic    = (t="light") => { try{ TG?.HapticFeedback?.impactOccurred(t); }
 const hapticOk  = () => { try{ TG?.HapticFeedback?.notificationOccurred?.("success"); }catch{} };
 const hapticBad = () => { try{ TG?.HapticFeedback?.notificationOccurred?.("error"); }catch{} };
 function setupTelegram(){
-  if(!TG) return;                       // открыто в обычном браузере — ничего не делаем
+  if(!TG) return;
   try{
-    TG.ready();                          // говорим Telegram «готовы»
-    TG.expand();                         // раскрываем на весь экран
-    syncTgColors();                      // цвет шапки = наш фон
-    const u = TG.initDataUnsafe?.user;   // имя для приветствия (без сервера — только UI)
+    TG.ready();
+    TG.expand();
+    syncTgColors();
+    const u = TG.initDataUnsafe?.user;
     if(u?.first_name) localStorage.setItem("blvck_tg_name", u.first_name);
-    TG.BackButton.onClick(()=> closeModal()); // системная «назад» закрывает модалки
+    TG.BackButton.onClick(()=> closeModal());
   }catch(e){ console.warn("TG init", e); }
 }
 function syncTgColors(){
@@ -44,7 +45,7 @@ const TABS = [
 
 const state = {
   screen: "dash",
-  range: "month",          // month | quarter | year | all
+  range: "month",
   modalCat: "fuel",
 };
 
@@ -58,15 +59,18 @@ const money = n => (Number(n)||0).toLocaleString("ru-RU",{maximumFractionDigits:
 const today = () => new Date().toISOString().slice(0,10);
 const fmtDate = d => d ? new Date(d+"T00:00:00").toLocaleDateString("ru-RU",{day:"2-digit",month:"short",year:"numeric"}) : "—";
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const YEAR = () => new Date().getFullYear();
+const CUR_Q = () => Math.ceil((new Date().getMonth()+1)/3);
+const isIP = () => localStorage.getItem("blvck_is_ip") === "1";
 
 function toast(msg){
   const t = $("#toast"); t.textContent = msg; t.hidden = false;
   clearTimeout(toast._t); toast._t = setTimeout(()=> t.hidden = true, 1800);
 }
 
-/* ---------- IndexedDB (свой тонкий слой) ---------- */
-const DB_NAME = "blvcktaxi", DB_VER = 1;
-const STORES = ["expenses","maintenance","documents","car"];
+/* ---------- IndexedDB ---------- */
+const DB_NAME = "blvcktaxi", DB_VER = 2;   // v2: добавлен store fszn (старые данные сохраняются)
+const STORES = ["expenses","maintenance","documents","car","fszn"];
 let db;
 
 function openDB(){
@@ -84,6 +88,8 @@ function openDB(){
         d.createObjectStore("documents",{keyPath:"id"}).createIndex("expiryDate","expiryDate");
       if(!d.objectStoreNames.contains("car"))
         d.createObjectStore("car",{keyPath:"id"});
+      if(!d.objectStoreNames.contains("fszn"))           // мягкий апгрейд для существующих пользователей
+        d.createObjectStore("fszn",{keyPath:"id"});
     };
     req.onsuccess = () => { db = req.result; res(db); };
     req.onerror   = () => rej(req.error);
@@ -104,14 +110,15 @@ async function renderAsync(){
   app.style.animation = "none"; void app.offsetWidth; app.style.animation = "";
   const html = await ({
     dash: screenDash, stats: screenStats, car: screenCar,
-    docs: screenDocs, settings: screenSettings,
+    docs: screenDocs, settings: screenSettings, fszn: screenFszn,
   }[state.screen])();
   app.innerHTML = html;
   renderTabs();
 }
 function renderTabs(){
+  const active = (state.screen==="fszn") ? "settings" : state.screen; // ФСЗН подсвечивает «Ещё»
   $("#tabbar").innerHTML = `<div class="inner">${TABS.map(t=>`
-    <button class="tab ${state.screen===t.id?"on":""}" data-action="nav" data-to="${t.id}">
+    <button class="tab ${active===t.id?"on":""}" data-action="nav" data-to="${t.id}">
       <span class="ti">${t.ico}</span><span>${t.t}</span>
     </button>`).join("")}</div>`;
 }
@@ -127,7 +134,6 @@ async function screenDash(){
   const spentMonth = thisMonth.reduce((s,e)=>s+Number(e.amount||0),0);
   const spentAll   = exps.reduce((s,e)=>s+Number(e.amount||0),0);
 
-  // напоминания
   const alerts = [];
   const now = new Date(); now.setHours(0,0,0,0);
   docs.forEach(d=>{
@@ -144,6 +150,9 @@ async function screenDash(){
 
   const last5 = exps.slice().sort((a,b)=> (b.date+b.id).localeCompare(a.date+a.id)).slice(0,5);
 
+  // виджет ФСЗН на главной (только в режиме ИП)
+  const fsznWidget = isIP() ? await fsznMiniWidget() : "";
+
   return `
     <div class="row between">
       <div class="logo">BLVCK<span style="color:var(--text)"> TAXI</span></div>
@@ -153,9 +162,11 @@ async function screenDash(){
 
     ${alerts.map(a=>`
       <div class="alert ${a.bad?"bad":""}">
-        <span>${a.bad?"⚠️":""}</span>
+        <span>${a.bad?"⚠️":"🔔"}</span>
         <div><div style="font-weight:700">${a.t}</div><div class="small muted">${a.s}</div></div>
       </div>`).join("")}
+
+    ${fsznWidget}
 
     <div class="stats">
       <div class="glass stat"><div class="v">${money(spentMonth)}</div><div class="k">за месяц</div></div>
@@ -353,10 +364,154 @@ async function screenDocs(){
   `;
 }
 
+/* ---------- экран: ФСЗН (для ИП) ---------- */
+function fsznSettings(){
+  return {
+    mzp:  parseFloat(localStorage.getItem("blvck_fszn_mzp"))  || 726,   // проверь актуальную МЗП!
+    rate: parseFloat(localStorage.getItem("blvck_fszn_rate")) || 35,    // ставка взносов, %
+  };
+}
+async function screenFszn(){
+  const s = fsznSettings();
+  const year = YEAR();
+  const cq = CUR_Q();
+  const minMonth = s.rate/100 * s.mzp;
+  const minQ = minMonth * 3;
+  const minYear = minMonth * 12;
+
+  // собираем данные 4 кварталов
+  const qs = [];
+  let paidYTD = 0, minYTD = 0, paidAll = 0, targetAll = 0;
+  for(let q=1;q<=4;q++){
+    const rec = await dbGet("fszn", `${year}-Q${q}`) || {income:0, paid:0};
+    const income = Number(rec.income)||0;
+    const paid   = Number(rec.paid)||0;
+    const fromIncome = income>0 ? s.rate/100*income : 0;     // прикидка 35% от дохода
+    const target = Math.max(minQ, fromIncome);               // к уплате за квартал (прикидка)
+    let status, badge;
+    if(q < cq){                                              // квартал прошёл
+      status = paid>=target ? "good" : (paid>0 ? "warn" : "bad");
+      badge  = paid>=target ? "✅ закрыто" : (paid>0 ? "🟡 частично" : "⏰ не уплачено");
+    } else if(q === cq){                                     // текущий
+      status = paid>=target ? "good" : (paid>0 ? "warn" : "soon");
+      badge  = paid>=target ? "✅ закрыто" : (paid>0 ? "🟡 в процессе" : "🔵 в процессе");
+    } else {                                                 // будущий
+      status = "soon"; badge = "🔮 предстоит";
+    }
+    qs.push({q, income, paid, target, status, badge});
+    if(q <= cq){ paidYTD += paid; minYTD += minQ; }
+    paidAll += paid; targetAll += target;
+  }
+
+  const goal = Math.max(minYear, targetAll);                 // цель за год
+  const pctYear = goal>0 ? Math.min(100, Math.round(paidAll/goal*100)) : 0;
+  const pctYTD  = minYTD>0 ? Math.min(100, Math.round(paidYTD/minYTD*100)) : 0;
+  const rest = Math.max(0, goal - paidAll);                  // доплатить до 31 марта след. года
+
+  return `
+    <div class="row between">
+      <div class="h1" style="margin:0">ФСЗН · ${year}</div>
+      <button class="btn sm ghost" data-action="nav" data-to="settings">← Назад</button>
+    </div>
+    <p class="muted small">прикидка и трекер взносов для ИП · НЕ официальный расчёт</p>
+
+    <div class="glass card">
+      <div class="row between"><b>Цель за год</b><span class="muted small">${money(goal)}</span></div>
+      <div class="progress ${pctYear>=100?"good":""}"><i style="width:${pctYear}%"></i></div>
+      <div class="row between small"><span class="muted">уплачено ${money(paidAll)}</span><b>${pctYear}%</b></div>
+      <div class="divider"></div>
+      <div class="row between small"><span class="muted">С начала года (Q1–Q${cq})</span><b>${money(paidYTD)} / ${money(minYTD)} · ${pctYTD}%</b></div>
+      <div class="divider"></div>
+      ${rest>0
+        ? `<div class="alert bad" style="margin:0"><span>⏰</span><div><div style="font-weight:700">До 31 марта ${year+1}</div><div class="small muted">доплатить ≈ <b>${money(rest)}</b> (проверь точную сумму в налоговой)</div></div></div>`
+        : `<div class="alert" style="margin:0;border-color:rgba(52,211,153,.45);background:rgba(52,211,153,.10)"><span>✅</span><div><div style="font-weight:700">Минимум за год закрыт</div><div class="small muted">остатка по прикидке нет</div></div></div>`}
+    </div>
+
+    <div class="glass card">
+      <b>По кварталам: надо / уплачено</b>
+      ${fsznBars(qs)}
+    </div>
+
+    <div class="h2">Кварталы</div>
+    ${qs.map(q=>`
+      <div class="glass qcard">
+        <div class="qhead">
+          <div class="qtitle">${q.q}-й квартал</div>
+          <span class="badge ${q.status}">${q.badge}</span>
+        </div>
+        <div class="qmini"><span>минимум за квартал</span><b>${money(minQ)}</b></div>
+        <div class="grid2">
+          <div class="field" style="margin:8px 0 0">
+            <label>Доход за квартал</label>
+            <input class="input" type="number" inputmode="decimal" data-fszn="income" data-q="${q.q}" value="${q.income||""}" placeholder="0">
+          </div>
+          <div class="field" style="margin:8px 0 0">
+            <label>Уплачено взносов</label>
+            <input class="input" type="number" inputmode="decimal" data-fszn="paid" data-q="${q.q}" value="${q.paid||""}" placeholder="0">
+          </div>
+        </div>
+        <div class="qmini"><span>прикидка «к уплате»</span><b>${money(q.target)}</b></div>
+        <div class="fszn-note">= max(минимум ${money(minQ)}, 35% от дохода${q.income>0?" = "+money(s.rate/100*q.income):""}). Если доход не указан — берётся минимум.</div>
+      </div>`).join("")}
+
+    <div class="glass card">
+      <div class="row between"><b>Параметры расчёта</b><button class="btn sm" data-action="saveFsznSettings">💾 Сохранить</button></div>
+      <div class="grid2">
+        <div class="field"><label>МЗП за месяц (${year})</label><input id="fszn_mzp" class="input" type="number" inputmode="decimal" value="${s.mzp}"></div>
+        <div class="field"><label>Ставка взносов, %</label><input id="fszn_rate" class="input" type="number" inputmode="decimal" value="${s.rate}"></div>
+      </div>
+      <div class="fszn-note">Минимальный взнос за месяц = ставка × МЗП = <b>${money(minMonth)}</b>. Актуальную МЗП и сроки всегда сверяй на portal.ssf.gov.by / в налоговой — этот раздел помощник, а не официальный калькулятор.</div>
+    </div>
+  `;
+}
+function fsznBars(qs){
+  const W=320, H=150, pad=20;
+  const max = Math.max(...qs.map(q=>Math.max(q.target,q.paid)), 1);
+  const gw = (W-pad*2)/qs.length;
+  const cols = qs.map((q,i)=>{
+    const x = pad + i*gw;
+    const hT = (q.target/max)*(H-pad*2);
+    const hP = (q.paid/max)*(H-pad*2);
+    const yT = H-pad-hT, yP = H-pad-hP;
+    const pct = q.target>0 ? Math.min(100,Math.round(q.paid/q.target*100)) : 0;
+    return `<g>
+      <rect x="${x+gw*0.12}" y="${yT}" width="${gw*0.30}" height="${hT}" rx="5" fill="var(--glass-strong)" stroke="var(--stroke)"/>
+      <rect x="${x+gw*0.50}" y="${yP}" width="${gw*0.30}" height="${hP}" rx="5" fill="url(#g2)">
+        <animate attributeName="height" from="0" to="${hP}" dur=".5s" fill="freeze"/>
+        <animate attributeName="y" from="${H-pad}" to="${yP}" dur=".5s" fill="freeze"/></rect>
+      <text x="${x+gw*0.5}" y="${H-6}" text-anchor="middle" fill="var(--muted)" font-size="9">Q${q.q}</text>
+      <text x="${x+gw*0.5}" y="${Math.min(yT,yP)-5}" text-anchor="middle" fill="var(--text)" font-size="9" font-weight="700">${pct}%</text>
+    </g>`;
+  }).join("");
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" style="margin-top:10px">
+    <defs><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7c5cff"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs>
+    ${cols}</svg>
+    <div class="legend" style="margin-top:8px">
+      <div class="li"><span class="dot" style="background:var(--glass-strong);border:1px solid var(--stroke)"></span>надо (прикидка)</div>
+      <div class="li"><span class="dot" style="background:var(--accent)"></span>уплачено</div>
+    </div>`;
+}
+async function fsznMiniWidget(){
+  const s = fsznSettings();
+  const year = YEAR();
+  const minYear = s.rate/100 * s.mzp * 12;
+  let paid = 0;
+  for(let q=1;q<=4;q++){ const r = await dbGet("fszn", `${year}-Q${q}`); paid += Number(r?.paid)||0; }
+  const pct = minYear>0 ? Math.min(100, Math.round(paid/minYear*100)) : 0;
+  return `
+    <div class="glass card" data-action="openFszn" style="cursor:pointer">
+      <div class="row between"><b>🧾 ФСЗН ${year}</b><span class="badge ${pct>=100?"good":(pct>0?"warn":"soon")}">${pct}%</span></div>
+      <div class="progress ${pct>=100?"good":""}"><i style="width:${pct}%"></i></div>
+      <div class="row between small"><span class="muted">уплачено ${money(paid)}</span><span class="muted">цель ${money(minYear)}</span></div>
+    </div>`;
+}
+
 /* ---------- экран: НАСТРОЙКИ ---------- */
 async function screenSettings(){
   const exps = await dbAll("expenses");
   const tgName = localStorage.getItem("blvck_tg_name");
+  const ipOn = isIP();
   return `
     <div class="h1">Настройки</div>
 
@@ -366,6 +521,19 @@ async function screenSettings(){
       <div class="divider"></div>
       <div class="row between"><span>Валюта</span>
         <div class="chips">${CURS.map(c=>`<span class="chip ${c===cur()?"on":""}" data-action="setCur" data-cur="${c}">${c}</span>`).join("")}</div></div>
+    </div>
+
+    <div class="h2">Режим ИП</div>
+    <div class="glass card">
+      <div class="row between">
+        <div><div style="font-weight:700">Я индивидуальный предприниматель</div>
+          <div class="muted small">включает раздел ФСЗН и виджет на главной</div></div>
+        <div class="switch">
+          <span class="chip ${!ipOn?"on":""}" data-action="setIP" data-v="0">Нет</span>
+          <span class="chip ${ipOn?"on":""}" data-action="setIP" data-v="1">Да</span>
+        </div>
+      </div>
+      ${ipOn ? `<div style="height:10px"></div><button class="btn primary" data-action="openFszn">🧾 Открыть раздел ФСЗН</button>` : ``}
     </div>
 
     ${TG ? `
@@ -400,11 +568,11 @@ function openModal(html){
   const m = $("#modal");
   m.innerHTML = `<div class="modal">${html}</div>`;
   m.hidden = false;
-  try{ TG?.BackButton?.show(); }catch{}      // TG: системная «назад» = закрыть модалку
+  try{ TG?.BackButton?.show(); }catch{}
 }
 function closeModal(){
   $("#modal").hidden = true; $("#modal").innerHTML = "";
-  try{ TG?.BackButton?.hide(); }catch{}      // TG: прячем «назад»
+  try{ TG?.BackButton?.hide(); }catch{}
 }
 
 function modalExpense(cat){
@@ -509,10 +677,25 @@ async function saveCar(){
   };
   await dbPut("car",car); closeModal(); toast("Авто сохранено"); hapticOk(); renderAsync();
 }
+function saveFsznSettings(){
+  const mzp = parseFloat($("#fszn_mzp").value)||0;
+  const rate = parseFloat($("#fszn_rate").value)||0;
+  if(mzp<=0 || rate<=0){ toast("МЗП и ставка должны быть > 0"); hapticBad(); return; }
+  localStorage.setItem("blvck_fszn_mzp", String(mzp));
+  localStorage.setItem("blvck_fszn_rate", String(rate));
+  toast("Параметры сохранены"); hapticOk(); renderAsync();
+}
+async function saveFsznField(q, field, value){
+  const year = YEAR();
+  const id = `${year}-Q${q}`;
+  const rec = await dbGet("fszn", id) || {id, year, quarter:q, income:0, paid:0};
+  rec[field] = value;
+  await dbPut("fszn", rec);
+}
 
 /* ---------- бэкап / восстановление ---------- */
 async function exportBackup(){
-  const data = { _app:"BLVCK TAXI", _v:1, _at:new Date().toISOString() };
+  const data = { _app:"BLVCK TAXI", _v:2, _at:new Date().toISOString() };
   for(const s of STORES) data[s] = await dbAll(s);
   const blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
   const a = document.createElement("a");
@@ -537,19 +720,20 @@ async function wipe(){
   toast("Всё удалено"); hapticOk(); renderAsync();
 }
 
-/* ---------- тема / валюта ---------- */
+/* ---------- тема / валюта / режим ИП ---------- */
 function applyTheme(){
   const t = localStorage.getItem("blvck_theme") || "dark";
   document.documentElement.dataset.theme = t;
   const meta = document.querySelector('meta[name="theme-color"]');
   if(meta) meta.content = t==="dark" ? "#0a0a0f" : "#eef0f7";
-  syncTgColors();   // TG: подгоняем шапку под тему
+  syncTgColors();
 }
 function toggleTheme(){
   const t = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
   localStorage.setItem("blvck_theme", t); applyTheme(); haptic(); renderAsync();
 }
 function setCur(c){ localStorage.setItem("blvck_cur", c); haptic(); renderAsync(); }
+function setIP(v){ localStorage.setItem("blvck_is_ip", v); haptic(); renderAsync(); }
 
 /* ---------- частицы ---------- */
 function makeParticles(){
@@ -568,29 +752,41 @@ function makeParticles(){
 document.addEventListener("click", async (ev)=>{
   const el = ev.target.closest("[data-action]"); if(!el) return;
   const a = el.dataset.action;
-  haptic("light");   // TG: тактильный отклик на каждый тап (в браузере — no-op)
+  haptic("light");
   switch(a){
     case "nav":        state.screen = el.dataset.to; renderAsync(); break;
     case "quick":      modalExpense(el.dataset.cat); break;
     case "openEditCar":modalCar(); break;
     case "openAddMaint":modalMaint(); break;
     case "openAddDoc": modalDoc(); break;
+    case "openFszn":   state.screen = "fszn"; renderAsync(); break;
     case "saveExpense":await saveExpense(); break;
     case "saveMaint":  await saveMaint(); break;
     case "saveDoc":    await saveDoc(); break;
     case "saveCar":    await saveCar(); break;
+    case "saveFsznSettings": saveFsznSettings(); break;
     case "delExpense": if(confirm("Удалить запись?")){ await dbDel("expenses",el.dataset.id); renderAsync(); } break;
     case "delMaint":   if(confirm("Удалить событие?")){ await dbDel("maintenance",el.dataset.id); renderAsync(); } break;
     case "delDoc":     if(confirm("Удалить документ?")){ await dbDel("documents",el.dataset.id); renderAsync(); } break;
     case "setRange":   state.range = el.dataset.range; renderAsync(); break;
     case "toggleTheme":toggleTheme(); break;
     case "setCur":     setCur(el.dataset.cur); break;
+    case "setIP":      setIP(el.dataset.v); break;
     case "export":     exportBackup(); break;
     case "import":     importBackup(); break;
     case "wipe":       wipe(); break;
-    case "tgClose":    try{ TG?.close(); }catch{} break;   // TG: закрыть Mini App
+    case "tgClose":    try{ TG?.close(); }catch{} break;
     case "close":      closeModal(); break;
   }
+});
+// inline-сохранение полей ФСЗН (после ввода)
+document.addEventListener("change", async (ev)=>{
+  const el = ev.target.closest("[data-fszn]"); if(!el) return;
+  const field = el.dataset.fszn;            // income | paid
+  const q = el.dataset.q;
+  const value = parseFloat(el.value)||0;
+  await saveFsznField(q, field, value);
+  hapticOk(); renderAsync();
 });
 $("#modal").addEventListener("click", e=>{ if(e.target.id==="modal") closeModal(); });
 $("#restoreInput").addEventListener("change", e=> handleRestoreFile(e.target.files[0]));
@@ -599,7 +795,7 @@ $("#restoreInput").addEventListener("change", e=> handleRestoreFile(e.target.fil
 (async function init(){
   applyTheme();
   makeParticles();
-  setupTelegram();        // TG: инициализация Mini App
+  setupTelegram();
   await openDB();
   await renderAsync();
   if("serviceWorker" in navigator){
