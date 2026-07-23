@@ -2,8 +2,9 @@
    BLVCK TAXI — весь комбайн, vanilla, без зависимостей
    IndexedDB + localStorage. Офлайн. Без сервера. Бесплатно.
    + Telegram Mini App + ФСЗН/налоги ИП + быстрая заправка
-   + эффективность + режим «за рулём» + стрик + shortcuts
-   + чеки/скриншоты к расходам (сжатие + в резервную копию)
+   + эффективность + режим «за рулём» + стрик + shortcuts + чеки
+   + ШТРАФЫ + выручка за день/план/выгодные дни + тренд + пресеты доков
+   + ПОЛНЫЙ бэкап (включая настройки/доход/налоги/штрафы)
    ========================================================= */
 
 /* ===== TELEGRAM MINI APP ===== */
@@ -42,6 +43,10 @@ const TABS = [
   { id:"settings", ico:"⚙️", t:"Ещё"     },
 ];
 const TAX_PRESETS = ["Единый налог","ФСЗН за квартал","Подоходный (аванс)","Декларация","Налог на проф. доход"];
+const FINE_PRESETS = ["Камера / превышение","Парковка","Ремень / телефон за рулём","Нет оклейки / шашечек","Нет карточки водителя","Просрочен техосмотр / страховка","Тонировка"];
+const DOC_PRESETS = ["Медсправка водителя","Карточка водителя такси","Оклейка / шашечки","Страховка (ОСГОП)","Техосмотр"];
+const WD = ["Вс","Пн","Вт","Ср","Чт","Пт","Сб"];
+const WD_ORDER = [1,2,3,4,5,6,0]; // Пн..Вс
 
 const state = { screen:"dash", range:"month", modalCat:"fuel", modalEditId:null, modalReceipt:null };
 
@@ -61,32 +66,52 @@ const YEAR = () => new Date().getFullYear();
 const CUR_Q = () => Math.ceil((new Date().getMonth()+1)/3);
 const isIP = () => localStorage.getItem("blvck_is_ip") === "1";
 function ruPlural(n,f){ const a=Math.abs(n)%100,b=a%10; if(a>=11&&a<=14)return f[2]; if(b===1)return f[0]; if(b>=2&&b<=4)return f[1]; return f[2]; }
+function prevYM(ym){ const [y,m]=ym.split("-").map(Number); return new Date(y,m-2,1).toISOString().slice(0,7); }
 
-/* помесячные поля */
+/* ---------- localStorage-словари ---------- */
 const _map  = k => { try{ return JSON.parse(localStorage.getItem(k)||"{}"); }catch{ return {}; } };
 const _set  = (k,ym,v) => { const m=_map(k); if(v>0) m[ym]=v; else delete m[ym]; localStorage.setItem(k, JSON.stringify(m)); };
-const incomeOf = ym => Number(_map("blvck_income")[ym])||0;
+const _list = k => { try{ return JSON.parse(localStorage.getItem(k)||"[]"); }catch{ return []; } };
+const _saveList = (k,a) => localStorage.setItem(k, JSON.stringify(a));
+
+const rawIncomeOf = ym => Number(_map("blvck_income")[ym])||0;     // ручной ввод (fallback)
 const kmOf     = ym => Number(_map("blvck_km")[ym])||0;
 const hoursOf  = ym => Number(_map("blvck_hours")[ym])||0;
 const setIncome= (ym,v)=>_set("blvck_income",ym,v);
 const setKm    = (ym,v)=>_set("blvck_km",ym,v);
 const setHours = (ym,v)=>_set("blvck_hours",ym,v);
+
+/* выручка по дням → доход месяца считается сам, ручной ввод = запасной */
+const dailyRevMap = () => _map("blvck_daily_rev");
+const dailyRevOf  = d  => Number(dailyRevMap()[d])||0;
+const setDailyRev = (d,v) => _set("blvck_daily_rev", d, v);
+function sumDaysForYM(ym){ const m=dailyRevMap(); let s=0,n=0; for(const k in m){ if(k.startsWith(ym+"-") && Number(m[k])>0){ s+=Number(m[k]); n++; } } return {sum:s,n}; }
+function incomeSource(ym){ const d=sumDaysForYM(ym); if(d.sum>0) return {src:"days", val:d.sum, n:d.n}; const m=rawIncomeOf(ym); if(m>0) return {src:"manual", val:m, n:0}; return {src:"none", val:0, n:0}; }
+const incomeOf = ym => incomeSource(ym).val;
 function quarterIncome(q, year){ let s=0; for(let mo=(q-1)*3+1; mo<=(q-1)*3+3; mo++) s += incomeOf(`${year}-${String(mo).padStart(2,"0")}`); return s; }
 
+/* план на день */
+const getDailyTarget = () => Number(localStorage.getItem("blvck_daily_target"))||0;
+const setDailyTarget = v => { if(v>0) localStorage.setItem("blvck_daily_target", String(v)); else localStorage.removeItem("blvck_daily_target"); };
+
+/* пресеты заправки */
 const fuelPresets = () => { try{ const a=JSON.parse(localStorage.getItem("blvck_fuel_presets")); return Array.isArray(a)&&a.length===3?a:[50,80,120]; }catch{ return [50,80,120]; } };
 const setFuelPresets = a => localStorage.setItem("blvck_fuel_presets", JSON.stringify(a));
 
-const taxList = () => { try{ return JSON.parse(localStorage.getItem("blvck_tax_reminders")||"[]"); }catch{ return []; } };
-const saveTaxList = a => localStorage.setItem("blvck_tax_reminders", JSON.stringify(a));
+/* налоги + штрафы */
+const taxList = () => _list("blvck_tax_reminders");
+const saveTaxList = a => _saveList("blvck_tax_reminders", a);
+const finesList = () => _list("blvck_fines");
+const saveFinesList = a => _saveList("blvck_fines", a);
 
 /* стрик */
 function calcStreak(set){
   const d=new Date(); d.setHours(0,0,0,0);
   const key=dt=>dt.toISOString().slice(0,10);
-  let cur=0;
+  let c=0;
   if(!set.has(key(d))){ d.setDate(d.getDate()-1); if(!set.has(key(d))) return 0; }
-  while(set.has(key(d))){ cur++; d.setDate(d.getDate()-1); }
-  return cur;
+  while(set.has(key(d))){ c++; d.setDate(d.getDate()-1); }
+  return c;
 }
 function bestStreak(set){
   if(!set.size) return 0;
@@ -98,7 +123,24 @@ function bestStreak(set){
   return best;
 }
 
-/* ---------- чек / скриншот: выбор + сжатие ---------- */
+/* выгодные дни недели */
+function weekdayAvg(){
+  const m=dailyRevMap(); const sum=[0,0,0,0,0,0,0], cnt=[0,0,0,0,0,0,0];
+  for(const k in m){ const v=Number(m[k]); if(v>0){ const d=new Date(k+"T00:00:00").getDay(); sum[d]+=v; cnt[d]++; } }
+  const avg=sum.map((s,i)=> cnt[i]? s/cnt[i] : 0);
+  let best=-1, bi=-1; avg.forEach((a,i)=>{ if(cnt[i] && a>best){best=a;bi=i;} });
+  return {avg, cnt, bestIdx:bi};
+}
+
+/* тренд */
+function trendPct(c,p){
+  if(p<=0) return c>0 ? {dir:"up", pct:null} : {dir:"flat", pct:null};
+  const pct=Math.round((c-p)/p*100);
+  return {dir: pct>0?"up":pct<0?"down":"flat", pct};
+}
+const arrow = d => d==="up"?"↑":d==="down"?"↓":"→";
+
+/* ---------- чек / скриншот ---------- */
 function pickImage(){
   return new Promise(res=>{
     const inp=document.createElement("input");
@@ -118,7 +160,7 @@ function compressImage(file, maxSide, quality){
         w=Math.max(1,Math.round(w*scale)); h=Math.max(1,Math.round(h*scale));
         const c=document.createElement("canvas"); c.width=w; c.height=h;
         const ctx=c.getContext("2d");
-        ctx.fillStyle="#fff"; ctx.fillRect(0,0,w,h);   // фон на случай прозрачного png
+        ctx.fillStyle="#fff"; ctx.fillRect(0,0,w,h);
         ctx.drawImage(img,0,0,w,h);
         res(c.toDataURL("image/jpeg", quality));
       };
@@ -203,13 +245,13 @@ async function renderAsync(){
   app.style.animation = "none"; void app.offsetWidth; app.style.animation = "";
   const html = await ({
     dash: screenDash, stats: screenStats, car: screenCar,
-    docs: screenDocs, settings: screenSettings, fszn: screenFszn,
+    docs: screenDocs, settings: screenSettings, fszn: screenFszn, fines: screenFines,
   }[state.screen])();
   app.innerHTML = html;
   renderTabs();
 }
 function renderTabs(){
-  const active = (state.screen==="fszn") ? "settings" : state.screen;
+  const active = state.screen==="fszn" ? "settings" : state.screen==="fines" ? "dash" : state.screen;
   $("#tabbar").innerHTML = `<div class="inner">${TABS.map(t=>`
     <button class="tab ${active===t.id?"on":""}" data-action="nav" data-to="${t.id}">
       <span class="ti">${t.ico}</span><span>${t.t}</span>
@@ -245,6 +287,11 @@ async function screenDash(){
     if(days < 0) alerts.push({bad:true, t:`Просрочено: ${esc(r.name)}`, s:`срок был ${fmtDate(r.date)}`});
     else if(days <= 14) alerts.push({bad:false, t:`Срок: ${esc(r.name)}`, s:`осталось ${days} дн. (${fmtDate(r.date)})`});
   });
+  // неоплаченные штрафы → баннеры
+  finesList().filter(f=>!f.paid).forEach(f=>{
+    const days = f.date ? Math.round((now - new Date(f.date+"T00:00:00"))/86400000) : null;
+    alerts.push({bad:true, t:`🚨 Не оплачен штраф: ${esc(f.name)}`, s:`${money(f.amount)}${f.date?` · выписан ${fmtDate(f.date)}${days!=null?` (${days} дн. назад)`:""}`:""}`});
+  });
 
   const last5 = exps.slice().sort((a,b)=> (b.date+b.id).localeCompare(a.date+a.id)).slice(0,5);
   const fsznWidget = isIP() ? await fsznMiniWidget() : "";
@@ -258,6 +305,34 @@ async function screenDash(){
   const streakLine = curStreak>0
     ? `<div class="streak">🔥 ${curStreak} ${ruPlural(curStreak,["день","дня","дней"])} подряд · рекорд ${best}</div>`
     : (best>0 ? `<div class="streak" style="color:var(--muted)">рекорд 🔥 ${best} ${ruPlural(best,["день","дня","дней"])} подряд — продолжи серию!</div>` : "");
+
+  // план на день
+  const t = today(); const todayRev = dailyRevOf(t); const target = getDailyTarget();
+  const planCard = target>0 ? (()=>{
+    const pct = Math.min(100, Math.round(todayRev/target*100));
+    const done = todayRev>=target;
+    return `<div class="glass card">
+      <div class="row between"><b>🎯 План на день</b><span class="badge ${done?"good":"warn"}">${done?"выполнен ✅":"в процессе"}</span></div>
+      <div class="progress ${done?"good":""}"><i style="width:${pct}%"></i></div>
+      <div class="row between small"><span class="muted">сегодня ${money(todayRev)}</span><b>${done?"можно домой 🏠":"ещё "+money(Math.max(0,target-todayRev))+" до плана"}</b></div>
+    </div>`;
+  })() : "";
+
+  // тренд месяц-к-месяцу
+  const ym = ymNow(), pym = prevYM(ym);
+  const spentPY = exps.filter(e=> e.date.slice(0,7)===pym).reduce((s,e)=>s+Number(e.amount||0),0);
+  const revCur = sumDaysForYM(ym).sum, revPY = sumDaysForYM(pym).sum;
+  const tSpent = trendPct(spentMonth, spentPY), tRev = trendPct(revCur, revPY);
+  const tSpentCls = tSpent.dir==="up"?"down":tSpent.dir==="down"?"up":"flat";   // рост расходов = плохо
+  const tRevCls   = tRev.dir==="up"?"up":tRev.dir==="down"?"down":"flat";       // рост выручки = хорошо
+  const fmtT = (t,cls,lbl)=> t.dir==="flat" ? `<span class="flat">${lbl} → без изменений</span>`
+    : `<span class="${cls}">${lbl} ${arrow(t.dir)}${t.pct!=null?t.pct+"%":"новое"}</span>`;
+  const trendLine = (spentMonth||spentPY||revCur||revPY)
+    ? `<div class="trendrow"><span class="lbl">к прошлому месяцу:</span>${fmtT(tSpent,tSpentCls,"расходы")} · ${fmtT(tRev,tRevCls,"выручка")}</div>` : "";
+
+  // лучший день недели (мини)
+  const wka = weekdayAvg();
+  const bestWdLine = wka.bestIdx>=0 ? `<div class="small muted" style="margin:6px 2px 0">🗓 твой лучший день недели: <b style="color:var(--text)">${WD[wka.bestIdx]}</b> (в среднем ${rate(wka.avg[wka.bestIdx])})</div>` : "";
 
   return `
     <div class="row between">
@@ -273,7 +348,10 @@ async function screenDash(){
         <div><div style="font-weight:700">${a.t}</div><div class="small muted">${a.s}</div></div>
       </div>`).join("")}
 
+    ${planCard}
     ${freeMoneyWidget(spentMonth)}
+    ${trendLine}
+    ${bestWdLine}
     ${fsznWidget}
 
     <div class="stats">
@@ -290,7 +368,9 @@ async function screenDash(){
           <span class="s">${k==="fuel"?"быстро, в 1 тап":"добавить расход"}</span>
         </button>`).join("")}
     </div>
-    <button class="btn primary" data-action="openDrive" style="margin-top:14px">🚦 Режим за рулём — одной рукой</button>
+    <button class="btn primary" data-action="openDailyRev" style="margin-top:14px">💵 Выручка сегодня${todayRev>0?": "+money(todayRev):""}</button>
+    <button class="btn" data-action="openDrive" style="margin-top:10px">🚦 Режим за рулём — одной рукой</button>
+    <button class="btn ghost" data-action="openFines" style="margin-top:10px">🚨 Штрафы</button>
 
     <div class="h2">Последние записи</div>
     ${last5.length ? `<div class="list">${last5.map(expenseRow).join("")}</div>`
@@ -299,25 +379,28 @@ async function screenDash(){
 }
 function freeMoneyWidget(spentMonth){
   const ym = ymNow();
-  const income = incomeOf(ym);
+  const src = incomeSource(ym);
+  const income = src.val;
   const s = fsznSettings();
   const fszn = isIP() ? (s.rate/100 * s.mzp) : 0;
   const free = income - spentMonth - fszn;
   const cls = free>=0 ? "pos" : "neg";
   const sign = free>=0 ? "+" : "−";
+  const srcLabel = src.src==="days" ? `доход (из ${src.n} ${ruPlural(src.n,["дня","дней","дней"])})`
+                   : src.src==="manual" ? "доход (вручную)" : "доход";
   return `
     <div class="glass card">
       <div class="row between"><b>💰 Свободно за ${monthLabel(ym)}</b>
         <span class="badge ${cls}">${free>=0?"в плюсе":"в минусе"}</span></div>
       <div class="freebig ${cls}">${sign}${money(Math.abs(free))}</div>
-      <div class="row between small"><span class="muted">доход</span><b>${income>0?money(income):"—"}</b></div>
+      <div class="row between small"><span class="muted">${srcLabel}</span><b>${income>0?money(income):"—"}</b></div>
       <div class="row between small"><span class="muted">расходы на авто</span><b>−${money(spentMonth)}</b></div>
       ${isIP()?`<div class="row between small"><span class="muted">взносы ФСЗН (мин.)</span><b>−${money(fszn)}</b></div>`:""}
       <div class="divider"></div>
       <div class="field" style="margin:0">
-        <label>Доход за этот месяц</label>
+        <label>Доход вручную (если не вносишь выручку по дням)</label>
         <div class="row" style="gap:8px">
-          <input id="income_month" class="input" type="number" inputmode="decimal" value="${income||""}" placeholder="0">
+          <input id="income_month" class="input" type="number" inputmode="decimal" value="${src.src==="manual"?income:""}" placeholder="0">
           <button class="btn sm primary" data-action="setIncome" style="width:auto">💾</button>
         </div>
       </div>
@@ -339,7 +422,7 @@ function expenseRow(e){
     </div>`;
 }
 
-/* ---------- ГРАФИКИ + ЭФФЕКТИВНОСТЬ ---------- */
+/* ---------- ГРАФИКИ + ЭФФЕКТИВНОСТЬ + ВЫГОДНЫЕ ДНИ ---------- */
 async function screenStats(){
   const exps = await dbAll("expenses");
   const filtered = filterByRange(exps, state.range);
@@ -359,6 +442,9 @@ async function screenStats(){
   const perKmCost = km>0 ? spentMonth/km : null;
   const margin    = income>0 ? free/income*100 : null;
 
+  const wka = weekdayAvg();
+  const hasWd = wka.bestIdx>=0;
+
   return `
     <div class="h1">Аналитика</div>
     <p class="muted small">расходы по категориям и месяцам</p>
@@ -373,6 +459,14 @@ async function screenStats(){
     <div class="glass card">
       <b>По месяцам</b>
       ${months.length>0 ? bars(months.map(m=>({label:m.slice(2), value:byMonth[m]}))) : `<div class="empty">Нет данных</div>`}
+    </div>
+
+    <div class="h2">Выгодные дни недели</div>
+    <div class="glass card">
+      ${hasWd
+        ? `${bars(WD_ORDER.map(i=>({label:WD[i], value:wka.avg[i]})))}
+           <div class="fszn-note">🏆 твой лучший день — <b>${WD[wka.bestIdx]}</b> (в среднем ${rate(wka.avg[wka.bestIdx])} выручки). Считается по внесённой выручке за день — чем больше дней заполнишь, тем точнее карта.</div>`
+        : `<div class="empty">Вноси «💵 Выручка сегодня» — и здесь появится карта выгодных дней недели</div>`}
     </div>
 
     <div class="h2">Эффективность за ${monthLabel(ym)}</div>
@@ -391,7 +485,7 @@ async function screenStats(){
         <div class="e"><div class="v">${perKmCost!=null?rate(perKmCost):"—"}</div><div class="k">₽ / км затрат</div></div>
         <div class="e"><div class="v">${margin!=null?margin.toFixed(0)+"%":"—"}</div><div class="k">маржа (свободно/доход)</div></div>
       </div>
-      <div class="fszn-note">💡 Разбивка «в какие дни недели и часы выгоднее работать» появится вместе с учётом смен — там каждая смена даст дату и часы за рулём. Сейчас метрики считаю по итогу месяца из твоих цифр (доход берётся с главной).</div>
+      <div class="fszn-note">💡 Разбивка по часам внутри дня появится вместе с учётом смен (таймером). Сейчас метрики — по итогу месяца; доход берётся из выручки по дням (или вручную с главной).</div>
     </div>`;
 }
 function filterByRange(exps, range){
@@ -484,7 +578,7 @@ async function screenDocs(){
     ${docs.length? `<div class="list">${docs.map(d=>{
         const days = d.expiryDate? Math.round((new Date(d.expiryDate)-new Date())/86400000):null;
         const warn = days!=null && days<=30;
-        return `<div class="item"><div class="ic">${warn?(days<0?"⛔":""):"📄"}</div>
+        return `<div class="item"><div class="ic">${warn?(days<0?"⛔":"⏰"):"📄"}</div>
           <div class="meta"><div class="t">${esc(d.name)}</div>
             <div class="s">${d.expiryDate?("до "+fmtDate(d.expiryDate)+(days!=null?(days<0?" · просрочено":" · "+days+" дн."):"")):"бессрочно"}</div></div>
           <button class="del" data-action="delDoc" data-id="${d.id}">🗑</button></div>`;}).join("")}</div>` : `<div class="glass empty">Нет документов</div>`}
@@ -494,6 +588,53 @@ async function screenDocs(){
           <div class="meta"><div class="t">${esc(m.title)}</div>
             <div class="s">${fmtDate(m.date)}${m.mileage?" · "+Number(m.mileage).toLocaleString("ru-RU")+" км":""}${m.note?" · "+esc(m.note):""}</div></div>
           <button class="del" data-action="delMaint" data-id="${m.id}">🗑</button></div>`).join("")}</div>` : `<div class="glass empty">Нет событий</div>`}`;
+}
+
+/* ---------- ШТРАФЫ ---------- */
+async function screenFines(){
+  const list = finesList();
+  const now = new Date(); now.setHours(0,0,0,0);
+  const unpaid = list.filter(f=>!f.paid);
+  const unpaidSum = unpaid.reduce((s,f)=>s+Number(f.amount||0),0);
+  const y=YEAR();
+  const paidYear = list.filter(f=>f.paid && (f.paidDate||"").slice(0,4)===String(y));
+  const paidYearSum = paidYear.reduce((s,f)=>s+Number(f.amount||0),0);
+  const sorted = list.slice().sort((a,b)=>{
+    if(a.paid!==b.paid) return a.paid?1:-1;            // неоплаченные сверху
+    return (b.paidDate||b.date||"").localeCompare(a.paidDate||a.date||"");
+  });
+
+  return `
+    <div class="row between">
+      <div class="h1" style="margin:0">🚨 Штрафы</div>
+      <button class="btn sm ghost" data-action="nav" data-to="dash">← Назад</button>
+    </div>
+    <p class="muted small">долги светятся на главной; при «оплачено» штраф сам уходит в расходы</p>
+
+    <div class="stats">
+      <div class="glass stat"><div class="v neg">${unpaid.length?money(unpaidSum):money(0)}</div><div class="k">не оплачено (${unpaid.length})</div></div>
+      <div class="glass stat"><div class="v">${money(paidYearSum)}</div><div class="k">оплачено за ${y}</div></div>
+    </div>
+
+    <button class="btn primary" data-action="openAddFine" style="margin-top:12px">➕ Добавить штраф</button>
+
+    <div class="h2">Список</div>
+    ${sorted.length? `<div class="list">${sorted.map(f=>{
+        const days = f.date? Math.round((now - new Date(f.date+"T00:00:00"))/86400000):null;
+        if(!f.paid){
+          return `<div class="item"><div class="ic">🚨</div>
+            <div class="meta"><div class="t">${esc(f.name)}</div>
+              <div class="s">${f.date?`выписан ${fmtDate(f.date)}${days!=null?` · ${days} дн. назад`:""}`:"без даты"}</div></div>
+            <div class="amt neg">−${money(f.amount)}</div>
+            <button class="edit" data-action="finePaid" data-id="${f.id}" title="оплачено">✅</button>
+            <button class="del" data-action="fineDel" data-id="${f.id}">🗑</button></div>`;
+        }
+        return `<div class="item"><div class="ic">✅</div>
+          <div class="meta"><div class="t">${esc(f.name)}</div>
+            <div class="s">оплачен ${fmtDate(f.paidDate)}</div></div>
+          <div class="amt">−${money(f.amount)}</div>
+          <button class="del" data-action="fineDel" data-id="${f.id}">🗑</button></div>`;
+      }).join("")}</div>` : `<div class="glass empty">Штрафов нет — так держать 👍</div>`}`;
 }
 
 /* ---------- ФСЗН + НАЛОГИ + ОТЧЁТЫ ---------- */
@@ -556,9 +697,9 @@ async function screenFszn(){
       <div class="glass qcard">
         <div class="qhead"><div class="qtitle">${q.q}-й квартал</div><span class="badge ${q.status}">${q.badge}</span></div>
         <div class="qmini"><span>минимум за квартал</span><b>${money(minQ)}</b></div>
-        <div class="qmini"><span>доход (авто по месяцам)</span><b>${q.monthSum>0?money(q.monthSum):"—"}</b></div>
+        <div class="qmini"><span>доход (авто по дням/месяцам)</span><b>${q.monthSum>0?money(q.monthSum):"—"}</b></div>
         <div class="grid2">
-          <div class="field" style="margin:8px 0 0"><label>Доход вручную (если не по месяцам)</label>
+          <div class="field" style="margin:8px 0 0"><label>Доход вручную (если не по дням)</label>
             <input class="input" type="number" inputmode="decimal" data-fszn="income" data-q="${q.q}" value="${q.manual||""}" placeholder="0"></div>
           <div class="field" style="margin:8px 0 0"><label>Уплачено взносов</label>
             <input class="input" type="number" inputmode="decimal" data-fszn="paid" data-q="${q.q}" value="${q.paid||""}" placeholder="0"></div>
@@ -574,7 +715,7 @@ async function screenFszn(){
     ${taxes.length? `<div class="list">${taxes.map(r=>{
         const days = r.date? Math.round((new Date(r.date)-new Date())/86400000):null;
         const rep = r.repeat && r.repeat!=="none" ? ` · повтор: ${{month:"мес.",quarter:"квартал",year:"год"}[r.repeat]}` : "";
-        return `<div class="item"><div class="ic">${days!=null&&days<0?"⛔":""}</div>
+        return `<div class="item"><div class="ic">${days!=null&&days<0?"⛔":"🗓"}</div>
           <div class="meta"><div class="t">${esc(r.name)}</div>
             <div class="s">${r.date?fmtDate(r.date)+(days!=null?(days<0?" · просрочено":` · ${days} дн.`):""):"без даты"}${rep}</div></div>
           <button class="edit" data-action="taxPaid" data-id="${r.id}" title="уплачено">✅</button>
@@ -642,6 +783,14 @@ async function screenSettings(){
       <div class="row between"><span>Валюта</span>
         <div class="chips">${CURS.map(c=>`<span class="chip ${c===cur()?"on":""}" data-action="setCur" data-cur="${c}">${c}</span>`).join("")}</div></div>
     </div>
+
+    <div class="h2">Деньги и штрафы</div>
+    <div class="glass card">
+      <button class="btn primary" data-action="openDailyRev">💵 Выручка сегодня</button>
+      <div style="height:10px"></div>
+      <button class="btn" data-action="openFines">🚨 Штрафы</button>
+    </div>
+
     <div class="h2">Режим ИП</div>
     <div class="glass card">
       <div class="row between">
@@ -664,7 +813,7 @@ async function screenSettings(){
     </div>` : ``}
     <div class="h2">Резервная копия</div>
     <div class="glass card">
-      <p class="muted small" style="margin-top:0">Все данные живут только в твоём телефоне. Сохраняй копию в файл — чеки сохранятся вместе с ней.</p>
+      <p class="muted small" style="margin-top:0">Полная копия: расходы, чеки, доход, выручка по дням, штрафы, налоги, настройки ИП — всё в одном файле.</p>
       <button class="btn primary" data-action="export">⬇️ Сохранить копию</button>
       <div style="height:10px"></div>
       <button class="btn" data-action="import">⬆️ Восстановить из файла</button>
@@ -722,7 +871,16 @@ function openDrive(){
   m.hidden = false;
   try{ TG?.BackButton?.show(); }catch{}
 }
-
+function modalDailyRev(){
+  const t=today(); const rev=dailyRevOf(t); const target=getDailyTarget();
+  openModal(`
+    <div class="mhead"><h3>💵 Выручка сегодня</h3><button class="x" data-action="close">×</button></div>
+    <p class="muted small" style="margin-top:0">${fmtDate(t)} · из этих сумм сам соберётся доход за месяц и карта выгодных дней</p>
+    <div class="field"><label>Выручка за день</label><input id="d_rev" class="input" type="number" inputmode="decimal" value="${rev||""}" placeholder="0" autofocus></div>
+    <div class="field"><label>План на день (необязательно)</label><input id="d_target" class="input" type="number" inputmode="decimal" value="${target||""}" placeholder="сколько хочу привезти"></div>
+    <button class="btn primary" data-action="saveDailyRev">Сохранить</button>`);
+  setTimeout(()=> $("#d_rev")?.focus(), 60);
+}
 function modalExpense(cat, edit=null){
   state.modalCat = edit ? edit.category : cat;
   state.modalEditId = edit ? edit.id : null;
@@ -754,6 +912,8 @@ function modalMaint(){
 function modalDoc(){
   openModal(`
     <div class="mhead"><h3>📄 Документ</h3><button class="x" data-action="close">×</button></div>
+    <div class="field"><label>Быстрые названия</label>
+      <div class="chips">${DOC_PRESETS.map(t=>`<span class="chip" data-action="docPreset" data-name="${esc(t)}">${esc(t)}</span>`).join("")}</div></div>
     <div class="field"><label>Название</label><input id="m_name" class="input" placeholder="Страховка / Техосмотр" autofocus></div>
     <div class="grid2">
       <div class="field"><label>Выдан</label><input id="m_issue" class="input" type="date"></div>
@@ -796,6 +956,19 @@ function modalTaxReminder(){
     </div>
     <button class="btn primary" data-action="saveTax">Сохранить</button>`);
 }
+function modalFine(){
+  openModal(`
+    <div class="mhead"><h3>🚨 Штраф</h3><button class="x" data-action="close">×</button></div>
+    <div class="field"><label>Быстрые названия</label>
+      <div class="chips">${FINE_PRESETS.map(t=>`<span class="chip" data-action="finePreset" data-name="${esc(t)}">${esc(t)}</span>`).join("")}</div></div>
+    <div class="field"><label>За что</label><input id="f_name" class="input" placeholder="Камера / превышение" autofocus></div>
+    <div class="grid2">
+      <div class="field"><label>Сумма</label><input id="f_amount" class="input" type="number" inputmode="decimal" placeholder="0"></div>
+      <div class="field"><label>Дата выписки</label><input id="f_date" class="input" type="date" value="${today()}"></div>
+    </div>
+    <button class="btn primary" data-action="saveFine">Сохранить как неоплаченный</button>`);
+  setTimeout(()=> $("#f_name")?.focus(), 60);
+}
 
 /* ---------- действия ---------- */
 async function fuelPreset(amt){
@@ -807,6 +980,13 @@ function saveFuelPresets(){
   const a = [0,1,2].map(i=> parseFloat($("#fp"+i).value)||0);
   if(a.some(v=>v<=0)){ toast("Все суммы должны быть > 0"); hapticBad(); return; }
   setFuelPresets(a); closeModal(); toast("Суммы сохранены"); hapticOk();
+}
+function saveDailyRev(){
+  const rev = parseFloat($("#d_rev").value)||0;
+  const target = parseFloat($("#d_target").value)||0;
+  setDailyRev(today(), rev);
+  setDailyTarget(target);
+  closeModal(); toast(rev>0?`Выручка ${money(rev)}`:"Выручка очищена"); hapticOk(); renderAsync();
 }
 async function saveExpense(){
   const amount = parseFloat($("#m_amount").value);
@@ -863,6 +1043,7 @@ function saveEff(){
   toast("Пробег и часы сохранены"); hapticOk(); renderAsync();
 }
 
+/* налоги */
 function saveTax(){
   const name = $("#t_name").value.trim(); if(!name){ toast("Введи название"); hapticBad(); return; }
   const list = taxList();
@@ -884,6 +1065,29 @@ function taxPaid(id){
   hapticOk(); renderAsync();
 }
 function taxDel(id){ saveTaxList(taxList().filter(x=>x.id!==id)); toast("Удалено"); haptic(); renderAsync(); }
+
+/* штрафы */
+function saveFine(){
+  const name = $("#f_name").value.trim(); if(!name){ toast("Введи «за что»"); hapticBad(); return; }
+  const amount = parseFloat($("#f_amount").value)||0; if(amount<=0){ toast("Введи сумму"); hapticBad(); return; }
+  const list = finesList();
+  list.push({ id:uid(), name, amount, date:$("#f_date").value||today(), paid:false, paidDate:null, expenseId:null });
+  saveFinesList(list); closeModal(); toast("Штраф добавлен — висит долгом"); hapticOk(); renderAsync();
+}
+async function finePaid(id){
+  const list = finesList(); const r = list.find(x=>x.id===id); if(!r || r.paid) return;
+  r.paid = true; r.paidDate = today();
+  const exp = { id:uid(), category:"other", amount:r.amount, date:today(), mileage:null, note:"Штраф: "+r.name, receipt:null };
+  await dbPut("expenses", exp);
+  r.expenseId = exp.id;
+  saveFinesList(list); toast("Оплачено → ушло в расходы"); hapticOk(); renderAsync();
+}
+async function fineDel(id){
+  if(!confirm("Удалить штраф?")) return;
+  const list = finesList(); const r = list.find(x=>x.id===id);
+  if(r && r.paid && r.expenseId){ await dbDel("expenses", r.expenseId); }   // убираем связанный расход
+  saveFinesList(list.filter(x=>x.id!==id)); toast("Удалено"); haptic(); renderAsync();
+}
 
 /* ---------- CSV-отчёты ---------- */
 function csvCell(v){ v = String(v ?? ""); return /[";\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }
@@ -914,8 +1118,17 @@ async function exportCSV(kind){
   const byCat = {}; exps.forEach(e=> byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
   Object.entries(byCat).forEach(([k,v])=> L.push([(CATS[k]?.t||k), v.toFixed(2)]));
   L.push([]);
+  L.push(["ВЫРУЧКА ПО ДНЯМ"]);
+  const drm = dailyRevMap();
+  Object.keys(drm).filter(d=> set.has(d.slice(0,7))).sort().forEach(d=> L.push([d, Number(drm[d]).toFixed(2)]));
+  L.push([]);
   L.push(["ДОХОД ПО МЕСЯЦАМ"]);
   months.forEach(ym=> L.push([monthLabel(ym), incomeOf(ym).toFixed(2)]));
+  L.push([]);
+  L.push(["ШТРАФЫ (оплаченные за период)"]);
+  finesList().filter(f=> f.paid && set.has((f.paidDate||"").slice(0,7)))
+    .sort((a,b)=> (a.paidDate||"").localeCompare(b.paidDate||""))
+    .forEach(f=> L.push([f.paidDate, f.name, Number(f.amount).toFixed(2)]));
   if(isIP()){
     const s = fsznSettings();
     L.push([]); L.push(["ФСЗН ПО КВАРТАЛАМ"]);
@@ -932,12 +1145,16 @@ async function exportCSV(kind){
   toast("CSV сохранён"); hapticOk();
 }
 
-/* ---------- бэкап ---------- */
+/* ---------- ПОЛНЫЙ бэкап (IndexedDB + весь нужный localStorage) ---------- */
+const LS_KEYS = ["blvck_cur","blvck_theme","blvck_is_ip","blvck_income","blvck_km","blvck_hours",
+  "blvck_fuel_presets","blvck_tax_reminders","blvck_fszn_mzp","blvck_fszn_rate","blvck_streak_best",
+  "blvck_fines","blvck_daily_rev","blvck_daily_target","blvck_tg_name"];
 async function exportBackup(){
-  const data = { _app:"BLVCK TAXI", _v:2, _at:new Date().toISOString() };
+  const data = { _app:"BLVCK TAXI", _v:3, _at:new Date().toISOString() };
   for(const s of STORES) data[s] = await dbAll(s);
+  data._ls = Object.fromEntries(LS_KEYS.map(k=>[k, localStorage.getItem(k)]).filter(([,v])=>v!=null));
   download(`blvck-taxi-backup-${today()}.json`, JSON.stringify(data,null,2), "application/json");
-  toast("Копия сохранена (с чеками)"); hapticOk();
+  toast("Полная копия сохранена"); hapticOk();
 }
 function importBackup(){ $("#restoreInput").click(); }
 async function handleRestoreFile(file){
@@ -946,12 +1163,20 @@ async function handleRestoreFile(file){
     const data = JSON.parse(await file.text());
     if(!confirm("Заменить ВСЕ текущие данные данными из файла?")) return;
     for(const s of STORES){ await dbClear(s); for(const v of (data[s]||[])) await dbPut(s,v); }
-    toast("Данные восстановлены"); hapticOk(); renderAsync();
+    if(data._ls && typeof data._ls==="object"){
+      for(const k of LS_KEYS){
+        if(data._ls[k]!=null) localStorage.setItem(k, data._ls[k]);
+        else localStorage.removeItem(k);
+      }
+    }
+    applyTheme();
+    toast("Данные восстановлены полностью"); hapticOk(); renderAsync();
   }catch(e){ toast("Ошибка файла"); hapticBad(); }
 }
 async function wipe(){
   if(!confirm("Удалить ВСЕ данные приложения? Это необратимо.")) return;
   for(const s of STORES) await dbClear(s);
+  LS_KEYS.filter(k=> k!=="blvck_theme" && k!=="blvck_cur").forEach(k=> localStorage.removeItem(k));
   toast("Всё удалено"); hapticOk(); renderAsync();
 }
 
@@ -993,6 +1218,14 @@ document.addEventListener("click", async (ev)=>{
     case "saveFuelPresets": saveFuelPresets(); break;
     case "openDrive":  openDrive(); break;
     case "driveCat":   closeModal(); modalExpense(el.dataset.cat); break;
+    case "openDailyRev": modalDailyRev(); break;
+    case "saveDailyRev": saveDailyRev(); break;
+    case "openFines":  state.screen = "fines"; renderAsync(); break;
+    case "openAddFine":modalFine(); break;
+    case "finePreset": { const i=$("#f_name"); if(i && !i.value) i.value = el.dataset.name; } break;
+    case "saveFine":   saveFine(); break;
+    case "finePaid":   await finePaid(el.dataset.id); break;
+    case "fineDel":    await fineDel(el.dataset.id); break;
     case "editExpense":await editExpense(el.dataset.id); break;
     case "pickReceipt":     await addReceiptFromPicker(); break;
     case "clearReceipt":    state.modalReceipt=null; { const b=$("#m_receipt_box"); if(b) b.innerHTML=receiptBoxHTML(); } haptic(); break;
@@ -1001,6 +1234,7 @@ document.addEventListener("click", async (ev)=>{
     case "openEditCar":modalCar(); break;
     case "openAddMaint":modalMaint(); break;
     case "openAddDoc": modalDoc(); break;
+    case "docPreset":  { const i=$("#m_name"); if(i && !i.value) i.value = el.dataset.name; } break;
     case "openFszn":   state.screen = "fszn"; renderAsync(); break;
     case "openAddTax": modalTaxReminder(); break;
     case "taxPreset":  { const i=$("#t_name"); if(i && !i.value) i.value = el.dataset.name; } break;
