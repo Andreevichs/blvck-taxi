@@ -4,7 +4,8 @@
    + Telegram Mini App + ФСЗН/налоги ИП + быстрая заправка
    + эффективность + режим «за рулём» + стрик + shortcuts + чеки
    + ШТРАФЫ + выручка за день/план/выгодные дни + тренд + пресеты доков
-   + ПОЛНЫЙ бэкап (включая настройки/доход/налоги/штрафы)
+   + ЭКРАН ЧЕКОВ: просмотр галереей + выгрузка HTML(PDF)/ZIP/CSV за период
+   + ПОЛНЫЙ бэкап
    ========================================================= */
 
 /* ===== TELEGRAM MINI APP ===== */
@@ -46,9 +47,10 @@ const TAX_PRESETS = ["Единый налог","ФСЗН за квартал","�
 const FINE_PRESETS = ["Камера / превышение","Парковка","Ремень / телефон за рулём","Нет оклейки / шашечек","Нет карточки водителя","Просрочен техосмотр / страховка","Тонировка"];
 const DOC_PRESETS = ["Медсправка водителя","Карточка водителя такси","Оклейка / шашечки","Страховка (ОСГОП)","Техосмотр"];
 const WD = ["Вс","Пн","Вт","Ср","Чт","Пт","Сб"];
-const WD_ORDER = [1,2,3,4,5,6,0]; // Пн..Вс
+const WD_ORDER = [1,2,3,4,5,6,0];
 
-const state = { screen:"dash", range:"month", modalCat:"fuel", modalEditId:null, modalReceipt:null };
+const state = { screen:"dash", range:"month", modalCat:"fuel", modalEditId:null, modalReceipt:null,
+                receiptMode:"quarter", receiptOffset:0, receiptCat:"all" };
 
 /* ---------- утилиты ---------- */
 const $  = (s, r=document) => r.querySelector(s);
@@ -68,20 +70,43 @@ const isIP = () => localStorage.getItem("blvck_is_ip") === "1";
 function ruPlural(n,f){ const a=Math.abs(n)%100,b=a%10; if(a>=11&&a<=14)return f[2]; if(b===1)return f[0]; if(b>=2&&b<=4)return f[1]; return f[2]; }
 function prevYM(ym){ const [y,m]=ym.split("-").map(Number); return new Date(y,m-2,1).toISOString().slice(0,7); }
 
+/* выбор периода со стрелками (для экрана чеков) */
+function periodRange(mode, offset){
+  const now = new Date();
+  if(mode==="all") return {from:null, to:null, label:"Всё время"};
+  if(mode==="month"){
+    const base = new Date(now.getFullYear(), now.getMonth()+offset, 1);
+    const y=base.getFullYear(), m=base.getMonth();
+    const from = new Date(y,m,1).toISOString().slice(0,10);
+    const to   = new Date(y,m+1,0).toISOString().slice(0,10);
+    return {from, to, label: monthLabel(from.slice(0,7))};
+  }
+  if(mode==="quarter"){
+    let q = CUR_Q()-1 + offset; let y = now.getFullYear();
+    while(q<0){ q+=4; y--; } while(q>3){ q-=4; y++; }
+    const m0 = q*3;
+    const from = new Date(y,m0,1).toISOString().slice(0,10);
+    const to   = new Date(y,m0+3,0).toISOString().slice(0,10);
+    return {from, to, label:`${y} · Q${q+1}`};
+  }
+  // year
+  const y = now.getFullYear()+offset;
+  return {from:`${y}-01-01`, to:`${y}-12-31`, label:`${y}`};
+}
+
 /* ---------- localStorage-словари ---------- */
 const _map  = k => { try{ return JSON.parse(localStorage.getItem(k)||"{}"); }catch{ return {}; } };
 const _set  = (k,ym,v) => { const m=_map(k); if(v>0) m[ym]=v; else delete m[ym]; localStorage.setItem(k, JSON.stringify(m)); };
 const _list = k => { try{ return JSON.parse(localStorage.getItem(k)||"[]"); }catch{ return []; } };
 const _saveList = (k,a) => localStorage.setItem(k, JSON.stringify(a));
 
-const rawIncomeOf = ym => Number(_map("blvck_income")[ym])||0;     // ручной ввод (fallback)
+const rawIncomeOf = ym => Number(_map("blvck_income")[ym])||0;
 const kmOf     = ym => Number(_map("blvck_km")[ym])||0;
 const hoursOf  = ym => Number(_map("blvck_hours")[ym])||0;
 const setIncome= (ym,v)=>_set("blvck_income",ym,v);
 const setKm    = (ym,v)=>_set("blvck_km",ym,v);
 const setHours = (ym,v)=>_set("blvck_hours",ym,v);
 
-/* выручка по дням → доход месяца считается сам, ручной ввод = запасной */
 const dailyRevMap = () => _map("blvck_daily_rev");
 const dailyRevOf  = d  => Number(dailyRevMap()[d])||0;
 const setDailyRev = (d,v) => _set("blvck_daily_rev", d, v);
@@ -90,21 +115,17 @@ function incomeSource(ym){ const d=sumDaysForYM(ym); if(d.sum>0) return {src:"da
 const incomeOf = ym => incomeSource(ym).val;
 function quarterIncome(q, year){ let s=0; for(let mo=(q-1)*3+1; mo<=(q-1)*3+3; mo++) s += incomeOf(`${year}-${String(mo).padStart(2,"0")}`); return s; }
 
-/* план на день */
 const getDailyTarget = () => Number(localStorage.getItem("blvck_daily_target"))||0;
 const setDailyTarget = v => { if(v>0) localStorage.setItem("blvck_daily_target", String(v)); else localStorage.removeItem("blvck_daily_target"); };
 
-/* пресеты заправки */
 const fuelPresets = () => { try{ const a=JSON.parse(localStorage.getItem("blvck_fuel_presets")); return Array.isArray(a)&&a.length===3?a:[50,80,120]; }catch{ return [50,80,120]; } };
 const setFuelPresets = a => localStorage.setItem("blvck_fuel_presets", JSON.stringify(a));
 
-/* налоги + штрафы */
 const taxList = () => _list("blvck_tax_reminders");
 const saveTaxList = a => _saveList("blvck_tax_reminders", a);
 const finesList = () => _list("blvck_fines");
 const saveFinesList = a => _saveList("blvck_fines", a);
 
-/* стрик */
 function calcStreak(set){
   const d=new Date(); d.setHours(0,0,0,0);
   const key=dt=>dt.toISOString().slice(0,10);
@@ -122,8 +143,6 @@ function bestStreak(set){
   }
   return best;
 }
-
-/* выгодные дни недели */
 function weekdayAvg(){
   const m=dailyRevMap(); const sum=[0,0,0,0,0,0,0], cnt=[0,0,0,0,0,0,0];
   for(const k in m){ const v=Number(m[k]); if(v>0){ const d=new Date(k+"T00:00:00").getDay(); sum[d]+=v; cnt[d]++; } }
@@ -131,8 +150,6 @@ function weekdayAvg(){
   let best=-1, bi=-1; avg.forEach((a,i)=>{ if(cnt[i] && a>best){best=a;bi=i;} });
   return {avg, cnt, bestIdx:bi};
 }
-
-/* тренд */
 function trendPct(c,p){
   if(p<=0) return c>0 ? {dir:"up", pct:null} : {dir:"flat", pct:null};
   const pct=Math.round((c-p)/p*100);
@@ -202,6 +219,39 @@ function openReceiptViewer(src){
   try{TG?.BackButton?.show();}catch{}
 }
 
+/* ---------- ZIP (без зависимостей, store) + base64→bytes ---------- */
+const CRC_TABLE = (()=>{ const t=new Uint32Array(256); for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c = (c&1)?(0xEDB88320 ^ (c>>>1)):(c>>>1); t[n]=c>>>0; } return t; })();
+function crc32(bytes){ let c=0xFFFFFFFF; for(let i=0;i<bytes.length;i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c>>>8); return (c ^ 0xFFFFFFFF)>>>0; }
+function b64ToBytes(dataURL){ const b64=dataURL.split(",")[1]||""; const bin=atob(b64); const u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); return u; }
+function strBytes(s){ return new TextEncoder().encode(s); }
+function buildZip(files){ // files: [{name, data:Uint8Array}]
+  const parts=[]; const central=[]; let offset=0;
+  const UTF8=0x0800;
+  for(const f of files){
+    const nameB=strBytes(f.name); const crc=crc32(f.data); const size=f.data.length;
+    const lh=new ArrayBuffer(30); const lv=new DataView(lh);
+    lv.setUint32(0,0x04034b50,true); lv.setUint16(4,20,true); lv.setUint16(6,UTF8,true);
+    lv.setUint16(8,0,true); lv.setUint16(10,0,true); lv.setUint16(12,0,true);
+    lv.setUint32(14,crc,true); lv.setUint32(18,size,true); lv.setUint32(22,size,true);
+    lv.setUint16(26,nameB.length,true); lv.setUint16(28,0,true);
+    parts.push(new Uint8Array(lh), nameB, f.data);
+    const ch=new ArrayBuffer(46); const cv=new DataView(ch);
+    cv.setUint32(0,0x02014b50,true); cv.setUint16(4,20,true); cv.setUint16(6,UTF8,true);
+    cv.setUint16(8,0,true); cv.setUint16(10,0,true); cv.setUint16(12,0,true);
+    cv.setUint32(14,crc,true); cv.setUint32(18,size,true); cv.setUint32(22,size,true);
+    cv.setUint16(26,nameB.length,true); cv.setUint16(28,0,true); cv.setUint16(30,0,true);
+    cv.setUint16(32,0,true); cv.setUint16(34,0,true); cv.setUint32(36,0,true); cv.setUint32(42,offset,true);
+    central.push(new Uint8Array(ch), nameB);
+    offset += 30 + nameB.length + size;
+  }
+  const cdStart=offset; let cdSize=0; central.forEach(p=>cdSize+=p.length);
+  const eocd=new ArrayBuffer(22); const ev=new DataView(eocd);
+  ev.setUint32(0,0x06054b50,true); ev.setUint16(4,0,true); ev.setUint16(6,0,true);
+  ev.setUint16(8,files.length,true); ev.setUint16(10,files.length,true);
+  ev.setUint32(12,cdSize,true); ev.setUint32(16,cdStart,true); ev.setUint16(20,0,true);
+  return new Blob([...parts, ...central, new Uint8Array(eocd)], {type:"application/zip"});
+}
+
 function toast(msg){
   const t = $("#toast"); t.textContent = msg; t.hidden = false;
   clearTimeout(toast._t); toast._t = setTimeout(()=> t.hidden = true, 1800);
@@ -245,13 +295,16 @@ async function renderAsync(){
   app.style.animation = "none"; void app.offsetWidth; app.style.animation = "";
   const html = await ({
     dash: screenDash, stats: screenStats, car: screenCar,
-    docs: screenDocs, settings: screenSettings, fszn: screenFszn, fines: screenFines,
+    docs: screenDocs, settings: screenSettings, fszn: screenFszn,
+    fines: screenFines, receipts: screenReceipts,
   }[state.screen])();
   app.innerHTML = html;
   renderTabs();
 }
 function renderTabs(){
-  const active = state.screen==="fszn" ? "settings" : state.screen==="fines" ? "dash" : state.screen;
+  const active = state.screen==="fszn" ? "settings"
+               : (state.screen==="fines"||state.screen==="receipts") ? "dash"
+               : state.screen;
   $("#tabbar").innerHTML = `<div class="inner">${TABS.map(t=>`
     <button class="tab ${active===t.id?"on":""}" data-action="nav" data-to="${t.id}">
       <span class="ti">${t.ico}</span><span>${t.t}</span>
@@ -287,7 +340,6 @@ async function screenDash(){
     if(days < 0) alerts.push({bad:true, t:`Просрочено: ${esc(r.name)}`, s:`срок был ${fmtDate(r.date)}`});
     else if(days <= 14) alerts.push({bad:false, t:`Срок: ${esc(r.name)}`, s:`осталось ${days} дн. (${fmtDate(r.date)})`});
   });
-  // неоплаченные штрафы → баннеры
   finesList().filter(f=>!f.paid).forEach(f=>{
     const days = f.date ? Math.round((now - new Date(f.date+"T00:00:00"))/86400000) : null;
     alerts.push({bad:true, t:`🚨 Не оплачен штраф: ${esc(f.name)}`, s:`${money(f.amount)}${f.date?` · выписан ${fmtDate(f.date)}${days!=null?` (${days} дн. назад)`:""}`:""}`});
@@ -306,7 +358,6 @@ async function screenDash(){
     ? `<div class="streak">🔥 ${curStreak} ${ruPlural(curStreak,["день","дня","дней"])} подряд · рекорд ${best}</div>`
     : (best>0 ? `<div class="streak" style="color:var(--muted)">рекорд 🔥 ${best} ${ruPlural(best,["день","дня","дней"])} подряд — продолжи серию!</div>` : "");
 
-  // план на день
   const t = today(); const todayRev = dailyRevOf(t); const target = getDailyTarget();
   const planCard = target>0 ? (()=>{
     const pct = Math.min(100, Math.round(todayRev/target*100));
@@ -318,19 +369,17 @@ async function screenDash(){
     </div>`;
   })() : "";
 
-  // тренд месяц-к-месяцу
   const ym = ymNow(), pym = prevYM(ym);
   const spentPY = exps.filter(e=> e.date.slice(0,7)===pym).reduce((s,e)=>s+Number(e.amount||0),0);
   const revCur = sumDaysForYM(ym).sum, revPY = sumDaysForYM(pym).sum;
   const tSpent = trendPct(spentMonth, spentPY), tRev = trendPct(revCur, revPY);
-  const tSpentCls = tSpent.dir==="up"?"down":tSpent.dir==="down"?"up":"flat";   // рост расходов = плохо
-  const tRevCls   = tRev.dir==="up"?"up":tRev.dir==="down"?"down":"flat";       // рост выручки = хорошо
-  const fmtT = (t,cls,lbl)=> t.dir==="flat" ? `<span class="flat">${lbl} → без изменений</span>`
-    : `<span class="${cls}">${lbl} ${arrow(t.dir)}${t.pct!=null?t.pct+"%":"новое"}</span>`;
+  const tSpentCls = tSpent.dir==="up"?"down":tSpent.dir==="down"?"up":"flat";
+  const tRevCls   = tRev.dir==="up"?"up":tRev.dir==="down"?"down":"flat";
+  const fmtT = (tt,cls,lbl)=> tt.dir==="flat" ? `<span class="flat">${lbl} → без изменений</span>`
+    : `<span class="${cls}">${lbl} ${arrow(tt.dir)}${tt.pct!=null?tt.pct+"%":"новое"}</span>`;
   const trendLine = (spentMonth||spentPY||revCur||revPY)
     ? `<div class="trendrow"><span class="lbl">к прошлому месяцу:</span>${fmtT(tSpent,tSpentCls,"расходы")} · ${fmtT(tRev,tRevCls,"выручка")}</div>` : "";
 
-  // лучший день недели (мини)
   const wka = weekdayAvg();
   const bestWdLine = wka.bestIdx>=0 ? `<div class="small muted" style="margin:6px 2px 0">🗓 твой лучший день недели: <b style="color:var(--text)">${WD[wka.bestIdx]}</b> (в среднем ${rate(wka.avg[wka.bestIdx])})</div>` : "";
 
@@ -370,7 +419,10 @@ async function screenDash(){
     </div>
     <button class="btn primary" data-action="openDailyRev" style="margin-top:14px">💵 Выручка сегодня${todayRev>0?": "+money(todayRev):""}</button>
     <button class="btn" data-action="openDrive" style="margin-top:10px">🚦 Режим за рулём — одной рукой</button>
-    <button class="btn ghost" data-action="openFines" style="margin-top:10px">🚨 Штрафы</button>
+    <div class="row" style="gap:10px;margin-top:10px">
+      <button class="btn ghost" data-action="openFines">🚨 Штрафы</button>
+      <button class="btn ghost" data-action="openReceipts">🧾 Чеки</button>
+    </div>
 
     <div class="h2">Последние записи</div>
     ${last5.length ? `<div class="list">${last5.map(expenseRow).join("")}</div>`
@@ -600,24 +652,20 @@ async function screenFines(){
   const paidYear = list.filter(f=>f.paid && (f.paidDate||"").slice(0,4)===String(y));
   const paidYearSum = paidYear.reduce((s,f)=>s+Number(f.amount||0),0);
   const sorted = list.slice().sort((a,b)=>{
-    if(a.paid!==b.paid) return a.paid?1:-1;            // неоплаченные сверху
+    if(a.paid!==b.paid) return a.paid?1:-1;
     return (b.paidDate||b.date||"").localeCompare(a.paidDate||a.date||"");
   });
-
   return `
     <div class="row between">
       <div class="h1" style="margin:0">🚨 Штрафы</div>
       <button class="btn sm ghost" data-action="nav" data-to="dash">← Назад</button>
     </div>
     <p class="muted small">долги светятся на главной; при «оплачено» штраф сам уходит в расходы</p>
-
     <div class="stats">
       <div class="glass stat"><div class="v neg">${unpaid.length?money(unpaidSum):money(0)}</div><div class="k">не оплачено (${unpaid.length})</div></div>
       <div class="glass stat"><div class="v">${money(paidYearSum)}</div><div class="k">оплачено за ${y}</div></div>
     </div>
-
     <button class="btn primary" data-action="openAddFine" style="margin-top:12px">➕ Добавить штраф</button>
-
     <div class="h2">Список</div>
     ${sorted.length? `<div class="list">${sorted.map(f=>{
         const days = f.date? Math.round((now - new Date(f.date+"T00:00:00"))/86400000):null;
@@ -635,6 +683,164 @@ async function screenFines(){
           <div class="amt">−${money(f.amount)}</div>
           <button class="del" data-action="fineDel" data-id="${f.id}">🗑</button></div>`;
       }).join("")}</div>` : `<div class="glass empty">Штрафов нет — так держать 👍</div>`}`;
+}
+
+/* ---------- ЧЕКИ: просмотр + выгрузка за период ---------- */
+async function getReceiptExpenses(){
+  const all = await dbAll("expenses");
+  const pr = periodRange(state.receiptMode, state.receiptOffset);
+  return all.filter(e=> e.receipt
+    && (!pr.from || e.date >= pr.from) && (!pr.to || e.date <= pr.to)
+    && (state.receiptCat==="all" || e.category===state.receiptCat))
+    .sort((a,b)=> (b.date+b.id).localeCompare(a.date+a.id));
+}
+async function screenReceipts(){
+  const pr = periodRange(state.receiptMode, state.receiptOffset);
+  const list = await getReceiptExpenses();
+  const sum = list.reduce((s,e)=>s+Number(e.amount||0),0);
+  const byCat = {}; list.forEach(e=> byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
+
+  // сверка: все расходы за период (включая без чеков)
+  const all = await dbAll("expenses");
+  const allInPeriod = all.filter(e=> (!pr.from || e.date>=pr.from) && (!pr.to || e.date<=pr.to)
+    && (state.receiptCat==="all" || e.category===state.receiptCat));
+  const allSum = allInPeriod.reduce((s,e)=>s+Number(e.amount||0),0);
+
+  const catChips = [["all","Все"],...Object.entries(CATS).map(([k,c])=>[k,c.ico])];
+
+  return `
+    <div class="row between">
+      <div class="h1" style="margin:0">🧾 Чеки</div>
+      <button class="btn sm ghost" data-action="nav" data-to="dash">← Назад</button>
+    </div>
+    <p class="muted small">просмотр и выгрузка чеков за период — чтобы всё посчиталось</p>
+
+    <div class="rangebar">
+      ${[["month","Месяц"],["quarter","Квартал"],["year","Год"],["all","Всё"]]
+        .map(([k,t])=>`<button class="chip ${state.receiptMode===k?"on":""}" data-action="setReceiptMode" data-mode="${k}">${t}</button>`).join("")}
+    </div>
+    ${state.receiptMode!=="all" ? `
+    <div class="periodnav">
+      <button class="pbtn" data-action="receiptPrev">‹</button>
+      <div class="plabel">${esc(pr.label)}</div>
+      <button class="pbtn" data-action="receiptNext">›</button>
+    </div>` : `<div class="periodnav"><div class="plabel">${esc(pr.label)}</div></div>`}
+
+    <div class="chips" style="margin:6px 0">
+      ${catChips.map(([k,t])=>`<span class="chip ${state.receiptCat===k?"on":""}" data-action="setReceiptCat" data-cat="${k}">${t}</span>`).join("")}
+    </div>
+
+    <div class="glass card">
+      <div class="row between"><b>Чеков с прикреплённым скрином</b><b>${list.length}</b></div>
+      <div class="row between"><span class="muted">сумма чеков</span><b>${money(sum)}</b></div>
+      ${Object.entries(byCat).map(([k,v])=>`<div class="row between small"><span class="muted">${CATS[k]?.ico||""} ${CATS[k]?.t||k}</span><b>${money(v)}</b></div>`).join("")}
+      <div class="divider"></div>
+      <div class="row between small"><span class="muted">все расходы за период (вкл. без чеков)</span><b>${money(allSum)}</b></div>
+    </div>
+
+    <div class="h2">Выгрузить</div>
+    <div class="glass card">
+      <button class="btn primary" data-action="exportReceiptsHtml" ${list.length?"":"disabled"}>📄 Отчёт с чеками (HTML → PDF)</button>
+      <div style="height:10px"></div>
+      <button class="btn" data-action="exportReceiptsZip" ${list.length?"":"disabled"}>📦 Чеки папкой (ZIP: jpg + итоги)</button>
+      <div style="height:10px"></div>
+      <button class="btn" data-action="exportReceiptsCsv" ${list.length?"":"disabled"}>📊 Таблица чеков (CSV)</button>
+      <div class="fszn-note">HTML открой в браузере → кнопка «🖨 Сохранить как PDF». ZIP = папка скринов с именами «дата_категория_сумма.jpg» + itogi.csv для Excel.</div>
+    </div>
+
+    <div class="h2">Галерея чеков</div>
+    ${list.length? `<div class="list">${list.map(e=>{
+        const c = CATS[e.category]||CATS.other;
+        return `<div class="item">
+          <img class="rthumb" src="${e.receipt}" data-action="viewReceipt" data-id="${e.id}" alt="чек">
+          <div class="meta"><div class="t">${c.ico} ${c.t}${e.note?": "+esc(e.note):""}</div>
+            <div class="s">${fmtDate(e.date)}</div></div>
+          <div class="amt">−${money(e.amount)}</div>
+        </div>`;}).join("")}</div>` : `<div class="glass empty">За этот период чеков нет</div>`}`;
+}
+function receiptsCsvText(list, pr){
+  const sum = list.reduce((s,e)=>s+Number(e.amount||0),0);
+  const byCat = {}; list.forEach(e=> byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
+  const L = [];
+  L.push(["BLVCK TAXI — чеки за "+pr.label]);
+  L.push(["Фильтр категории", state.receiptCat==="all"?"все":(CATS[state.receiptCat]?.t||state.receiptCat)]);
+  L.push(["Сформировано", today()]);
+  L.push([]);
+  L.push(["Дата","Категория","Заметка","Сумма "+cur()]);
+  list.slice().sort((a,b)=> a.date.localeCompare(b.date))
+    .forEach(e=> L.push([e.date, (CATS[e.category]?.t||e.category), e.note||"", e.amount]));
+  L.push(["","","ИТОГО ЧЕКОВ", sum.toFixed(2)]);
+  L.push([]);
+  L.push(["ПО КАТЕГОРИЯМ"]);
+  Object.entries(byCat).forEach(([k,v])=> L.push([(CATS[k]?.t||k), v.toFixed(2)]));
+  return "\uFEFF" + L.map(r=> r.map(csvCell).join(";")).join("\r\n");
+}
+function exportReceiptsCsv(){
+  getReceiptExpenses().then(list=>{
+    if(!list.length){ toast("Нет чеков за период"); return; }
+    const pr = periodRange(state.receiptMode, state.receiptOffset);
+    download(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.csv`, receiptsCsvText(list,pr), "text/csv;charset=utf-8");
+    toast("CSV сохранён"); hapticOk();
+  });
+}
+function exportReceiptsHtml(){
+  getReceiptExpenses().then(list=>{
+    if(!list.length){ toast("Нет чеков за период"); return; }
+    const pr = periodRange(state.receiptMode, state.receiptOffset);
+    const sum = list.reduce((s,e)=>s+Number(e.amount||0),0);
+    const byCat = {}; list.forEach(e=> byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
+    const rows = list.slice().sort((a,b)=> a.date.localeCompare(b.date)).map(e=>{
+      const c = CATS[e.category]||CATS.other;
+      return `<div class="rc"><img src="${e.receipt}" alt="чек"><div class="cap">${fmtDate(e.date)} · ${c.ico} ${esc(c.t)}${e.note?" · "+esc(e.note):""}<br><b>${money(e.amount)}</b></div></div>`;
+    }).join("");
+    const totRows = Object.entries(byCat).map(([k,v])=>`<tr><td>${CATS[k]?.ico||""} ${esc(CATS[k]?.t||k)}</td><td>${money(v)}</td></tr>`).join("");
+    const html = `<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BLVCK TAXI — чеки за ${esc(pr.label)}</title>
+<style>
+ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;padding:18px;color:#15151f;background:#f4f5fa}
+ h1{font-size:22px;margin:0 0 4px} .sub{color:#666;font-size:13px;margin:0 0 14px}
+ .noprint{position:sticky;top:0;background:#f4f5fa;padding:8px 0 12px}
+ button{background:#7c5cff;color:#fff;border:none;border-radius:12px;padding:12px 16px;font-size:15px;font-weight:700;cursor:pointer}
+ table{border-collapse:collapse;width:100%;max-width:520px;margin:6px 0 18px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 6px 20px rgba(0,0,0,.06)}
+ td{padding:9px 12px;border-bottom:1px solid #eee;font-size:14px} td:last-child{text-align:right;font-weight:700}
+ tr.tot td{background:#eef0ff;font-weight:800}
+ .rc{background:#fff;border-radius:14px;padding:10px;margin:10px 0;box-shadow:0 6px 20px rgba(0,0,0,.06);max-width:520px}
+ .rc img{width:100%;border-radius:10px;display:block}
+ .cap{font-size:13px;color:#444;margin-top:8px}
+ @media print{ .noprint{display:none} body{background:#fff;padding:0} .rc{box-shadow:none;break-inside:avoid} }
+</style></head><body>
+<div class="noprint"><button onclick="window.print()">🖨 Сохранить как PDF / распечатать</button></div>
+<h1>BLVCK TAXI — чеки за ${esc(pr.label)}</h1>
+<p class="sub">Категория: ${state.receiptCat==="all"?"все":esc(CATS[state.receiptCat]?.t||state.receiptCat)} · чеков: ${list.length} · сформировано ${fmtDate(today())}</p>
+<table>
+ ${totRows}
+ <tr class="tot"><td>ИТОГО ЧЕКОВ</td><td>${money(sum)}</td></tr>
+</table>
+${rows}
+</body></html>`;
+    download(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.html`, html, "text/html;charset=utf-8");
+    toast("HTML-отчёт сохранён"); hapticOk();
+  });
+}
+function exportReceiptsZip(){
+  getReceiptExpenses().then(list=>{
+    if(!list.length){ toast("Нет чеков за период"); return; }
+    const pr = periodRange(state.receiptMode, state.receiptOffset);
+    const files = [];
+    const used = {};
+    list.slice().sort((a,b)=> a.date.localeCompare(b.date)).forEach(e=>{
+      let base = `${e.date}_${e.category}_${Number(e.amount).toFixed(2).replace(".", "_")}`;
+      let name = base + ".jpg"; let i=2;
+      while(used[name]){ name = `${base}_${i}.jpg`; i++; } used[name]=1;
+      files.push({name, data: b64ToBytes(e.receipt)});
+    });
+    files.push({name:"itogi.csv", data: strBytes(receiptsCsvText(list, pr))});
+    const blob = buildZip(files);
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+    a.download=`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.zip`; a.click(); URL.revokeObjectURL(a.href);
+    toast("ZIP сохранён"); hapticOk();
+  });
 }
 
 /* ---------- ФСЗН + НАЛОГИ + ОТЧЁТЫ ---------- */
@@ -715,7 +921,7 @@ async function screenFszn(){
     ${taxes.length? `<div class="list">${taxes.map(r=>{
         const days = r.date? Math.round((new Date(r.date)-new Date())/86400000):null;
         const rep = r.repeat && r.repeat!=="none" ? ` · повтор: ${{month:"мес.",quarter:"квартал",year:"год"}[r.repeat]}` : "";
-        return `<div class="item"><div class="ic">${days!=null&&days<0?"⛔":"🗓"}</div>
+        return `<div class="item"><div class="ic">${days!=null&&days<0?"⛔":""}</div>
           <div class="meta"><div class="t">${esc(r.name)}</div>
             <div class="s">${r.date?fmtDate(r.date)+(days!=null?(days<0?" · просрочено":` · ${days} дн.`):""):"без даты"}${rep}</div></div>
           <button class="edit" data-action="taxPaid" data-id="${r.id}" title="уплачено">✅</button>
@@ -724,7 +930,7 @@ async function screenFszn(){
 
     <div class="h2">Отчёты для бухгалтера</div>
     <div class="glass card">
-      <p class="fszn-note" style="margin-top:0">CSV открывается в Excel / Google Sheets.</p>
+      <p class="fszn-note" style="margin-top:0">CSV открывается в Excel / Google Sheets. Чеки за период — на экране «🧾 Чеки».</p>
       <button class="btn" data-action="exportCsvQ">📤 Сводка за квартал (CSV)</button>
       <div style="height:10px"></div>
       <button class="btn" data-action="exportCsvY">📤 Сводка за год (CSV)</button>
@@ -784,11 +990,13 @@ async function screenSettings(){
         <div class="chips">${CURS.map(c=>`<span class="chip ${c===cur()?"on":""}" data-action="setCur" data-cur="${c}">${c}</span>`).join("")}</div></div>
     </div>
 
-    <div class="h2">Деньги и штрафы</div>
+    <div class="h2">Деньги, штрафы и чеки</div>
     <div class="glass card">
       <button class="btn primary" data-action="openDailyRev">💵 Выручка сегодня</button>
       <div style="height:10px"></div>
       <button class="btn" data-action="openFines">🚨 Штрафы</button>
+      <div style="height:10px"></div>
+      <button class="btn" data-action="openReceipts">🧾 Чеки и выгрузка</button>
     </div>
 
     <div class="h2">Режим ИП</div>
@@ -1043,7 +1251,6 @@ function saveEff(){
   toast("Пробег и часы сохранены"); hapticOk(); renderAsync();
 }
 
-/* налоги */
 function saveTax(){
   const name = $("#t_name").value.trim(); if(!name){ toast("Введи название"); hapticBad(); return; }
   const list = taxList();
@@ -1066,7 +1273,6 @@ function taxPaid(id){
 }
 function taxDel(id){ saveTaxList(taxList().filter(x=>x.id!==id)); toast("Удалено"); haptic(); renderAsync(); }
 
-/* штрафы */
 function saveFine(){
   const name = $("#f_name").value.trim(); if(!name){ toast("Введи «за что»"); hapticBad(); return; }
   const amount = parseFloat($("#f_amount").value)||0; if(amount<=0){ toast("Введи сумму"); hapticBad(); return; }
@@ -1085,14 +1291,14 @@ async function finePaid(id){
 async function fineDel(id){
   if(!confirm("Удалить штраф?")) return;
   const list = finesList(); const r = list.find(x=>x.id===id);
-  if(r && r.paid && r.expenseId){ await dbDel("expenses", r.expenseId); }   // убираем связанный расход
+  if(r && r.paid && r.expenseId){ await dbDel("expenses", r.expenseId); }
   saveFinesList(list.filter(x=>x.id!==id)); toast("Удалено"); haptic(); renderAsync();
 }
 
-/* ---------- CSV-отчёты ---------- */
+/* ---------- CSV-отчёты (общие сводки) ---------- */
 function csvCell(v){ v = String(v ?? ""); return /[";\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }
 function download(name, text, type){
-  const blob = new Blob([text], {type});
+  const blob = (text instanceof Blob) ? text : new Blob([text], {type});
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href);
 }
 async function exportCSV(kind){
@@ -1145,7 +1351,7 @@ async function exportCSV(kind){
   toast("CSV сохранён"); hapticOk();
 }
 
-/* ---------- ПОЛНЫЙ бэкап (IndexedDB + весь нужный localStorage) ---------- */
+/* ---------- ПОЛНЫЙ бэкап ---------- */
 const LS_KEYS = ["blvck_cur","blvck_theme","blvck_is_ip","blvck_income","blvck_km","blvck_hours",
   "blvck_fuel_presets","blvck_tax_reminders","blvck_fszn_mzp","blvck_fszn_rate","blvck_streak_best",
   "blvck_fines","blvck_daily_rev","blvck_daily_target","blvck_tg_name"];
@@ -1226,6 +1432,14 @@ document.addEventListener("click", async (ev)=>{
     case "saveFine":   saveFine(); break;
     case "finePaid":   await finePaid(el.dataset.id); break;
     case "fineDel":    await fineDel(el.dataset.id); break;
+    case "openReceipts": state.screen = "receipts"; renderAsync(); break;
+    case "setReceiptMode": state.receiptMode = el.dataset.mode; state.receiptOffset = 0; renderAsync(); break;
+    case "receiptPrev": state.receiptOffset--; renderAsync(); break;
+    case "receiptNext": state.receiptOffset++; renderAsync(); break;
+    case "setReceiptCat": state.receiptCat = el.dataset.cat; renderAsync(); break;
+    case "exportReceiptsHtml": exportReceiptsHtml(); break;
+    case "exportReceiptsZip":  exportReceiptsZip(); break;
+    case "exportReceiptsCsv":  exportReceiptsCsv(); break;
     case "editExpense":await editExpense(el.dataset.id); break;
     case "pickReceipt":     await addReceiptFromPicker(); break;
     case "clearReceipt":    state.modalReceipt=null; { const b=$("#m_receipt_box"); if(b) b.innerHTML=receiptBoxHTML(); } haptic(); break;
