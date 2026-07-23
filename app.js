@@ -2,7 +2,8 @@
    BLVCK TAXI — весь комбайн, vanilla, без зависимостей
    IndexedDB + localStorage. Офлайн. Без сервера. Бесплатно.
    + Telegram Mini App + ФСЗН/налоги ИП + быстрая заправка
-   + эффективность (₽/км, ₽/час) + режим «за рулём» + стрик + shortcuts
+   + эффективность + режим «за рулём» + стрик + shortcuts
+   + чеки/скриншоты к расходам (сжатие + в резервную копию)
    ========================================================= */
 
 /* ===== TELEGRAM MINI APP ===== */
@@ -42,7 +43,7 @@ const TABS = [
 ];
 const TAX_PRESETS = ["Единый налог","ФСЗН за квартал","Подоходный (аванс)","Декларация","Налог на проф. доход"];
 
-const state = { screen:"dash", range:"month", modalCat:"fuel", modalEditId:null };
+const state = { screen:"dash", range:"month", modalCat:"fuel", modalEditId:null, modalReceipt:null };
 
 /* ---------- утилиты ---------- */
 const $  = (s, r=document) => r.querySelector(s);
@@ -61,32 +62,29 @@ const CUR_Q = () => Math.ceil((new Date().getMonth()+1)/3);
 const isIP = () => localStorage.getItem("blvck_is_ip") === "1";
 function ruPlural(n,f){ const a=Math.abs(n)%100,b=a%10; if(a>=11&&a<=14)return f[2]; if(b===1)return f[0]; if(b>=2&&b<=4)return f[1]; return f[2]; }
 
-/* помесячные поля: доход / пробег / часы за рулём */
+/* помесячные поля */
 const _map  = k => { try{ return JSON.parse(localStorage.getItem(k)||"{}"); }catch{ return {}; } };
 const _set  = (k,ym,v) => { const m=_map(k); if(v>0) m[ym]=v; else delete m[ym]; localStorage.setItem(k, JSON.stringify(m)); };
-const incomeMap=()=>_map("blvck_income"), kmMap=()=>_map("blvck_km"), hoursMap=()=>_map("blvck_hours");
-const incomeOf = ym => Number(incomeMap()[ym])||0;
-const kmOf     = ym => Number(kmMap()[ym])||0;
-const hoursOf  = ym => Number(hoursMap()[ym])||0;
+const incomeOf = ym => Number(_map("blvck_income")[ym])||0;
+const kmOf     = ym => Number(_map("blvck_km")[ym])||0;
+const hoursOf  = ym => Number(_map("blvck_hours")[ym])||0;
 const setIncome= (ym,v)=>_set("blvck_income",ym,v);
 const setKm    = (ym,v)=>_set("blvck_km",ym,v);
 const setHours = (ym,v)=>_set("blvck_hours",ym,v);
 function quarterIncome(q, year){ let s=0; for(let mo=(q-1)*3+1; mo<=(q-1)*3+3; mo++) s += incomeOf(`${year}-${String(mo).padStart(2,"0")}`); return s; }
 
-/* пресеты быстрой заправки */
 const fuelPresets = () => { try{ const a=JSON.parse(localStorage.getItem("blvck_fuel_presets")); return Array.isArray(a)&&a.length===3?a:[50,80,120]; }catch{ return [50,80,120]; } };
 const setFuelPresets = a => localStorage.setItem("blvck_fuel_presets", JSON.stringify(a));
 
-/* налоговые напоминания */
 const taxList = () => { try{ return JSON.parse(localStorage.getItem("blvck_tax_reminders")||"[]"); }catch{ return []; } };
 const saveTaxList = a => localStorage.setItem("blvck_tax_reminders", JSON.stringify(a));
 
-/* стрик ведения */
+/* стрик */
 function calcStreak(set){
   const d=new Date(); d.setHours(0,0,0,0);
   const key=dt=>dt.toISOString().slice(0,10);
   let cur=0;
-  if(!set.has(key(d))){ d.setDate(d.getDate()-1); if(!set.has(key(d))) return 0; } // grace: сегодня пусто → стартуем от вчера
+  if(!set.has(key(d))){ d.setDate(d.getDate()-1); if(!set.has(key(d))) return 0; }
   while(set.has(key(d))){ cur++; d.setDate(d.getDate()-1); }
   return cur;
 }
@@ -98,6 +96,68 @@ function bestStreak(set){
     if(diff===1){run++;best=Math.max(best,run);} else run=1;
   }
   return best;
+}
+
+/* ---------- чек / скриншот: выбор + сжатие ---------- */
+function pickImage(){
+  return new Promise(res=>{
+    const inp=document.createElement("input");
+    inp.type="file"; inp.accept="image/*";
+    inp.onchange=()=> res(inp.files && inp.files[0] ? inp.files[0] : null);
+    inp.click();
+  });
+}
+function compressImage(file, maxSide, quality){
+  return new Promise((res,rej)=>{
+    const fr=new FileReader();
+    fr.onload=()=>{
+      const img=new Image();
+      img.onload=()=>{
+        let w=img.width, h=img.height;
+        const scale=Math.min(1, maxSide/Math.max(w,h));
+        w=Math.max(1,Math.round(w*scale)); h=Math.max(1,Math.round(h*scale));
+        const c=document.createElement("canvas"); c.width=w; c.height=h;
+        const ctx=c.getContext("2d");
+        ctx.fillStyle="#fff"; ctx.fillRect(0,0,w,h);   // фон на случай прозрачного png
+        ctx.drawImage(img,0,0,w,h);
+        res(c.toDataURL("image/jpeg", quality));
+      };
+      img.onerror=rej; img.src=fr.result;
+    };
+    fr.onerror=rej; fr.readAsDataURL(file);
+  });
+}
+async function addReceiptFromPicker(){
+  const file = await pickImage();
+  if(!file) return;
+  try{
+    const data = await compressImage(file, 1400, 0.75);
+    state.modalReceipt = data;
+    const box=$("#m_receipt_box"); if(box) box.innerHTML = receiptBoxHTML();
+    toast("Чек прикреплён"); hapticOk();
+  }catch(e){ toast("Не удалось прочитать фото"); hapticBad(); }
+}
+function receiptBoxHTML(){
+  if(state.modalReceipt){
+    return `<div class="rcpt">
+      <img src="${state.modalReceipt}" data-action="viewReceiptCurrent" alt="чек">
+      <div class="rcpt-actions">
+        <button class="btn sm" data-action="pickReceipt">🔄 Заменить</button>
+        <button class="btn sm danger" data-action="clearReceipt">🗑 Убрать чек</button>
+      </div>
+    </div>`;
+  }
+  return `<button class="btn" data-action="pickReceipt">🧾 Прикрепить чек / скриншот</button>
+    <div class="fszn-note">фото или скрин электронного чека сожмётся и сохранится вместе с расходом — и попадёт в резервную копию</div>`;
+}
+function openReceiptViewer(src){
+  const m=$("#modal");
+  m.innerHTML=`<div class="viewer" data-action="close">
+    <button class="x vclose" data-action="close">×</button>
+    <img src="${src}" alt="чек">
+  </div>`;
+  m.hidden=false;
+  try{TG?.BackButton?.show();}catch{}
 }
 
 function toast(msg){
@@ -189,7 +249,6 @@ async function screenDash(){
   const last5 = exps.slice().sort((a,b)=> (b.date+b.id).localeCompare(a.date+a.id)).slice(0,5);
   const fsznWidget = isIP() ? await fsznMiniWidget() : "";
 
-  // стрик
   const dateSet = new Set(exps.map(e=>e.date));
   const curStreak = calcStreak(dateSet);
   let best = bestStreak(dateSet);
@@ -274,6 +333,7 @@ function expenseRow(e){
         <div class="s">${fmtDate(e.date)}${e.mileage?" · "+Number(e.mileage).toLocaleString("ru-RU")+" км":""}</div>
       </div>
       <div class="amt">−${money(e.amount)}</div>
+      ${e.receipt?`<button class="edit" data-action="viewReceipt" data-id="${e.id}" title="чек">🧾</button>`:""}
       <button class="edit" data-action="editExpense" data-id="${e.id}" title="изменить">✏️</button>
       <button class="del" data-action="delExpense" data-id="${e.id}" title="удалить">🗑</button>
     </div>`;
@@ -288,7 +348,6 @@ async function screenStats(){
   const months = Object.keys(byMonth).sort();
   const total = Object.values(byCat).reduce((a,b)=>a+b,0);
 
-  // эффективность за текущий месяц
   const ym = ymNow();
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
   const spentMonth = exps.filter(e => new Date(e.date) >= monthStart).reduce((s,e)=>s+Number(e.amount||0),0);
@@ -326,7 +385,6 @@ async function screenStats(){
       </div>
       <div style="height:8px"></div>
       <button class="btn sm primary" data-action="setEff" style="width:100%">💾 Сохранить пробег и часы</button>
-
       <div class="eff">
         <div class="e"><div class="v">${perHour!=null?rate(perHour):"—"}</div><div class="k">₽ / час за рулём</div></div>
         <div class="e"><div class="v">${perKmRev!=null?rate(perKmRev):"—"}</div><div class="k">₽ / км выручки</div></div>
@@ -606,7 +664,7 @@ async function screenSettings(){
     </div>` : ``}
     <div class="h2">Резервная копия</div>
     <div class="glass card">
-      <p class="muted small" style="margin-top:0">Все данные живут только в твоём телефоне. Сохраняй копию в файл.</p>
+      <p class="muted small" style="margin-top:0">Все данные живут только в твоём телефоне. Сохраняй копию в файл — чеки сохранятся вместе с ней.</p>
       <button class="btn primary" data-action="export">⬇️ Сохранить копию</button>
       <div style="height:10px"></div>
       <button class="btn" data-action="import">⬆️ Восстановить из файла</button>
@@ -621,7 +679,7 @@ async function screenSettings(){
 
 /* ---------- модалки ---------- */
 function openModal(html){ const m=$("#modal"); m.innerHTML=`<div class="modal">${html}</div>`; m.hidden=false; try{TG?.BackButton?.show();}catch{} }
-function closeModal(){ $("#modal").hidden=true; $("#modal").innerHTML=""; state.modalEditId=null; try{TG?.BackButton?.hide();}catch{} }
+function closeModal(){ $("#modal").hidden=true; $("#modal").innerHTML=""; state.modalEditId=null; state.modalReceipt=null; try{TG?.BackButton?.hide();}catch{} }
 
 function modalFuelQuick(){
   const p = fuelPresets();
@@ -646,7 +704,6 @@ function modalFuelPresets(){
     </div>
     <button class="btn primary" data-action="saveFuelPresets">Сохранить</button>`);
 }
-/* режим «за рулём» — fullscreen оверлей в #modal */
 function openDrive(){
   const p = fuelPresets();
   const m = $("#modal");
@@ -669,6 +726,7 @@ function openDrive(){
 function modalExpense(cat, edit=null){
   state.modalCat = edit ? edit.category : cat;
   state.modalEditId = edit ? edit.id : null;
+  state.modalReceipt = edit?.receipt || null;
   const v = edit || {};
   openModal(`
     <div class="mhead"><h3>${edit?"✏️ Изменить":CATS[state.modalCat].ico+" "+CATS[state.modalCat].t}</h3><button class="x" data-action="close">×</button></div>
@@ -678,6 +736,7 @@ function modalExpense(cat, edit=null){
       <div class="field"><label>Пробег, км</label><input id="m_mileage" class="input" type="number" inputmode="numeric" value="${v.mileage??""}" placeholder="необяз."></div>
     </div>
     <div class="field"><label>Заметка</label><input id="m_note" class="input" value="${esc(v.note||"")}" placeholder="например: АЗС Лукойл"></div>
+    <div class="field"><label>Чек / скриншот</label><div id="m_receipt_box">${receiptBoxHTML()}</div></div>
     <button class="btn primary" data-action="saveExpense">${edit?"Сохранить изменения":"Сохранить"}</button>`);
   setTimeout(()=> $("#m_amount")?.focus(), 60);
 }
@@ -759,6 +818,7 @@ async function saveExpense(){
     date: $("#m_date").value || today(),
     mileage: mileage>0 ? mileage : null,
     note: $("#m_note").value.trim(),
+    receipt: state.modalReceipt || null,
   };
   await dbPut("expenses", e);
   if(e.mileage){
@@ -803,7 +863,6 @@ function saveEff(){
   toast("Пробег и часы сохранены"); hapticOk(); renderAsync();
 }
 
-/* налоги */
 function saveTax(){
   const name = $("#t_name").value.trim(); if(!name){ toast("Введи название"); hapticBad(); return; }
   const list = taxList();
@@ -846,10 +905,10 @@ async function exportCSV(kind){
   L.push(["Сформировано", today()]);
   L.push([]);
   L.push(["РАСХОДЫ"]);
-  L.push(["Дата","Категория","Заметка","Пробег км","Сумма "+cur()]);
+  L.push(["Дата","Категория","Заметка","Пробег км","Есть чек","Сумма "+cur()]);
   let total = 0;
-  exps.forEach(e=>{ total += Number(e.amount||0); L.push([e.date, (CATS[e.category]?.t||e.category), e.note||"", e.mileage||"", e.amount]); });
-  L.push(["","","","ИТОГО", total.toFixed(2)]);
+  exps.forEach(e=>{ total += Number(e.amount||0); L.push([e.date, (CATS[e.category]?.t||e.category), e.note||"", e.mileage||"", e.receipt?"да":"нет", e.amount]); });
+  L.push(["","","","","ИТОГО", total.toFixed(2)]);
   L.push([]);
   L.push(["ПО КАТЕГОРИЯМ"]);
   const byCat = {}; exps.forEach(e=> byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
@@ -878,7 +937,7 @@ async function exportBackup(){
   const data = { _app:"BLVCK TAXI", _v:2, _at:new Date().toISOString() };
   for(const s of STORES) data[s] = await dbAll(s);
   download(`blvck-taxi-backup-${today()}.json`, JSON.stringify(data,null,2), "application/json");
-  toast("Копия сохранена"); hapticOk();
+  toast("Копия сохранена (с чеками)"); hapticOk();
 }
 function importBackup(){ $("#restoreInput").click(); }
 async function handleRestoreFile(file){
@@ -935,6 +994,10 @@ document.addEventListener("click", async (ev)=>{
     case "openDrive":  openDrive(); break;
     case "driveCat":   closeModal(); modalExpense(el.dataset.cat); break;
     case "editExpense":await editExpense(el.dataset.id); break;
+    case "pickReceipt":     await addReceiptFromPicker(); break;
+    case "clearReceipt":    state.modalReceipt=null; { const b=$("#m_receipt_box"); if(b) b.innerHTML=receiptBoxHTML(); } haptic(); break;
+    case "viewReceiptCurrent": if(state.modalReceipt) openReceiptViewer(state.modalReceipt); break;
+    case "viewReceipt": { const r=await dbGet("expenses", el.dataset.id); if(r?.receipt) openReceiptViewer(r.receipt); } break;
     case "openEditCar":modalCar(); break;
     case "openAddMaint":modalMaint(); break;
     case "openAddDoc": modalDoc(); break;
@@ -979,7 +1042,6 @@ $("#restoreInput").addEventListener("change", e=> handleRestoreFile(e.target.fil
 (async function init(){
   applyTheme(); makeParticles(); setupTelegram();
   await openDB(); await renderAsync();
-  // shortcuts / глубокие ссылки: ?act=fuel|wash|repair
   const act = new URLSearchParams(location.search).get("act");
   if(act){
     history.replaceState(null, "", location.pathname + location.hash);
