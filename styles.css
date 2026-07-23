@@ -127,6 +127,11 @@ body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(
 /* стрик */
 .streak{display:inline-flex;align-items:center;gap:6px;margin:8px 0 2px;font-size:13px;font-weight:800;color:var(--warn)}
 
+/* тренд месяц-к-месяцу */
+.trendrow{display:flex;flex-wrap:wrap;gap:10px 14px;font-size:12px;font-weight:700;margin:10px 2px 0}
+.trendrow .up{color:var(--good)} .trendrow .down{color:var(--bad)} .trendrow .flat{color:var(--muted)}
+.trendrow .lbl{color:var(--muted);font-weight:600}
+
 /* пресеты быстрой заправки */
 .presets{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:14px 0}
 .preset{padding:22px 6px;border-radius:18px;text-align:center;cursor:pointer;background:var(--glass-strong);border:1px solid var(--stroke);color:var(--text);font-weight:900;font-size:20px;transition:transform .2s var(--spring)}
@@ -151,7 +156,7 @@ body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(
 .drive .dcat{padding:18px 6px;border-radius:18px;background:var(--glass);border:1px solid var(--stroke);color:var(--text);font-weight:800;font-size:15px;cursor:pointer;text-align:center}
 .drive .dcat:active{transform:scale(.96)}
 
-/* ===== чек / скриншот ===== */
+/* чек / скриншот */
 .rcpt{display:flex;gap:12px;align-items:center}
 .rcpt img{width:72px;height:72px;object-fit:cover;border-radius:12px;border:1px solid var(--stroke);cursor:pointer;flex:none}
 .rcpt-actions{display:flex;flex-direction:column;gap:6px;flex:1}
