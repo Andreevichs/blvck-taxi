@@ -10,5 +10,10 @@
   "theme_color": "#0a0a0f",
   "icons": [
     { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Быстрая заправка", "short_name": "Заправка", "description": "Добавить заправку в 1 тап", "url": "./index.html?act=fuel", "icons": [ { "src": "./icon.svg", "sizes": "any" } ] },
+    { "name": "Мойка", "short_name": "Мойка", "url": "./index.html?act=wash", "icons": [ { "src": "./icon.svg", "sizes": "any" } ] },
+    { "name": "Ремонт", "short_name": "Ремонт", "url": "./index.html?act=repair", "icons": [ { "src": "./icon.svg", "sizes": "any" } ] }
   ]
 }
