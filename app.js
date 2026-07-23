@@ -1,7 +1,8 @@
 /* =========================================================
    BLVCK TAXI — весь комбайн, vanilla, без зависимостей
-   IndexedDB (локально) + localStorage. Офлайн. Без сервера. Бесплатно.
-   + Telegram Mini App  +  ФСЗН/налоги для ИП  +  быстрая заправка
+   IndexedDB + localStorage. Офлайн. Без сервера. Бесплатно.
+   + Telegram Mini App + ФСЗН/налоги ИП + быстрая заправка
+   + эффективность (₽/км, ₽/час) + режим «за рулём» + стрик + shortcuts
    ========================================================= */
 
 /* ===== TELEGRAM MINI APP ===== */
@@ -49,6 +50,7 @@ const esc = v => String(v ?? "").replace(/[&<>"']/g, c =>
   ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const cur   = () => localStorage.getItem("blvck_cur") || "BYN";
 const money = n => (Number(n)||0).toLocaleString("ru-RU",{maximumFractionDigits:2}) + " " + cur();
+const rate  = n => (Number(n)||0).toLocaleString("ru-RU",{maximumFractionDigits:1}) + " " + cur();
 const today = () => new Date().toISOString().slice(0,10);
 const ymNow = () => today().slice(0,7);
 const fmtDate = d => d ? new Date(d+"T00:00:00").toLocaleDateString("ru-RU",{day:"2-digit",month:"short",year:"numeric"}) : "—";
@@ -57,11 +59,18 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7
 const YEAR = () => new Date().getFullYear();
 const CUR_Q = () => Math.ceil((new Date().getMonth()+1)/3);
 const isIP = () => localStorage.getItem("blvck_is_ip") === "1";
+function ruPlural(n,f){ const a=Math.abs(n)%100,b=a%10; if(a>=11&&a<=14)return f[2]; if(b===1)return f[0]; if(b>=2&&b<=4)return f[1]; return f[2]; }
 
-/* доход по месяцам (одно поле на месяц, без отдельного раздела) */
-const incomeMap  = () => { try{ return JSON.parse(localStorage.getItem("blvck_income")||"{}"); }catch{ return {}; } };
-const incomeOf   = ym => Number(incomeMap()[ym])||0;
-function setIncome(ym, v){ const m = incomeMap(); if(v>0) m[ym]=v; else delete m[ym]; localStorage.setItem("blvck_income", JSON.stringify(m)); }
+/* помесячные поля: доход / пробег / часы за рулём */
+const _map  = k => { try{ return JSON.parse(localStorage.getItem(k)||"{}"); }catch{ return {}; } };
+const _set  = (k,ym,v) => { const m=_map(k); if(v>0) m[ym]=v; else delete m[ym]; localStorage.setItem(k, JSON.stringify(m)); };
+const incomeMap=()=>_map("blvck_income"), kmMap=()=>_map("blvck_km"), hoursMap=()=>_map("blvck_hours");
+const incomeOf = ym => Number(incomeMap()[ym])||0;
+const kmOf     = ym => Number(kmMap()[ym])||0;
+const hoursOf  = ym => Number(hoursMap()[ym])||0;
+const setIncome= (ym,v)=>_set("blvck_income",ym,v);
+const setKm    = (ym,v)=>_set("blvck_km",ym,v);
+const setHours = (ym,v)=>_set("blvck_hours",ym,v);
 function quarterIncome(q, year){ let s=0; for(let mo=(q-1)*3+1; mo<=(q-1)*3+3; mo++) s += incomeOf(`${year}-${String(mo).padStart(2,"0")}`); return s; }
 
 /* пресеты быстрой заправки */
@@ -71,6 +80,25 @@ const setFuelPresets = a => localStorage.setItem("blvck_fuel_presets", JSON.stri
 /* налоговые напоминания */
 const taxList = () => { try{ return JSON.parse(localStorage.getItem("blvck_tax_reminders")||"[]"); }catch{ return []; } };
 const saveTaxList = a => localStorage.setItem("blvck_tax_reminders", JSON.stringify(a));
+
+/* стрик ведения */
+function calcStreak(set){
+  const d=new Date(); d.setHours(0,0,0,0);
+  const key=dt=>dt.toISOString().slice(0,10);
+  let cur=0;
+  if(!set.has(key(d))){ d.setDate(d.getDate()-1); if(!set.has(key(d))) return 0; } // grace: сегодня пусто → стартуем от вчера
+  while(set.has(key(d))){ cur++; d.setDate(d.getDate()-1); }
+  return cur;
+}
+function bestStreak(set){
+  if(!set.size) return 0;
+  const arr=[...set].sort(); let best=1,run=1;
+  for(let i=1;i<arr.length;i++){
+    const diff=Math.round((new Date(arr[i]+"T00:00:00")-new Date(arr[i-1]+"T00:00:00"))/86400000);
+    if(diff===1){run++;best=Math.max(best,run);} else run=1;
+  }
+  return best;
+}
 
 function toast(msg){
   const t = $("#toast"); t.textContent = msg; t.hidden = false;
@@ -151,7 +179,6 @@ async function screenDash(){
     if(left <= 0) alerts.push({bad:true, t:"Пора менять масло", s:`пробег после замены превышен на ${-left} км`});
     else if(left <= 1000) alerts.push({bad:false, t:"Скоро замена масла", s:`осталось ~${left} км`});
   }
-  // налоги ИП → баннеры
   if(isIP()) taxList().forEach(r=>{
     if(!r.date) return;
     const days = Math.round((new Date(r.date) - now)/86400000);
@@ -162,12 +189,24 @@ async function screenDash(){
   const last5 = exps.slice().sort((a,b)=> (b.date+b.id).localeCompare(a.date+a.id)).slice(0,5);
   const fsznWidget = isIP() ? await fsznMiniWidget() : "";
 
+  // стрик
+  const dateSet = new Set(exps.map(e=>e.date));
+  const curStreak = calcStreak(dateSet);
+  let best = bestStreak(dateSet);
+  const savedBest = Number(localStorage.getItem("blvck_streak_best"))||0;
+  if(best > savedBest){ localStorage.setItem("blvck_streak_best", String(best)); }
+  best = Math.max(best, savedBest);
+  const streakLine = curStreak>0
+    ? `<div class="streak">🔥 ${curStreak} ${ruPlural(curStreak,["день","дня","дней"])} подряд · рекорд ${best}</div>`
+    : (best>0 ? `<div class="streak" style="color:var(--muted)">рекорд 🔥 ${best} ${ruPlural(best,["день","дня","дней"])} подряд — продолжи серию!</div>` : "");
+
   return `
     <div class="row between">
       <div class="logo">BLVCK<span style="color:var(--text)"> TAXI</span></div>
-      <button class="btn sm ghost" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙":"️"}</button>
+      <button class="btn sm ghost" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙":"☀️"}</button>
     </div>
     <p class="muted small" style="margin:2px 0 0">твой карманный учёт расходов</p>
+    ${streakLine}
 
     ${alerts.map(a=>`
       <div class="alert ${a.bad?"bad":""}">
@@ -192,6 +231,7 @@ async function screenDash(){
           <span class="s">${k==="fuel"?"быстро, в 1 тап":"добавить расход"}</span>
         </button>`).join("")}
     </div>
+    <button class="btn primary" data-action="openDrive" style="margin-top:14px">🚦 Режим за рулём — одной рукой</button>
 
     <div class="h2">Последние записи</div>
     ${last5.length ? `<div class="list">${last5.map(expenseRow).join("")}</div>`
@@ -202,7 +242,7 @@ function freeMoneyWidget(spentMonth){
   const ym = ymNow();
   const income = incomeOf(ym);
   const s = fsznSettings();
-  const fszn = isIP() ? (s.rate/100 * s.mzp) : 0;     // минимум взносов за месяц
+  const fszn = isIP() ? (s.rate/100 * s.mzp) : 0;
   const free = income - spentMonth - fszn;
   const cls = free>=0 ? "pos" : "neg";
   const sign = free>=0 ? "+" : "−";
@@ -239,7 +279,7 @@ function expenseRow(e){
     </div>`;
 }
 
-/* ---------- ГРАФИКИ ---------- */
+/* ---------- ГРАФИКИ + ЭФФЕКТИВНОСТЬ ---------- */
 async function screenStats(){
   const exps = await dbAll("expenses");
   const filtered = filterByRange(exps, state.range);
@@ -247,6 +287,19 @@ async function screenStats(){
   const byMonth = {}; filtered.forEach(e=>{ const m=e.date.slice(0,7); byMonth[m]=(byMonth[m]||0)+Number(e.amount||0); });
   const months = Object.keys(byMonth).sort();
   const total = Object.values(byCat).reduce((a,b)=>a+b,0);
+
+  // эффективность за текущий месяц
+  const ym = ymNow();
+  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+  const spentMonth = exps.filter(e => new Date(e.date) >= monthStart).reduce((s,e)=>s+Number(e.amount||0),0);
+  const income = incomeOf(ym), km = kmOf(ym), hours = hoursOf(ym);
+  const s = fsznSettings(); const fszn = isIP() ? (s.rate/100 * s.mzp) : 0;
+  const free = income - spentMonth - fszn;
+  const perKmRev  = km>0 ? income/km : null;
+  const perHour   = hours>0 ? income/hours : null;
+  const perKmCost = km>0 ? spentMonth/km : null;
+  const margin    = income>0 ? free/income*100 : null;
+
   return `
     <div class="h1">Аналитика</div>
     <p class="muted small">расходы по категориям и месяцам</p>
@@ -261,6 +314,26 @@ async function screenStats(){
     <div class="glass card">
       <b>По месяцам</b>
       ${months.length>0 ? bars(months.map(m=>({label:m.slice(2), value:byMonth[m]}))) : `<div class="empty">Нет данных</div>`}
+    </div>
+
+    <div class="h2">Эффективность за ${monthLabel(ym)}</div>
+    <div class="glass card">
+      <div class="grid2">
+        <div class="field" style="margin:0"><label>Пробег за месяц, км</label>
+          <input id="eff_km" class="input" type="number" inputmode="numeric" value="${km||""}" placeholder="0"></div>
+        <div class="field" style="margin:0"><label>Часов за рулём</label>
+          <input id="eff_hours" class="input" type="number" inputmode="decimal" value="${hours||""}" placeholder="0"></div>
+      </div>
+      <div style="height:8px"></div>
+      <button class="btn sm primary" data-action="setEff" style="width:100%">💾 Сохранить пробег и часы</button>
+
+      <div class="eff">
+        <div class="e"><div class="v">${perHour!=null?rate(perHour):"—"}</div><div class="k">₽ / час за рулём</div></div>
+        <div class="e"><div class="v">${perKmRev!=null?rate(perKmRev):"—"}</div><div class="k">₽ / км выручки</div></div>
+        <div class="e"><div class="v">${perKmCost!=null?rate(perKmCost):"—"}</div><div class="k">₽ / км затрат</div></div>
+        <div class="e"><div class="v">${margin!=null?margin.toFixed(0)+"%":"—"}</div><div class="k">маржа (свободно/доход)</div></div>
+      </div>
+      <div class="fszn-note">💡 Разбивка «в какие дни недели и часы выгоднее работать» появится вместе с учётом смен — там каждая смена даст дату и часы за рулём. Сейчас метрики считаю по итогу месяца из твоих цифр (доход берётся с главной).</div>
     </div>`;
 }
 function filterByRange(exps, range){
@@ -353,7 +426,7 @@ async function screenDocs(){
     ${docs.length? `<div class="list">${docs.map(d=>{
         const days = d.expiryDate? Math.round((new Date(d.expiryDate)-new Date())/86400000):null;
         const warn = days!=null && days<=30;
-        return `<div class="item"><div class="ic">${warn?(days<0?"⛔":"⏰"):"📄"}</div>
+        return `<div class="item"><div class="ic">${warn?(days<0?"⛔":""):"📄"}</div>
           <div class="meta"><div class="t">${esc(d.name)}</div>
             <div class="s">${d.expiryDate?("до "+fmtDate(d.expiryDate)+(days!=null?(days<0?" · просрочено":" · "+days+" дн."):"")):"бессрочно"}</div></div>
           <button class="del" data-action="delDoc" data-id="${d.id}">🗑</button></div>`;}).join("")}</div>` : `<div class="glass empty">Нет документов</div>`}
@@ -381,7 +454,7 @@ async function screenFszn(){
   for(let q=1;q<=4;q++){
     const rec = await dbGet("fszn", `${year}-Q${q}`) || {income:0, paid:0};
     const monthSum = quarterIncome(q, year);
-    const income = monthSum>0 ? monthSum : (Number(rec.income)||0);   // авто по месяцам, иначе ручной fallback
+    const income = monthSum>0 ? monthSum : (Number(rec.income)||0);
     const paid   = Number(rec.paid)||0;
     const fromIncome = income>0 ? s.rate/100*income : 0;
     const target = Math.max(minQ, fromIncome);
@@ -397,7 +470,6 @@ async function screenFszn(){
   const pctYear = goal>0 ? Math.min(100, Math.round(paidAll/goal*100)) : 0;
   const pctYTD  = minYTD>0 ? Math.min(100, Math.round(paidYTD/minYTD*100)) : 0;
   const rest = Math.max(0, goal - paidAll);
-
   const taxes = taxList().sort((a,b)=> (a.date||"9").localeCompare(b.date||"9"));
 
   return `
@@ -439,11 +511,10 @@ async function screenFszn(){
     <div class="h2">Сроки и налоги</div>
     <div class="glass card">
       <button class="btn primary" data-action="openAddTax">➕ Добавить напоминание</button>
-      <p class="fszn-note">Заведи свои сроки (название + дата + повтор). Просроченные и близкие появятся баннером на главной. Я намеренно не ставлю даты за тебя — сверяй их сам.</p>
+      <p class="fszn-note">Заведи свои сроки (название + дата + повтор). Просроченные и близкие появятся баннером на главной. Даты ставишь ты — я не бухгалтер.</p>
     </div>
     ${taxes.length? `<div class="list">${taxes.map(r=>{
         const days = r.date? Math.round((new Date(r.date)-new Date())/86400000):null;
-        const st = days==null?"soon":(days<0?"bad":(days<=14?"warn":"good"));
         const rep = r.repeat && r.repeat!=="none" ? ` · повтор: ${{month:"мес.",quarter:"квартал",year:"год"}[r.repeat]}` : "";
         return `<div class="item"><div class="ic">${days!=null&&days<0?"⛔":""}</div>
           <div class="meta"><div class="t">${esc(r.name)}</div>
@@ -552,7 +623,6 @@ async function screenSettings(){
 function openModal(html){ const m=$("#modal"); m.innerHTML=`<div class="modal">${html}</div>`; m.hidden=false; try{TG?.BackButton?.show();}catch{} }
 function closeModal(){ $("#modal").hidden=true; $("#modal").innerHTML=""; state.modalEditId=null; try{TG?.BackButton?.hide();}catch{} }
 
-/* быстрая заправка: 3 пресета в 1 тап */
 function modalFuelQuick(){
   const p = fuelPresets();
   openModal(`
@@ -576,8 +646,26 @@ function modalFuelPresets(){
     </div>
     <button class="btn primary" data-action="saveFuelPresets">Сохранить</button>`);
 }
+/* режим «за рулём» — fullscreen оверлей в #modal */
+function openDrive(){
+  const p = fuelPresets();
+  const m = $("#modal");
+  m.innerHTML = `<div class="drive">
+    <div class="dhead"><div class="dtitle">🚦 За рулём</div><button class="x" data-action="close">×</button></div>
+    <div class="dpresets">
+      ${p.map(v=>`<button class="dbig" data-action="fuelPreset" data-amt="${v}">⛽ ${v}<span class="cur">${cur()}</span></button>`).join("")}
+    </div>
+    <div class="drow">
+      <button class="dcat" data-action="driveCat" data-cat="wash">🫧 Мойка</button>
+      <button class="dcat" data-action="driveCat" data-cat="repair">🔧 Ремонт</button>
+      <button class="dcat" data-action="driveCat" data-cat="other">📦 Другое</button>
+    </div>
+    <button class="btn danger" data-action="close">✖ Выйти из режима</button>
+  </div>`;
+  m.hidden = false;
+  try{ TG?.BackButton?.show(); }catch{}
+}
 
-/* расход: добавление И редактирование */
 function modalExpense(cat, edit=null){
   state.modalCat = edit ? edit.category : cat;
   state.modalEditId = edit ? edit.id : null;
@@ -672,7 +760,7 @@ async function saveExpense(){
     mileage: mileage>0 ? mileage : null,
     note: $("#m_note").value.trim(),
   };
-  await dbPut("expenses", e);   // upsert: и добавление, и редактирование
+  await dbPut("expenses", e);
   if(e.mileage){
     const car = await dbGet("car",1) || {id:1};
     if(!car.currentMileage || e.mileage > car.currentMileage){ car.currentMileage = e.mileage; await dbPut("car",car); }
@@ -709,6 +797,11 @@ async function saveFsznField(q, field, value){
   rec[field] = value; await dbPut("fszn", rec);
 }
 function saveIncome(){ const v = parseFloat($("#income_month").value)||0; setIncome(ymNow(), v); toast("Доход сохранён"); hapticOk(); renderAsync(); }
+function saveEff(){
+  setKm(ymNow(), parseFloat($("#eff_km").value)||0);
+  setHours(ymNow(), parseFloat($("#eff_hours").value)||0);
+  toast("Пробег и часы сохранены"); hapticOk(); renderAsync();
+}
 
 /* налоги */
 function saveTax(){
@@ -839,6 +932,8 @@ document.addEventListener("click", async (ev)=>{
     case "fuelPreset": fuelPreset(parseFloat(el.dataset.amt)); break;
     case "openFuelPresets": modalFuelPresets(); break;
     case "saveFuelPresets": saveFuelPresets(); break;
+    case "openDrive":  openDrive(); break;
+    case "driveCat":   closeModal(); modalExpense(el.dataset.cat); break;
     case "editExpense":await editExpense(el.dataset.id); break;
     case "openEditCar":modalCar(); break;
     case "openAddMaint":modalMaint(); break;
@@ -855,6 +950,7 @@ document.addEventListener("click", async (ev)=>{
     case "taxPaid":    taxPaid(el.dataset.id); break;
     case "taxDel":     taxDel(el.dataset.id); break;
     case "setIncome":  saveIncome(); break;
+    case "setEff":     saveEff(); break;
     case "exportCsvQ": exportCSV("quarter"); break;
     case "exportCsvY": exportCSV("year"); break;
     case "delExpense": if(confirm("Удалить запись?")){ await dbDel("expenses",el.dataset.id); renderAsync(); } break;
@@ -883,6 +979,13 @@ $("#restoreInput").addEventListener("change", e=> handleRestoreFile(e.target.fil
 (async function init(){
   applyTheme(); makeParticles(); setupTelegram();
   await openDB(); await renderAsync();
+  // shortcuts / глубокие ссылки: ?act=fuel|wash|repair
+  const act = new URLSearchParams(location.search).get("act");
+  if(act){
+    history.replaceState(null, "", location.pathname + location.hash);
+    if(act==="fuel") modalFuelQuick();
+    else if(CATS[act]) modalExpense(act);
+  }
   if("serviceWorker" in navigator){
     window.addEventListener("load", ()=> navigator.serviceWorker.register("./sw.js").catch(()=>{}));
   }
