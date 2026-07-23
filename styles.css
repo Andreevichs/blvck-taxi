@@ -127,7 +127,7 @@ body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(
 /* стрик */
 .streak{display:inline-flex;align-items:center;gap:6px;margin:8px 0 2px;font-size:13px;font-weight:800;color:var(--warn)}
 
-/* тренд месяц-к-месяцу */
+/* тренд */
 .trendrow{display:flex;flex-wrap:wrap;gap:10px 14px;font-size:12px;font-weight:700;margin:10px 2px 0}
 .trendrow .up{color:var(--good)} .trendrow .down{color:var(--bad)} .trendrow .flat{color:var(--muted)}
 .trendrow .lbl{color:var(--muted);font-weight:600}
@@ -163,6 +163,13 @@ body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(
 .viewer{position:fixed;inset:0;z-index:25;background:rgba(0,0,0,.92);display:grid;place-items:center;padding:16px;cursor:zoom-out;animation:screenIn .25s var(--spring)}
 .viewer img{max-width:96vw;max-height:92vh;object-fit:contain;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
 .viewer .vclose{position:fixed;top:14px;right:16px;color:#fff;font-size:28px;background:rgba(255,255,255,.14);border:none;border-radius:50%;width:46px;height:46px;display:grid;place-items:center;cursor:pointer}
+
+/* экран чеков: навигация периода + превью в списке */
+.periodnav{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:10px 0 4px}
+.periodnav .plabel{font-weight:800;font-size:16px;text-align:center;flex:1}
+.periodnav .pbtn{width:46px;height:42px;border-radius:12px;border:1px solid var(--stroke);background:var(--glass-strong);color:var(--text);font-size:20px;cursor:pointer;flex:none}
+.periodnav .pbtn:active{transform:scale(.94)}
+.rthumb{width:48px;height:48px;object-fit:cover;border-radius:10px;border:1px solid var(--stroke);cursor:pointer;flex:none}
 
 /* ФСЗН */
 .progress{height:12px;border-radius:999px;background:var(--glass-strong);border:1px solid var(--stroke);overflow:hidden;margin:10px 0 4px}
