@@ -4,7 +4,7 @@
    + Telegram Mini App + ФСЗН/налоги ИП + быстрая заправка + чеки + штрафы
    + выручка по дням/план/выгодные дни/тренд + онбординг + scroll-reveal
    + count-up + кольцевой прогресс + спарклайн + ripple
-   FIX: во время онбординга таб-бар скрыт, чтобы не перехватывал тап по кнопке
+   FIX reveal: наблюдатель подключается ПОСЛЕ раскладки + страховка => без дыр
    ========================================================= */
 
 /* ===== TELEGRAM MINI APP ===== */
@@ -170,28 +170,25 @@ const dbGet=(s,id)=>reqP(tx(s).get(id));
 const dbAll=(s)=>reqP(tx(s).getAll());
 const dbClear=(s)=>reqP(tx(s,"readwrite").clear());
 
-/* ---------- рендер + post-render ---------- */
-let revealIO=null;
+/* ---------- рендер + post-render (НАДЁЖНЫЙ reveal) ---------- */
+let revealIO=null, revealGen=0;
 async function renderAsync(){
   const app=$("#app"); app.style.animation="none"; void app.offsetWidth; app.style.animation="";
   const html = await ({ dash:screenDash, stats:screenStats, car:screenCar, docs:screenDocs, settings:screenSettings, fszn:screenFszn, fines:screenFines, receipts:screenReceipts }[state.screen])();
   const showOnboard = !onboarded();
   app.innerHTML = (showOnboard?onboardHTML():"") + html;
   renderTabs();
-  // ВАЖНО: пока идёт тур — прячем таб-бар, иначе он перехватывает тап по кнопке «Поехали»
   const tb=$("#tabbar"); if(tb) tb.style.display = showOnboard ? "none" : "";
   postRender();
 }
 function postRender(){
   const anim = state._animateScreen;
-  if(revealIO) revealIO.disconnect();
+  if(revealIO){ revealIO.disconnect(); revealIO=null; }
+  const gen = ++revealGen;
   const SEL=".app .glass,.app .item,.app .alert,.app .h1,.app .h2,.app .qcard-f,.app .hero,.app .quickrow,.app .streak,.app .toolgrid,.app .metricrow,.app .today,.app .sparkcard";
   const els=[...document.querySelectorAll(SEL)];
-  if(anim){
-    let i=0;
-    revealIO=new IntersectionObserver((es)=>{ es.forEach(en=>{ if(en.isIntersecting){ const el=en.target; el.style.transitionDelay=(Math.min(i++,7)*48)+"ms"; el.classList.add("revealed"); revealIO.unobserve(el); } }); },{threshold:.06,rootMargin:"0px 0px -36px 0px"});
-    els.forEach(el=>{ if(!el.classList.contains("revealed")) revealIO.observe(el); });
-  } else { els.forEach(el=>el.classList.add("revealed")); }
+
+  // кольца / прогресс-бары / счётчики — независимо от reveal
   requestAnimationFrame(()=>{
     document.querySelectorAll("[data-ring]").forEach(c=>{ c.style.strokeDashoffset=c.getAttribute("data-ring"); });
     document.querySelectorAll("[data-bar]").forEach(i=>{ i.style.width=i.getAttribute("data-bar"); });
@@ -200,6 +197,28 @@ function postRender(){
     const to=parseFloat(el.getAttribute("data-count"))||0, dec=parseInt(el.getAttribute("data-dec")||"2",10), pre=el.getAttribute("data-prefix")||"", suf=el.getAttribute("data-suffix")||"";
     if(anim) countUp(el,to,dec,pre,suf); else el.textContent=pre+to.toLocaleString("ru-RU",{maximumFractionDigits:dec})+suf;
   });
+
+  // без анимации (повторный вход) — всё видно сразу, без дыр
+  if(!anim){ els.forEach(el=>el.classList.add("revealed")); state._animateScreen=false; return; }
+
+  // с анимацией: наблюдатель ПОСЛЕ раскладки (двойной rAF) + страховка
+  let i=0;
+  const io=new IntersectionObserver((entries)=>{
+    if(gen!==revealGen) return;
+    entries.forEach(en=>{ if(en.isIntersecting){ const el=en.target; el.style.transitionDelay=(Math.min(i++,9)*50)+"ms"; el.classList.add("revealed"); io.unobserve(el); } });
+  },{threshold:0.05, rootMargin:"0px 0px -6% 0px"});
+  revealIO=io;
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    if(gen!==revealGen) return;
+    els.forEach(el=>{ if(!el.classList.contains("revealed")) io.observe(el); });
+  }));
+  // страховка: если в кривом WebView наблюдатель промахнулся — раскрыть всё через 1.3с
+  setTimeout(()=>{
+    if(gen!==revealGen) return;
+    els.forEach(el=>{ if(!el.classList.contains("revealed")){ el.style.transitionDelay="0ms"; el.classList.add("revealed"); } });
+    if(revealIO){ revealIO.disconnect(); revealIO=null; }
+  },1300);
+
   state._animateScreen=false;
 }
 function renderTabs(){
@@ -262,7 +281,7 @@ async function screenDash(){
   return `
     <div class="topbar">
       <div class="brand"><span class="brand-dot"></span><span class="brand-name">BLVCK</span><span class="brand-sub">TAXI</span></div>
-      <div class="topbar-r">${tgName?`<span class="who">${esc(tgName)}</span>`:""}<button class="iconbtn" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙":"️"}</button></div>
+      <div class="topbar-r">${tgName?`<span class="who">${esc(tgName)}</span>`:""}<button class="iconbtn" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙":"☀️"}</button></div>
     </div>
 
     ${alerts.map(a=>`<div class="alert ${a.bad?"bad":""}"><span>${a.bad?"⚠️":"🔔"}</span><div><div style="font-weight:700">${a.t}</div><div class="small muted">${a.s}</div></div></div>`).join("")}
@@ -278,7 +297,7 @@ async function screenDash(){
 
     <div class="h2">быстрый ввод</div>
     <div class="quickrow">
-      <button class="qcard qcard-add" data-action="openFuelQuick"><span class="ico"></span><span class="t">Заправка</span><span class="s">пресеты · 1 тап</span></button>
+      <button class="qcard qcard-add" data-action="openFuelQuick"><span class="ico">⛽</span><span class="t">Заправка</span><span class="s">пресеты · 1 тап</span></button>
       <button class="qcard" data-action="quick" data-cat="repair"><span class="ico">🔧</span><span class="t">Ремонт</span><span class="s">+ расход</span></button>
       <button class="qcard" data-action="quick" data-cat="wash"><span class="ico">🫧</span><span class="t">Мойка</span><span class="s">+ расход</span></button>
       <button class="qcard" data-action="quick" data-cat="other"><span class="ico">📦</span><span class="t">Другое</span><span class="s">+ расход</span></button>
@@ -434,7 +453,7 @@ function fsznSettings(){ return { mzp:parseFloat(localStorage.getItem("blvck_fsz
 async function screenFszn(){ const s=fsznSettings(); const year=YEAR(),cq=CUR_Q(); const minMonth=s.rate/100*s.mzp,minQ=minMonth*3,minYear=minMonth*12;
   const qs=[]; let paidYTD=0,minYTD=0,paidAll=0,targetAll=0;
   for(let q=1;q<=4;q++){ const rec=await dbGet("fszn",`${year}-Q${q}`)||{income:0,paid:0}; const monthSum=quarterIncome(q,year); const income=monthSum>0?monthSum:(Number(rec.income)||0); const paid=Number(rec.paid)||0; const fromIncome=income>0?s.rate/100*income:0; const target=Math.max(minQ,fromIncome); let status,badge;
-    if(q<cq){status=paid>=target?"good":(paid>0?"warn":"bad");badge=paid>=target?"✅ закрыто":(paid>0?"🟡 частично":" не уплачено");}
+    if(q<cq){status=paid>=target?"good":(paid>0?"warn":"bad");badge=paid>=target?"✅ закрыто":(paid>0?"🟡 частично":"⏰ не уплачено");}
     else if(q===cq){status=paid>=target?"good":(paid>0?"warn":"soon");badge=paid>=target?"✅ закрыто":(paid>0?"🟡 в процессе":"🔵 в процессе");}
     else{status="soon";badge="🔮 предстоит";}
     qs.push({q,monthSum,manual:Number(rec.income)||0,paid,target,status,badge}); if(q<=cq){paidYTD+=paid;minYTD+=minQ;} paidAll+=paid;targetAll+=target; }
