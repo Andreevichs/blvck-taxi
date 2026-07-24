@@ -41,8 +41,6 @@ body{font-family:var(--sans);color:var(--text);background:var(--bg);overflow-x:h
 .bg-particles span:nth-child(3n){background:var(--accent);opacity:.26;width:4px;height:4px}
 @keyframes drift{0%{transform:translateY(16vh) scale(.6);opacity:0}12%{opacity:.24}88%{opacity:.24}100%{transform:translateY(-114vh) scale(1);opacity:0}}
 
-/* NOTE: у .app намеренно НЕТ z-index — иначе он создаёт «колпак»,
-   который запирает полноэкранные оверлеи под таб-баром. */
 .app{position:relative;max-width:540px;margin:0 auto;min-height:100%;padding:18px 16px calc(var(--tab-h) + 28px);animation:screenIn .5s var(--spring)}
 @keyframes screenIn{from{opacity:0}to{opacity:1}}
 
@@ -75,7 +73,8 @@ body{font-family:var(--sans);color:var(--text);background:var(--bg);overflow-x:h
 
 .hero{margin:0 2px 18px}
 .hero-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.hero-num{font-family:var(--mono);font-weight:700;font-size:clamp(46px,15vw,76px);line-height:.92;letter-spacing:-2px;margin:8px 0 6px;font-variant-numeric:tabular-nums}
+/* цифра «свободно» — чуть меньше, чтобы длинные суммы не рвались уродливо */
+.hero-num{font-family:var(--mono);font-weight:700;font-size:clamp(32px,10.5vw,54px);line-height:.95;letter-spacing:-1.5px;margin:8px 0 6px;font-variant-numeric:tabular-nums;word-break:break-word}
 .hero-num.pos{color:var(--accent)} .hero-num.neg{color:var(--muted)}
 .hero-sub{display:flex;flex-wrap:wrap;gap:4px 10px;font-family:var(--mono);font-size:11px;color:var(--muted)}
 .hero-sub b{color:var(--text);font-weight:600}
@@ -222,7 +221,7 @@ body{font-family:var(--sans);color:var(--text);background:var(--bg);overflow-x:h
 .fszn-note{font-size:11px;color:var(--muted);line-height:1.5;margin:6px 2px 0}
 .switch{display:flex;gap:8px}
 
-/* ===== onboarding — полноэкранный тур поверх всего (таб-бар скрыт в app.js) ===== */
+/* ===== onboarding ===== */
 .onboard{position:fixed;inset:0;z-index:60;background:var(--bg);display:flex;flex-direction:column;padding:34px 24px calc(46px + env(safe-area-inset-bottom));overflow:auto}
 .onboard::before,.onboard::after{content:"";position:fixed;inset:0;pointer-events:none}
 .onboard::before{background:radial-gradient(80% 50% at 86% -10%,var(--accent-soft),transparent 60%),radial-gradient(54% 40% at -8% 110%,rgba(255,255,255,.03),transparent 60%)}
