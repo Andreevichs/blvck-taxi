@@ -1,11 +1,11 @@
 /* =========================================================
    BLVCK TAXI — весь комбайн, vanilla, без зависимостей
+   МИНИМАЛИЗМ: чёрный / белый / оранжевый
    IndexedDB + localStorage. Офлайн. Без сервера. Бесплатно.
    + Telegram Mini App + ФСЗН/налоги ИП + быстрая заправка
    + эффективность + режим «за рулём» + стрик + shortcuts + чеки
    + ШТРАФЫ + выручка за день/план/выгодные дни + тренд + пресеты доков
-   + ЭКРАН ЧЕКОВ: просмотр галереей + выгрузка HTML(PDF)/ZIP/CSV за период
-   + ВЫРУЧКА ЗА ПРОШЛЫЕ ДНИ + МИНИ-ГРАФИК по дням (КОПЕЙКИ + ровная рамка)
+   + ЭКРАН ЧЕКОВ + ВЫРУЧКА ЗА ПРОШЛЫЕ ДНИ (рамка графика НЕ обрезается)
    + ПОЛНЫЙ бэкап
    ========================================================= */
 
@@ -25,7 +25,7 @@ function setupTelegram(){
 }
 function syncTgColors(){
   if(!TG) return;
-  const c = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "#0a0a0f";
+  const c = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "#0a0a0a";
   try{ TG.setBackgroundColor(c); TG.setHeaderColor(c); }catch{}
 }
 
@@ -72,7 +72,6 @@ function ruPlural(n,f){ const a=Math.abs(n)%100,b=a%10; if(a>=11&&a<=14)return f
 function prevYM(ym){ const [y,m]=ym.split("-").map(Number); return new Date(y,m-2,1).toISOString().slice(0,7); }
 function daysAgo(n){ const d=new Date(); d.setDate(d.getDate()-n); return d.toISOString().slice(0,10); }
 
-/* выбор периода со стрелками (для экрана чеков) */
 function periodRange(mode, offset){
   const now = new Date();
   if(mode==="all") return {from:null, to:null, label:"Всё время"};
@@ -116,7 +115,6 @@ function incomeSource(ym){ const d=sumDaysForYM(ym); if(d.sum>0) return {src:"da
 const incomeOf = ym => incomeSource(ym).val;
 function quarterIncome(q, year){ let s=0; for(let mo=(q-1)*3+1; mo<=(q-1)*3+3; mo++) s += incomeOf(`${year}-${String(mo).padStart(2,"0")}`); return s; }
 
-/* дни, где были расходы, но выручку не внесли (чтобы добить прошлое) */
 function missingWorkDays(exps, fromDate, toDate){
   const expDates = new Set(exps.filter(e=> e.date>=fromDate && e.date<=toDate).map(e=>e.date));
   const rev = dailyRevMap();
@@ -227,7 +225,7 @@ function openReceiptViewer(src){
   try{TG?.BackButton?.show();}catch{}
 }
 
-/* ---------- ZIP (без зависимостей, store) + base64→bytes ---------- */
+/* ---------- ZIP ---------- */
 const CRC_TABLE = (()=>{ const t=new Uint32Array(256); for(let n=0;n<256;n++){ let c=n; for(let k=0;k<8;k++) c = (c&1)?(0xEDB88320 ^ (c>>>1)):(c>>>1); t[n]=c>>>0; } return t; })();
 function crc32(bytes){ let c=0xFFFFFFFF; for(let i=0;i<bytes.length;i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c>>>8); return (c ^ 0xFFFFFFFF)>>>0; }
 function b64ToBytes(dataURL){ const b64=dataURL.split(",")[1]||""; const bin=atob(b64); const u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); return u; }
@@ -402,15 +400,15 @@ async function screenDash(){
 
   return `
     <div class="row between">
-      <div class="logo">BLVCK<span style="color:var(--text)"> TAXI</span></div>
-      <button class="btn sm ghost" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙":"☀️"}</button>
+      <div class="logo"><span class="logo-mark"></span>BLVCK <span class="logo-accent">TAXI</span></div>
+      <button class="btn sm ghost" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙":"️"}</button>
     </div>
     <p class="muted small" style="margin:2px 0 0">твой карманный учёт расходов</p>
     ${streakLine}
 
     ${alerts.map(a=>`
       <div class="alert ${a.bad?"bad":""}">
-        <span>${a.bad?"⚠️":"🔔"}</span>
+        <span>${a.bad?"⚠️":""}</span>
         <div><div style="font-weight:700">${a.t}</div><div class="small muted">${a.s}</div></div>
       </div>`).join("")}
 
@@ -550,10 +548,10 @@ async function screenStats(){
       <div style="height:8px"></div>
       <button class="btn sm primary" data-action="setEff" style="width:100%">💾 Сохранить пробег и часы</button>
       <div class="eff">
-        <div class="e"><div class="v">${perHour!=null?rate(perHour):"—"}</div><div class="k">₽ / час за рулём</div></div>
-        <div class="e"><div class="v">${perKmRev!=null?rate(perKmRev):"—"}</div><div class="k">₽ / км выручки</div></div>
-        <div class="e"><div class="v">${perKmCost!=null?rate(perKmCost):"—"}</div><div class="k">₽ / км затрат</div></div>
-        <div class="e"><div class="v">${margin!=null?margin.toFixed(0)+"%":"—"}</div><div class="k">маржа (свободно/доход)</div></div>
+        <div class="e"><div class="v">${perHour!=null?rate(perHour):"—"}</div><div class="k">за час за рулём</div></div>
+        <div class="e"><div class="v">${perKmRev!=null?rate(perKmRev):"—"}</div><div class="k">за км выручки</div></div>
+        <div class="e"><div class="v">${perKmCost!=null?rate(perKmCost):"—"}</div><div class="k">за км затрат</div></div>
+        <div class="e"><div class="v">${margin!=null?margin.toFixed(0)+"%":"—"}</div><div class="k">маржа</div></div>
       </div>
       <div class="fszn-note">💡 Разбивка по часам внутри дня появится вместе с учётом смен (таймером). Сейчас метрики — по итогу месяца; доход берётся из выручки по дням (или вручную с главной).</div>
     </div>`;
@@ -570,7 +568,7 @@ function filterByRange(exps, range){
 function donut(byCat){
   const entries = Object.entries(byCat).filter(([,v])=>v>0);
   const total = entries.reduce((s,[,v])=>s+v,0);
-  const colors = {fuel:"#7c5cff",repair:"#22d3ee",wash:"#34d399",other:"#fbbf24"};
+  const colors = {fuel:"#ff6a00",repair:"#f4f4f2",wash:"#80807a",other:"#34342f"};
   let a0 = -Math.PI/2; const R=60, r=38, cx=80, cy=80;
   const arc = (a1)=>{
     const large = (a1-a0)>Math.PI?1:0;
@@ -579,25 +577,25 @@ function donut(byCat){
     const d=`M${x0} ${y0} A${R} ${R} 0 ${large} 1 ${x1} ${y1} L${x2} ${y2} A${r} ${r} 0 ${large} 0 ${x3} ${y3} Z`;
     a0=a1; return d;
   };
-  const paths = entries.map(([k,v])=>`<path d="${arc(a0 + (v/total)*Math.PI*2)}" fill="${colors[k]||"#888"}" opacity=".92"/>`).join("");
+  const paths = entries.map(([k,v])=>`<path d="${arc(a0 + (v/total)*Math.PI*2)}" fill="${colors[k]||"#888"}" opacity=".95"/>`).join("");
   const legend = entries.map(([k,v])=>`<div class="li"><span class="dot" style="background:${colors[k]||"#888"}"></span>${(CATS[k]?.t||k)} · ${Math.round(v/total*100)}%</div>`).join("");
   return `<div class="row" style="gap:18px;margin-top:10px">
       <svg class="chart" viewBox="0 0 160 160" width="140" height="140">${paths}
-        <text x="80" y="78" text-anchor="middle" fill="var(--text)" font-size="14" font-weight="800">${money(total).split(" ")[0]}</text>
-        <text x="80" y="94" text-anchor="middle" fill="var(--muted)" font-size="9">${cur()}</text></svg>
+        <text class="ct" x="80" y="78" text-anchor="middle" font-size="14" font-weight="800">${money(total).split(" ")[0]}</text>
+        <text class="cm" x="80" y="94" text-anchor="middle" font-size="9">${cur()}</text></svg>
       <div class="legend col">${legend}</div></div>`;
 }
 function bars(data){
   const W=320, H=140, pad=18, max=Math.max(...data.map(d=>d.value),1), bw=(W-pad*2)/data.length;
   const cols = data.map((d,i)=>{
     const h=(d.value/max)*(H-pad*2), x=pad+i*bw+bw*0.15, y=H-pad-h;
-    return `<g><rect x="${x}" y="${y}" width="${bw*0.7}" height="${h}" rx="5" fill="url(#g1)">
+    return `<g><rect x="${x}" y="${y}" width="${bw*0.7}" height="${h}" rx="4" fill="url(#g1)">
         <animate attributeName="height" from="0" to="${h}" dur=".5s" fill="freeze"/>
         <animate attributeName="y" from="${H-pad}" to="${y}" dur=".5s" fill="freeze"/></rect>
-      <text x="${x+bw*0.35}" y="${H-5}" text-anchor="middle" fill="var(--muted)" font-size="9">${d.label}</text></g>`;
+      <text class="cm" x="${x+bw*0.35}" y="${H-5}" text-anchor="middle" font-size="9">${d.label}</text></g>`;
   }).join("");
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" style="margin-top:10px">
-    <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7c5cff"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs>${cols}</svg>`;
+    <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff6a00"/><stop offset="1" stop-color="#ff8a33"/></linearGradient></defs>${cols}</svg>`;
 }
 
 /* ---------- АВТО ---------- */
@@ -608,7 +606,7 @@ async function screenCar(){
     <p class="muted small">модель, расход, пробег, замена масла</p>
     <div class="glass card">
       <div class="row between">
-        <div><div style="font-size:20px;font-weight:800">${car.model?esc(car.model):"Не задано"}</div>
+        <div><div style="font-size:20px;font-weight:800;letter-spacing:-.4px">${car.model?esc(car.model):"Не задано"}</div>
           <div class="muted small">${car.plate?esc(car.plate):"—"}</div></div>
         <button class="btn sm" data-action="openEditCar">✏️ Изменить</button>
       </div>
@@ -703,7 +701,7 @@ async function screenFines(){
       }).join("")}</div>` : `<div class="glass empty">Штрафов нет — так держать 👍</div>`}`;
 }
 
-/* ---------- ЧЕКИ: просмотр + выгрузка за период ---------- */
+/* ---------- ЧЕКИ ---------- */
 async function getReceiptExpenses(){
   const all = await dbAll("expenses");
   const pr = periodRange(state.receiptMode, state.receiptOffset);
@@ -815,13 +813,13 @@ function exportReceiptsHtml(){
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BLVCK TAXI — чеки за ${esc(pr.label)}</title>
 <style>
- body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;padding:18px;color:#15151f;background:#f4f5fa}
- h1{font-size:22px;margin:0 0 4px} .sub{color:#666;font-size:13px;margin:0 0 14px}
- .noprint{position:sticky;top:0;background:#f4f5fa;padding:8px 0 12px}
- button{background:#7c5cff;color:#fff;border:none;border-radius:12px;padding:12px 16px;font-size:15px;font-weight:700;cursor:pointer}
+ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;padding:18px;color:#0a0a0a;background:#f4f4f2}
+ h1{font-size:22px;margin:0 0 4px;letter-spacing:-.4px} .sub{color:#6a6a66;font-size:13px;margin:0 0 14px}
+ .noprint{position:sticky;top:0;background:#f4f4f2;padding:8px 0 12px}
+ button{background:#ff5a00;color:#fff;border:none;border-radius:12px;padding:12px 16px;font-size:15px;font-weight:700;cursor:pointer}
  table{border-collapse:collapse;width:100%;max-width:520px;margin:6px 0 18px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 6px 20px rgba(0,0,0,.06)}
  td{padding:9px 12px;border-bottom:1px solid #eee;font-size:14px} td:last-child{text-align:right;font-weight:700}
- tr.tot td{background:#eef0ff;font-weight:800}
+ tr.tot td{background:#0a0a0a;color:#fff;font-weight:800}
  .rc{background:#fff;border-radius:14px;padding:10px;margin:10px 0;box-shadow:0 6px 20px rgba(0,0,0,.06);max-width:520px}
  .rc img{width:100%;border-radius:10px;display:block}
  .cap{font-size:13px;color:#444;margin-top:8px}
@@ -938,7 +936,7 @@ async function screenFszn(){
     ${taxes.length? `<div class="list">${taxes.map(r=>{
         const days = r.date? Math.round((new Date(r.date)-new Date())/86400000):null;
         const rep = r.repeat && r.repeat!=="none" ? ` · повтор: ${{month:"мес.",quarter:"квартал",year:"год"}[r.repeat]}` : "";
-        return `<div class="item"><div class="ic">${days!=null&&days<0?"⛔":""}</div>
+        return `<div class="item"><div class="ic">${days!=null&&days<0?"⛔":"🗓"}</div>
           <div class="meta"><div class="t">${esc(r.name)}</div>
             <div class="s">${r.date?fmtDate(r.date)+(days!=null?(days<0?" · просрочено":` · ${days} дн.`):""):"без даты"}${rep}</div></div>
           <button class="edit" data-action="taxPaid" data-id="${r.id}" title="уплачено">✅</button>
@@ -968,17 +966,17 @@ function fsznBars(qs){
     const x=pad+i*gw, hT=(q.target/max)*(H-pad*2), hP=(q.paid/max)*(H-pad*2), yT=H-pad-hT, yP=H-pad-hP;
     const pct = q.target>0 ? Math.min(100,Math.round(q.paid/q.target*100)) : 0;
     return `<g>
-      <rect x="${x+gw*0.12}" y="${yT}" width="${gw*0.30}" height="${hT}" rx="5" fill="var(--glass-strong)" stroke="var(--stroke)"/>
-      <rect x="${x+gw*0.50}" y="${yP}" width="${gw*0.30}" height="${hP}" rx="5" fill="url(#g2)">
+      <rect class="need" x="${x+gw*0.12}" y="${yT}" width="${gw*0.30}" height="${hT}" rx="4"/>
+      <rect x="${x+gw*0.50}" y="${yP}" width="${gw*0.30}" height="${hP}" rx="4" fill="url(#g2)">
         <animate attributeName="height" from="0" to="${hP}" dur=".5s" fill="freeze"/>
         <animate attributeName="y" from="${H-pad}" to="${yP}" dur=".5s" fill="freeze"/></rect>
-      <text x="${x+gw*0.5}" y="${H-6}" text-anchor="middle" fill="var(--muted)" font-size="9">Q${q.q}</text>
-      <text x="${x+gw*0.5}" y="${Math.min(yT,yP)-5}" text-anchor="middle" fill="var(--text)" font-size="9" font-weight="700">${pct}%</text></g>`;
+      <text class="cm" x="${x+gw*0.5}" y="${H-6}" text-anchor="middle" font-size="9">Q${q.q}</text>
+      <text class="ct" x="${x+gw*0.5}" y="${Math.min(yT,yP)-5}" text-anchor="middle" font-size="9" font-weight="700">${pct}%</text></g>`;
   }).join("");
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" style="margin-top:10px">
-    <defs><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7c5cff"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs>${cols}</svg>
+    <defs><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff6a00"/><stop offset="1" stop-color="#ff8a33"/></linearGradient></defs>${cols}</svg>
     <div class="legend" style="margin-top:8px">
-      <div class="li"><span class="dot" style="background:var(--glass-strong);border:1px solid var(--stroke)"></span>надо (прикидка)</div>
+      <div class="li"><span class="dot" style="background:var(--surface2);border:1px solid var(--line)"></span>надо (прикидка)</div>
       <div class="li"><span class="dot" style="background:var(--accent)"></span>уплачено</div></div>`;
 }
 async function fsznMiniWidget(){
@@ -1096,21 +1094,21 @@ function openDrive(){
   m.hidden = false;
   try{ TG?.BackButton?.show(); }catch{}
 }
-/* выручка за день — можно за сегодня и за прошлые дни + мини-график по дням (с копейками, рамка не обрезается) */
+/* выручка за день + мини-график (рамка не обрезается: распорки по краям ряда) */
 async function modalDailyRev(){
   const exps = await dbAll("expenses");
   const miss = missingWorkDays(exps, daysAgo(34), today()).slice(0,14);
   const def = today();
   const rev = dailyRevOf(def); const target = getDailyTarget();
 
-  // мини-график внесённой выручки по последним 14 дням — СУММЫ С КОПЕЙКАМИ; padding защищает рамку от обрезки по краям скролла
   const days = []; for(let i=13;i>=0;i--) days.push(daysAgo(i));
   const drm = dailyRevMap();
   const max = Math.max(...days.map(d=>dailyRevOf(d)), 1);
   const moShort = d => new Date(d+"T00:00:00").toLocaleDateString("ru-RU",{month:"short"});
   const chart = `<div class="fszn-note" style="margin:0 0 2px">Выручка по дням (с копейками) — чтобы не путать цифры. Тап по столбику = выбрать день и подставить сумму.</div>
     <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin:6px 0 4px">
-      <div style="display:flex;gap:6px;align-items:flex-end;height:168px;min-width:100%;padding:5px 6px;box-sizing:border-box">
+      <div style="display:flex;gap:6px;align-items:flex-end;height:168px;min-width:100%;padding:6px 0 0;box-sizing:border-box">
+        <div aria-hidden="true" style="flex:0 0 8px"></div>
         ${days.map((d,i)=>{
           const has = Object.prototype.hasOwnProperty.call(drm,d);
           const v = dailyRevOf(d);
@@ -1120,15 +1118,16 @@ async function modalDailyRev(){
           const dd = d.slice(8,10);
           const mo = moShort(d);
           const valTxt = has ? (v>0 ? Number(v).toLocaleString("ru-RU",{maximumFractionDigits:2}) : "0") : "·";
-          return `<div class="revcol" data-action="pickDay" data-date="${d}" style="flex:1 0 46px;min-width:46px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;cursor:pointer;outline:${sel?'2px solid var(--accent2)':'none'};outline-offset:1px;border-radius:10px;padding:2px">
-            <div style="font-size:10px;font-weight:800;color:var(--text);opacity:${v>0?1:.4};margin-bottom:3px;white-space:nowrap;letter-spacing:-.3px">${valTxt}</div>
-            <div style="width:80%;height:${barH}px;border-radius:7px 7px 3px 3px;background:${v>0?'linear-gradient(180deg,#7c5cff,#22d3ee)':'var(--glass-strong)'};border:1px solid ${v>0?'transparent':'var(--stroke)'};transition:height .3s"></div>
+          return `<div class="revcol" data-action="pickDay" data-date="${d}" style="flex:1 0 46px;min-width:46px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;cursor:pointer;outline:${sel?'2px solid #fff':'none'};outline-offset:2px;border-radius:10px;padding:2px">
+            <div style="font-size:10px;font-weight:800;color:var(--text);opacity:${v>0?1:.35};margin-bottom:3px;white-space:nowrap;letter-spacing:-.3px">${valTxt}</div>
+            <div style="width:80%;height:${barH}px;border-radius:6px 6px 3px 3px;background:${v>0?'linear-gradient(180deg,#ff7d1f,#ff5a00)':'var(--surface2)'};border:1px solid ${v>0?'transparent':'var(--line)'};transition:height .3s"></div>
             <div style="margin-top:4px;text-align:center;line-height:1.05">
-              <div class="revdd" style="font-size:11px;font-weight:${sel?800:600};color:${sel?'var(--accent2)':'var(--muted)'}">${dd}</div>
+              <div class="revdd" style="font-size:11px;font-weight:${sel?800:600};color:${sel?'#fff':'var(--muted)'}">${dd}</div>
               <div style="font-size:9px;color:var(--muted);visibility:${showMo?'visible':'hidden'}">${mo}</div>
             </div>
           </div>`;
         }).join("")}
+        <div aria-hidden="true" style="flex:0 0 8px"></div>
       </div>
     </div>`;
 
@@ -1148,13 +1147,12 @@ async function modalDailyRev(){
     <button class="btn primary" data-action="saveDailyRev">Сохранить</button>`);
   setTimeout(()=> $("#d_rev")?.focus(), 60);
 }
-/* подсветка выбранного дня в мини-графике */
 function highlightRevCol(date){
   document.querySelectorAll(".revcol").forEach(el=>{
     const on = el.dataset.date===date;
-    el.style.outline = on ? "2px solid var(--accent2)" : "none";
+    el.style.outline = on ? "2px solid #fff" : "none";
     const dd = el.querySelector(".revdd");
-    if(dd){ dd.style.color = on ? "var(--accent2)" : "var(--muted)"; dd.style.fontWeight = on ? "800":"600"; }
+    if(dd){ dd.style.color = on ? "#fff" : "var(--muted)"; dd.style.fontWeight = on ? "800":"600"; }
   });
 }
 function modalExpense(cat, edit=null){
@@ -1366,7 +1364,7 @@ async function fineDel(id){
   saveFinesList(list.filter(x=>x.id!==id)); toast("Удалено"); haptic(); renderAsync();
 }
 
-/* ---------- CSV-отчёты (общие сводки) ---------- */
+/* ---------- CSV-отчёты ---------- */
 function csvCell(v){ v = String(v ?? ""); return /[";\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }
 function download(name, text, type){
   const blob = (text instanceof Blob) ? text : new Blob([text], {type});
@@ -1462,7 +1460,7 @@ function applyTheme(){
   const t = localStorage.getItem("blvck_theme") || "dark";
   document.documentElement.dataset.theme = t;
   const meta = document.querySelector('meta[name="theme-color"]');
-  if(meta) meta.content = t==="dark" ? "#0a0a0f" : "#eef0f7";
+  if(meta) meta.content = t==="dark" ? "#0a0a0a" : "#f4f4f2";
   syncTgColors();
 }
 function toggleTheme(){ const t = document.documentElement.dataset.theme==="dark"?"light":"dark"; localStorage.setItem("blvck_theme", t); applyTheme(); haptic(); renderAsync(); }
@@ -1475,9 +1473,9 @@ function makeParticles(){
   for(let i=0;i<14;i++){
     const s = document.createElement("span");
     s.style.left = Math.random()*100+"%";
-    s.style.animationDuration = (12+Math.random()*16)+"s";
-    s.style.animationDelay = (-Math.random()*20)+"s";
-    s.style.transform = `scale(${.5+Math.random()*1.4})`;
+    s.style.animationDuration = (14+Math.random()*18)+"s";
+    s.style.animationDelay = (-Math.random()*22)+"s";
+    s.style.transform = `scale(${.5+Math.random()*1.2})`;
     box.appendChild(s);
   }
 }
