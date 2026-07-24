@@ -5,7 +5,7 @@
    + эффективность + режим «за рулём» + стрик + shortcuts + чеки
    + ШТРАФЫ + выручка за день/план/выгодные дни + тренд + пресеты доков
    + ЭКРАН ЧЕКОВ: просмотр галереей + выгрузка HTML(PDF)/ZIP/CSV за период
-   + ВЫРУЧКА ЗА ПРОШЛЫЕ ДНИ + МИНИ-ГРАФИК по дням (защита от путаницы)
+   + ВЫРУЧКА ЗА ПРОШЛЫЕ ДНИ + МИНИ-ГРАФИК по дням (КОПЕЙКИ + ровная рамка)
    + ПОЛНЫЙ бэкап
    ========================================================= */
 
@@ -59,7 +59,7 @@ const esc = v => String(v ?? "").replace(/[&<>"']/g, c =>
   ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const cur   = () => localStorage.getItem("blvck_cur") || "BYN";
 const money = n => (Number(n)||0).toLocaleString("ru-RU",{maximumFractionDigits:2}) + " " + cur();
-const rate  = n => (Number(n)||0).toLocaleString("ru-RU",{maximumFractionDigits:1}) + " " + cur();
+const rate  = n => (Number(n)||0).toLocaleString("ru-RU",{maximumFractionDigits:2}) + " " + cur();
 const today = () => new Date().toISOString().slice(0,10);
 const ymNow = () => today().slice(0,7);
 const fmtDate = d => d ? new Date(d+"T00:00:00").toLocaleDateString("ru-RU",{day:"2-digit",month:"short",year:"numeric"}) : "—";
@@ -1096,21 +1096,21 @@ function openDrive(){
   m.hidden = false;
   try{ TG?.BackButton?.show(); }catch{}
 }
-/* выручка за день — можно за сегодня и за прошлые дни + мини-график по дням */
+/* выручка за день — можно за сегодня и за прошлые дни + мини-график по дням (с копейками, рамка не обрезается) */
 async function modalDailyRev(){
   const exps = await dbAll("expenses");
   const miss = missingWorkDays(exps, daysAgo(34), today()).slice(0,14);
   const def = today();
   const rev = dailyRevOf(def); const target = getDailyTarget();
 
-  // мини-график внесённой выручки по последним 14 дням (чтобы не путать цифры)
+  // мини-график внесённой выручки по последним 14 дням — СУММЫ С КОПЕЙКАМИ; padding защищает рамку от обрезки по краям скролла
   const days = []; for(let i=13;i>=0;i--) days.push(daysAgo(i));
   const drm = dailyRevMap();
   const max = Math.max(...days.map(d=>dailyRevOf(d)), 1);
   const moShort = d => new Date(d+"T00:00:00").toLocaleDateString("ru-RU",{month:"short"});
-  const chart = `<div class="fszn-note" style="margin:0 0 2px">Выручка по дням — чтобы не путать цифры. Тап по столбику = выбрать день и подставить сумму.</div>
+  const chart = `<div class="fszn-note" style="margin:0 0 2px">Выручка по дням (с копейками) — чтобы не путать цифры. Тап по столбику = выбрать день и подставить сумму.</div>
     <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin:6px 0 4px">
-      <div style="display:flex;gap:6px;align-items:flex-end;height:150px;min-width:100%">
+      <div style="display:flex;gap:6px;align-items:flex-end;height:168px;min-width:100%;padding:5px 6px;box-sizing:border-box">
         ${days.map((d,i)=>{
           const has = Object.prototype.hasOwnProperty.call(drm,d);
           const v = dailyRevOf(d);
@@ -1119,10 +1119,10 @@ async function modalDailyRev(){
           const showMo = (i===0) || (moShort(d)!==moShort(days[i-1]));
           const dd = d.slice(8,10);
           const mo = moShort(d);
-          const valTxt = has ? (v>0 ? Number(v).toLocaleString("ru-RU",{maximumFractionDigits:0}) : "0") : "·";
-          return `<div class="revcol" data-action="pickDay" data-date="${d}" style="flex:1 0 34px;min-width:34px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;cursor:pointer;outline:${sel?'2px solid var(--accent2)':'none'};outline-offset:1px;border-radius:10px;padding:2px">
-            <div style="font-size:10px;font-weight:800;color:var(--text);opacity:${v>0?1:.4};margin-bottom:3px;white-space:nowrap">${valTxt}</div>
-            <div style="width:78%;height:${barH}px;border-radius:7px 7px 3px 3px;background:${v>0?'linear-gradient(180deg,#7c5cff,#22d3ee)':'var(--glass-strong)'};border:1px solid ${v>0?'transparent':'var(--stroke)'};transition:height .3s"></div>
+          const valTxt = has ? (v>0 ? Number(v).toLocaleString("ru-RU",{maximumFractionDigits:2}) : "0") : "·";
+          return `<div class="revcol" data-action="pickDay" data-date="${d}" style="flex:1 0 46px;min-width:46px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;cursor:pointer;outline:${sel?'2px solid var(--accent2)':'none'};outline-offset:1px;border-radius:10px;padding:2px">
+            <div style="font-size:10px;font-weight:800;color:var(--text);opacity:${v>0?1:.4};margin-bottom:3px;white-space:nowrap;letter-spacing:-.3px">${valTxt}</div>
+            <div style="width:80%;height:${barH}px;border-radius:7px 7px 3px 3px;background:${v>0?'linear-gradient(180deg,#7c5cff,#22d3ee)':'var(--glass-strong)'};border:1px solid ${v>0?'transparent':'var(--stroke)'};transition:height .3s"></div>
             <div style="margin-top:4px;text-align:center;line-height:1.05">
               <div class="revdd" style="font-size:11px;font-weight:${sel?800:600};color:${sel?'var(--accent2)':'var(--muted)'}">${dd}</div>
               <div style="font-size:9px;color:var(--muted);visibility:${showMo?'visible':'hidden'}">${mo}</div>
