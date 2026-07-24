@@ -73,7 +73,6 @@ body{font-family:var(--sans);color:var(--text);background:var(--bg);overflow-x:h
 
 .hero{margin:0 2px 18px}
 .hero-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
-/* цифра «свободно» — чуть меньше, чтобы длинные суммы не рвались уродливо */
 .hero-num{font-family:var(--mono);font-weight:700;font-size:clamp(32px,10.5vw,54px);line-height:.95;letter-spacing:-1.5px;margin:8px 0 6px;font-variant-numeric:tabular-nums;word-break:break-word}
 .hero-num.pos{color:var(--accent)} .hero-num.neg{color:var(--muted)}
 .hero-sub{display:flex;flex-wrap:wrap;gap:4px 10px;font-family:var(--mono);font-size:11px;color:var(--muted)}
@@ -124,6 +123,18 @@ body{font-family:var(--sans);color:var(--text);background:var(--bg);overflow-x:h
 .item .amt{font-family:var(--mono);font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
 .item .edit,.item .del{border:none;background:transparent;color:var(--muted);font-size:16px;cursor:pointer;padding:4px 6px}
 .item .edit:hover{color:var(--accent)} .item .del:hover{color:var(--text)}
+
+/* детали и износ */
+.part{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--rs);background:var(--s1);border:1px solid var(--line);box-shadow:var(--inset);transition:border-color .25s,transform .2s var(--spring)}
+.part:hover{border-color:var(--line2)}
+.part .ic{font-size:19px;width:34px;height:34px;display:grid;place-items:center;border-radius:9px;background:var(--s2);flex:none}
+.part .meta{flex:1;min-width:0}
+.part .meta .t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.part .meta .s{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:2px}
+.part .wear{font-family:var(--mono);font-weight:700;font-size:14px;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;color:var(--text)}
+.pill{font-family:var(--mono);font-size:9.5px;letter-spacing:.8px;text-transform:uppercase;padding:3px 8px;border-radius:999px;border:1px solid var(--line);white-space:nowrap;flex:none}
+.pill.on{color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft)}
+.pill.off{color:var(--muted)}
 
 .alert{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;margin:10px 2px;border-radius:var(--rs);border:1px solid var(--line);border-left:3px solid var(--accent);background:var(--s1)}
 .alert.bad{border-left-color:var(--text)} .alert.good{border-left-color:var(--accent)}
