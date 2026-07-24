@@ -1,10 +1,9 @@
 /* =========================================================
    BLVCK TAXI — instrument minimalism 2026 (black/white/orange)
    vanilla, без зависимостей. IndexedDB + localStorage. Офлайн. Без сервера.
-   + Telegram Mini App + ФСЗН/налоги ИП + быстрая заправка + чеки + штрафы
-   + выручка по дням/план/выгодные дни/тренд + онбординг + scroll-reveal
-   + count-up + кольцевой прогресс + спарклайн + ripple
-   FIX reveal: наблюдатель подключается ПОСЛЕ раскладки + страховка => без дыр
+   + категории: Запчасти 🔩 / Аренда авто 🗝️
+   + пробег установки для ремонта/запчастей + умный расчёт износа детали
+   + Telegram Mini App + ФСЗН/налоги ИП + чеки + штрафы + выручка по дням
    ========================================================= */
 
 /* ===== TELEGRAM MINI APP ===== */
@@ -28,7 +27,16 @@ function syncTgColors(){
 }
 
 /* ---------- справочники ---------- */
-const CATS = { fuel:{ico:"⛽",t:"Заправка"}, repair:{ico:"🔧",t:"Ремонт"}, wash:{ico:"🫧",t:"Мойка"}, other:{ico:"📦",t:"Другое"} };
+const CATS = {
+  fuel:   { ico:"⛽", t:"Заправка" },
+  parts:  { ico:"🔩", t:"Запчасти" },
+  repair: { ico:"🔧", t:"Ремонт" },
+  wash:   { ico:"🫧", t:"Мойка" },
+  rent:   { ico:"🗝️", t:"Аренда авто" },
+  other:  { ico:"📦", t:"Другое" },
+};
+// категории, где пробег = пробег установки детали/заправки (важен для износа и расчётов)
+const WEAR_CATS = ["fuel","repair","parts"];
 const CURS = ["BYN","₽","$","€","₸"];
 const TABS = [
   { id:"dash", ico:"🏠", t:"Главная" }, { id:"stats", ico:"📊", t:"Графики" },
@@ -49,6 +57,7 @@ const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&l
 const cur   = () => localStorage.getItem("blvck_cur") || "BYN";
 const money = n => (Number(n)||0).toLocaleString("ru-RU",{maximumFractionDigits:2}) + " " + cur();
 const rate  = n => (Number(n)||0).toLocaleString("ru-RU",{maximumFractionDigits:2}) + " " + cur();
+const num   = n => (Number(n)||0).toLocaleString("ru-RU");
 const today = () => new Date().toISOString().slice(0,10);
 const ymNow = () => today().slice(0,7);
 const fmtDate = d => d ? new Date(d+"T00:00:00").toLocaleDateString("ru-RU",{day:"2-digit",month:"short",year:"numeric"}) : "—";
@@ -170,7 +179,7 @@ const dbGet=(s,id)=>reqP(tx(s).get(id));
 const dbAll=(s)=>reqP(tx(s).getAll());
 const dbClear=(s)=>reqP(tx(s,"readwrite").clear());
 
-/* ---------- рендер + post-render (НАДЁЖНЫЙ reveal) ---------- */
+/* ---------- рендер + post-render ---------- */
 let revealIO=null, revealGen=0;
 async function renderAsync(){
   const app=$("#app"); app.style.animation="none"; void app.offsetWidth; app.style.animation="";
@@ -188,7 +197,6 @@ function postRender(){
   const SEL=".app .glass,.app .item,.app .alert,.app .h1,.app .h2,.app .qcard-f,.app .hero,.app .quickrow,.app .streak,.app .toolgrid,.app .metricrow,.app .today,.app .sparkcard";
   const els=[...document.querySelectorAll(SEL)];
 
-  // кольца / прогресс-бары / счётчики — независимо от reveal
   requestAnimationFrame(()=>{
     document.querySelectorAll("[data-ring]").forEach(c=>{ c.style.strokeDashoffset=c.getAttribute("data-ring"); });
     document.querySelectorAll("[data-bar]").forEach(i=>{ i.style.width=i.getAttribute("data-bar"); });
@@ -198,10 +206,8 @@ function postRender(){
     if(anim) countUp(el,to,dec,pre,suf); else el.textContent=pre+to.toLocaleString("ru-RU",{maximumFractionDigits:dec})+suf;
   });
 
-  // без анимации (повторный вход) — всё видно сразу, без дыр
   if(!anim){ els.forEach(el=>el.classList.add("revealed")); state._animateScreen=false; return; }
 
-  // с анимацией: наблюдатель ПОСЛЕ раскладки (двойной rAF) + страховка
   let i=0;
   const io=new IntersectionObserver((entries)=>{
     if(gen!==revealGen) return;
@@ -212,7 +218,6 @@ function postRender(){
     if(gen!==revealGen) return;
     els.forEach(el=>{ if(!el.classList.contains("revealed")) io.observe(el); });
   }));
-  // страховка: если в кривом WebView наблюдатель промахнулся — раскрыть всё через 1.3с
   setTimeout(()=>{
     if(gen!==revealGen) return;
     els.forEach(el=>{ if(!el.classList.contains("revealed")){ el.style.transitionDelay="0ms"; el.classList.add("revealed"); } });
@@ -278,6 +283,14 @@ async function screenDash(){
     const f=(x,c,l)=>x.dir==="flat"?`<span class="flat">${l} →</span>`:`<span class="${c}">${l} ${arrow(x.dir)}${x.pct!=null?x.pct+"%":""}</span>`;
     return (spentMonth||spPY||rC||rPY)?`<div class="trendrow">${f(ts,c1,"расходы")} · ${f(tr,c2,"выручка")}</div>`:""; })();
 
+  // быстрый ввод: заправка(пресеты) + запчасти + ремонт + мойка + аренда + другое
+  const quick = [["fuel",true],["parts",false],["repair",false],["wash",false],["rent",false],["other",false]].map(([k,add])=>{
+    const c=CATS[k];
+    return add
+      ? `<button class="qcard qcard-add" data-action="openFuelQuick"><span class="ico">${c.ico}</span><span class="t">${c.t}</span><span class="s">пресеты · 1 тап</span></button>`
+      : `<button class="qcard" data-action="quick" data-cat="${k}"><span class="ico">${c.ico}</span><span class="t">${c.t}</span><span class="s">${WEAR_CATS.includes(k)?"пробег установки":"+ расход"}</span></button>`;
+  }).join("");
+
   return `
     <div class="topbar">
       <div class="brand"><span class="brand-dot"></span><span class="brand-name">BLVCK</span><span class="brand-sub">TAXI</span></div>
@@ -296,12 +309,7 @@ async function screenDash(){
     ${curStreak>0?`<div class="streak">🔥 ${curStreak} ${ruPlural(curStreak,["день","дня","дней"])} подряд · рекорд ${best}</div>`:(best>0?`<div class="streak" style="border-color:var(--line);background:transparent;color:var(--muted)">рекорд 🔥 ${best} ${ruPlural(best,["день","дня","дней"])}</div>`:"")}
 
     <div class="h2">быстрый ввод</div>
-    <div class="quickrow">
-      <button class="qcard qcard-add" data-action="openFuelQuick"><span class="ico">⛽</span><span class="t">Заправка</span><span class="s">пресеты · 1 тап</span></button>
-      <button class="qcard" data-action="quick" data-cat="repair"><span class="ico">🔧</span><span class="t">Ремонт</span><span class="s">+ расход</span></button>
-      <button class="qcard" data-action="quick" data-cat="wash"><span class="ico">🫧</span><span class="t">Мойка</span><span class="s">+ расход</span></button>
-      <button class="qcard" data-action="quick" data-cat="other"><span class="ico">📦</span><span class="t">Другое</span><span class="s">+ расход</span></button>
-    </div>
+    <div class="quickrow">${quick}</div>
 
     <section class="today glass">
       <div class="today-main">
@@ -348,7 +356,11 @@ function freeMoneyWidget(){
   </div>`;
 }
 function expenseRow(e){ const c=CATS[e.category]||CATS.other;
-  return `<div class="item"><div class="ic">${c.ico}</div><div class="meta"><div class="t">${c.t}${e.note?": "+esc(e.note):""}</div><div class="s">${fmtDate(e.date)}${e.mileage?" · "+Number(e.mileage).toLocaleString("ru-RU")+" км":""}</div></div><div class="amt">−${money(e.amount)}</div>${e.receipt?`<button class="edit" data-action="viewReceipt" data-id="${e.id}" title="чек">🧾</button>`:""}<button class="edit" data-action="editExpense" data-id="${e.id}" title="изменить">✏️</button><button class="del" data-action="delExpense" data-id="${e.id}" title="удалить">🗑</button></div>`; }
+  let mileTxt="";
+  if(e.mileage){ mileTxt = (e.category==="repair"||e.category==="parts")
+    ? " · установлено "+num(e.mileage)+" км"
+    : " · "+num(e.mileage)+" км"; }
+  return `<div class="item"><div class="ic">${c.ico}</div><div class="meta"><div class="t">${c.t}${e.note?": "+esc(e.note):""}</div><div class="s">${fmtDate(e.date)}${mileTxt}</div></div><div class="amt">−${money(e.amount)}</div>${e.receipt?`<button class="edit" data-action="viewReceipt" data-id="${e.id}" title="чек">🧾</button>`:""}<button class="edit" data-action="editExpense" data-id="${e.id}" title="изменить">✏️</button><button class="del" data-action="delExpense" data-id="${e.id}" title="удалить">🗑</button></div>`; }
 
 /* ---------- ГРАФИКИ ---------- */
 async function screenStats(){
@@ -378,7 +390,7 @@ async function screenStats(){
 }
 function filterByRange(exps,range){ if(range==="all") return exps; const d=new Date(); if(range==="month")d.setMonth(d.getMonth()-1); if(range==="quarter")d.setMonth(d.getMonth()-3); if(range==="year")d.setFullYear(d.getFullYear()-1); const c=d.toISOString().slice(0,10); return exps.filter(e=>e.date>=c); }
 function donut(byCat){ const e=Object.entries(byCat).filter(([,v])=>v>0); const total=e.reduce((s,[,v])=>s+v,0);
-  const colors={fuel:"#ff5a00",repair:"#f5f4f1",wash:"#80807a",other:"#34342f"}; let a0=-Math.PI/2; const R=60,r=38,cx=80,cy=80;
+  const colors={fuel:"#ff5a00",parts:"#ff7d24",repair:"#f5f4f1",wash:"#80807a",rent:"#b8b8b0",other:"#34342f"}; let a0=-Math.PI/2; const R=60,r=38,cx=80,cy=80;
   const arc=a1=>{const lg=(a1-a0)>Math.PI?1:0,p=(a,rd)=>[cx+rd*Math.cos(a),cy+rd*Math.sin(a)];const[x0,y0]=p(a0,R),[x1,y1]=p(a1,R),[x2,y2]=p(a1,r),[x3,y3]=p(a0,r);const d=`M${x0} ${y0} A${R} ${R} 0 ${lg} 1 ${x1} ${y1} L${x2} ${y2} A${r} ${r} 0 ${lg} 0 ${x3} ${y3} Z`;a0=a1;return d;};
   const paths=e.map(([k,v])=>`<path d="${arc(a0+(v/total)*Math.PI*2)}" fill="${colors[k]||"#888"}" opacity=".95"/>`).join("");
   const legend=e.map(([k,v])=>`<div class="li"><span class="dot" style="background:${colors[k]||"#888"}"></span>${(CATS[k]?.t||k)} · ${Math.round(v/total*100)}%</div>`).join("");
@@ -387,23 +399,56 @@ function bars(data){ const W=320,H=140,pad=18,max=Math.max(...data.map(d=>d.valu
   const cols=data.map((d,i)=>{const h=(d.value/max)*(H-pad*2),x=pad+i*bw+bw*0.15,y=H-pad-h;return `<g><rect x="${x}" y="${y}" width="${bw*0.7}" height="${h}" rx="4" fill="url(#g1)"><animate attributeName="height" from="0" to="${h}" dur=".5s" fill="freeze"/><animate attributeName="y" from="${H-pad}" to="${y}" dur=".5s" fill="freeze"/></rect><text class="cm" x="${x+bw*0.35}" y="${H-5}" text-anchor="middle" font-size="9">${d.label}</text></g>`;}).join("");
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" style="margin-top:10px"><defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff5a00"/><stop offset="1" stop-color="#ff7d24"/></linearGradient></defs>${cols}</svg>`; }
 
-/* ---------- АВТО ---------- */
-async function screenCar(){ const car=await dbGet("car",1)||{};
+/* ---------- АВТО + износ деталей ---------- */
+async function screenCar(){ const car=await dbGet("car",1)||{}; const exps=await dbAll("expenses");
   return `<div class="h1">Автомобиль</div><p class="muted small">модель, расход, пробег, замена масла</p>
     <div class="glass card"><div class="row between"><div><div style="font-size:20px;font-weight:800;letter-spacing:-.4px">${car.model?esc(car.model):"Не задано"}</div><div class="muted small">${car.plate?esc(car.plate):"—"}</div></div><button class="btn sm" data-action="openEditCar">✏️ Изменить</button></div><div class="divider"></div>
     <div class="metricrow" style="margin:0"><div class="metric"><div class="v">${(car.currentMileage||0).toLocaleString("ru-RU")}</div><div class="k">пробег, км</div></div><div class="metric"><div class="v">${car.fuelPer100||"—"}</div><div class="k">расход л/100</div></div><div class="metric"><div class="v">${(car.lastOilMileage||0).toLocaleString("ru-RU")}</div><div class="k">масло на км</div></div><div class="metric"><div class="v">${car.oilInterval||"—"}</div><div class="k">интервал, км</div></div></div></div>
-    <div class="h2">расход топлива (оценка)</div><div class="glass card">${await fuelEstimate()}</div>`; }
-async function fuelEstimate(){ const exps=(await dbAll("expenses")).filter(e=>e.category==="fuel"&&e.mileage);
-  if(exps.length<2) return `<div class="empty">Добавь ≥2 заправки с пробегом — посчитаю стоимость км</div>`;
-  const s=exps.slice().sort((a,b)=>a.mileage-b.mileage); const km=s.at(-1).mileage-s[0].mileage; const sum=s.slice(1).reduce((a,e)=>a+Number(e.amount||0),0);
+    <div class="h2">расход топлива (оценка)</div><div class="glass card">${await fuelEstimate(exps)}</div>
+    <div class="h2">детали и работы · износ</div><div class="glass card">${partsWear(exps,car)}</div>`; }
+async function fuelEstimate(exps){ exps = exps || await dbAll("expenses");
+  const f=exps.filter(e=>e.category==="fuel"&&e.mileage);
+  if(f.length<2) return `<div class="empty">Добавь ≥2 заправки с пробегом — посчитаю стоимость км</div>`;
+  const s=f.slice().sort((a,b)=>a.mileage-b.mileage); const km=s.at(-1).mileage-s[0].mileage; const sum=s.slice(1).reduce((a,e)=>a+Number(e.amount||0),0);
   if(km<=0) return `<div class="empty">Мало данных</div>`;
   return `<div class="row between"><span class="muted">Стоимость км</span><b>${money(sum/km)}</b></div><div class="row between"><span class="muted">Замерено на</span><span>${km.toLocaleString("ru-RU")} км</span></div>`; }
+
+/* умный износ: группировка по (категория + название детали);
+   пробег детали = до следующей установки той же детали, иначе до текущего пробега авто */
+function partsWear(exps, car){
+  const curMile = Number(car?.currentMileage)||0;
+  const recs = exps.filter(e=>(e.category==="repair"||e.category==="parts")&&Number(e.mileage)>0);
+  if(!recs.length) return `<div class="empty">Укажи пробег и название детали при ремонте/запчастях — здесь появится, сколько прошла каждая деталь. Когда поставишь ту же деталь заново — старая автоматически станет «заменена».</div>`;
+  const groups={};
+  recs.forEach(e=>{ const base=(e.note||"").trim(); const key = base ? (e.category+"|"+base.toLowerCase()) : ("id|"+e.id); (groups[key]=groups[key]||[]).push(e); });
+  const rows=[];
+  Object.values(groups).forEach(arr=>{
+    arr.sort((a,b)=>Number(a.mileage)-Number(b.mileage));
+    arr.forEach((e,i)=>{
+      const next=arr[i+1]; const installed=Number(e.mileage);
+      let span=null, active=!next, replacedAt=null;
+      if(next){ replacedAt=Number(next.mileage); span=Math.max(0,replacedAt-installed); }
+      else if(curMile>installed){ span=curMile-installed; }
+      rows.push({e,installed,span,active,replacedAt});
+    });
+  });
+  rows.sort((a,b)=>(b.e.date+b.e.id).localeCompare(a.e.date+a.e.id));
+  const items = rows.map(r=>{
+    const c=CATS[r.e.category]||CATS.other;
+    const wearTxt = r.span!=null ? num(r.span)+" км" : "—";
+    const pill = r.active ? `<span class="pill on">действует</span>` : `<span class="pill off">заменена</span>`;
+    const tail = r.active ? (curMile>0?"":" · пробег авто не задан") : ` · заменена на ${num(r.replacedAt)}`;
+    const sub = `установлена ${num(r.installed)} км · ${fmtDate(r.e.date)}${tail}`;
+    return `<div class="part"><div class="ic">${c.ico}</div><div class="meta"><div class="t">${r.e.note?esc(r.e.note):c.t}</div><div class="s">${sub}</div></div><div class="wear">${wearTxt}</div>${pill}</div>`;
+  }).join("");
+  return `<div class="list">${items}</div>`;
+}
 
 /* ---------- ТО / ДОКИ ---------- */
 async function screenDocs(){ const maint=(await dbAll("maintenance")).sort((a,b)=>b.date.localeCompare(a.date)); const docs=(await dbAll("documents")).sort((a,b)=>(a.expiryDate||"9").localeCompare(b.expiryDate||"9"));
   return `<div class="h1">ТО и документы</div><div class="row" style="gap:10px;margin-top:10px"><button class="btn" data-action="openAddMaint">➕ Событие ТО</button><button class="btn" data-action="openAddDoc">📄 Документ</button></div>
     <div class="h2">документы</div>${docs.length?`<div class="list">${docs.map(d=>{const days=d.expiryDate?Math.round((new Date(d.expiryDate)-new Date())/86400000):null;const w=days!=null&&days<=30;return `<div class="item"><div class="ic">${w?(days<0?"⛔":"⏰"):"📄"}</div><div class="meta"><div class="t">${esc(d.name)}</div><div class="s">${d.expiryDate?("до "+fmtDate(d.expiryDate)+(days!=null?(days<0?" · просрочено":" · "+days+" дн."):"")):"бессрочно"}</div></div><button class="del" data-action="delDoc" data-id="${d.id}">🗑</button></div>`;}).join("")}</div>`:`<div class="glass empty">Нет документов</div>`}
-    <div class="h2">журнал ТО</div>${maint.length?`<div class="list">${maint.map(m=>`<div class="item"><div class="ic">🔧</div><div class="meta"><div class="t">${esc(m.title)}</div><div class="s">${fmtDate(m.date)}${m.mileage?" · "+Number(m.mileage).toLocaleString("ru-RU")+" км":""}${m.note?" · "+esc(m.note):""}</div></div><button class="del" data-action="delMaint" data-id="${m.id}">🗑</button></div>`).join("")}</div>`:`<div class="glass empty">Нет событий</div>`}`; }
+    <div class="h2">журнал ТО</div>${maint.length?`<div class="list">${maint.map(m=>`<div class="item"><div class="ic">🔧</div><div class="meta"><div class="t">${esc(m.title)}</div><div class="s">${fmtDate(m.date)}${m.mileage?" · "+num(m.mileage)+" км":""}${m.note?" · "+esc(m.note):""}</div></div><button class="del" data-action="delMaint" data-id="${m.id}">🗑</button></div>`).join("")}</div>`:`<div class="glass empty">Нет событий</div>`}`; }
 
 /* ---------- ШТРАФЫ ---------- */
 async function screenFines(){ const list=finesList(); const now=new Date(); now.setHours(0,0,0,0);
@@ -497,8 +542,23 @@ async function modalDailyRev(){ const exps=await dbAll("expenses"); const miss=m
   const chips=miss.length?`<div class="field"><label>Быстро — рабочие дни без выручки</label><div class="chips">${miss.map(d=>`<span class="chip" data-action="pickDay" data-date="${d}">${d.slice(8,10)}.${d.slice(5,7)}</span>`).join("")}</div><div class="fszn-note">тап по дате подставит её и подтянет сумму</div></div>`:"";
   openModal(`<div class="mhead"><h3>💵 Выручка за день</h3><button class="x" data-action="close">×</button></div><p class="muted small" style="margin-top:0">сегодня или любой прошлый день — доход, тренд и карта дней пересчитаются сами</p><div class="grid2"><div class="field"><label>Дата</label><input id="d_date" class="input" type="date" value="${def}"></div><div class="field"><label>Выручка за день</label><input id="d_rev" class="input" type="number" inputmode="decimal" value="${rev||""}" placeholder="0"></div></div><div class="field" style="margin:6px 0 0">${chart}</div>${chips}<div class="field"><label>План на день (необязательно, общий)</label><input id="d_target" class="input" type="number" inputmode="decimal" value="${target||""}" placeholder="сколько хочу привезти"></div><button class="btn primary" data-action="saveDailyRev">Сохранить</button>`); setTimeout(()=>$("#d_rev")?.focus(),60); }
 function highlightRevCol(date){ document.querySelectorAll(".revcol").forEach(el=>{const on=el.dataset.date===date;el.style.outline=on?"2px solid #fff":"none";const dd=el.querySelector(".revdd");if(dd){dd.style.color=on?"#fff":"var(--muted)";dd.style.fontWeight=on?"800":"600";}}); }
-function modalExpense(cat,edit=null){ state.modalCat=edit?edit.category:cat; state.modalEditId=edit?edit.id:null; state.modalReceipt=edit?.receipt||null; const v=edit||{};
-  openModal(`<div class="mhead"><h3>${edit?"✏️ Изменить":CATS[state.modalCat].ico+" "+CATS[state.modalCat].t}</h3><button class="x" data-action="close">×</button></div><div class="field"><label>Сумма</label><input id="m_amount" class="input" type="number" inputmode="decimal" value="${v.amount??""}" placeholder="0" autofocus></div><div class="grid2"><div class="field"><label>Дата</label><input id="m_date" class="input" type="date" value="${v.date||today()}"></div><div class="field"><label>Пробег, км</label><input id="m_mileage" class="input" type="number" inputmode="numeric" value="${v.mileage??""}" placeholder="необяз."></div></div><div class="field"><label>Заметка</label><input id="m_note" class="input" value="${esc(v.note||"")}" placeholder="например: АЗС Лукойл"></div><div class="field"><label>Чек / скриншот</label><div id="m_receipt_box">${receiptBoxHTML()}</div></div><button class="btn primary" data-action="saveExpense">${edit?"Сохранить изменения":"Сохранить"}</button>`); setTimeout(()=>$("#m_amount")?.focus(),60); }
+function modalExpense(cat,edit=null){
+  const ecat = edit ? edit.category : cat;
+  state.modalCat=ecat; state.modalEditId=edit?edit.id:null; state.modalReceipt=edit?.receipt||null;
+  const v=edit||{};
+  const isWear = WEAR_CATS.includes(ecat);
+  const noteLabel = (ecat==="repair"||ecat==="parts") ? "Деталь / работа" : "Заметка";
+  const mileLabel = (ecat==="repair"||ecat==="parts") ? "Пробег установки, км" : "Пробег, км";
+  const noteHint  = (ecat==="repair"||ecat==="parts") ? "название детали — по нему считается износ" : "например: АЗС Лукойл";
+  const mileField = isWear ? `<div class="field"><label>${mileLabel}</label><input id="m_mileage" class="input" type="number" inputmode="numeric" value="${v.mileage??""}" placeholder="${ecat==="fuel"?"необяз.":"обязательно для износа"}"></div>` : "";
+  openModal(`<div class="mhead"><h3>${edit?"✏️ Изменить":CATS[ecat].ico+" "+CATS[ecat].t}</h3><button class="x" data-action="close">×</button></div>
+    <div class="field"><label>Сумма</label><input id="m_amount" class="input" type="number" inputmode="decimal" value="${v.amount??""}" placeholder="0" autofocus></div>
+    <div class="grid2"><div class="field"><label>Дата</label><input id="m_date" class="input" type="date" value="${v.date||today()}"></div>${mileField}</div>
+    <div class="field"><label>${noteLabel}</label><input id="m_note" class="input" value="${esc(v.note||"")}" placeholder="${noteHint}"></div>
+    <div class="field"><label>Чек / скриншот</label><div id="m_receipt_box">${receiptBoxHTML()}</div></div>
+    <button class="btn primary" data-action="saveExpense">${edit?"Сохранить изменения":"Сохранить"}</button>`);
+  setTimeout(()=>$("#m_amount")?.focus(),60);
+}
 function modalMaint(){ openModal(`<div class="mhead"><h3>🔧 Событие ТО</h3><button class="x" data-action="close">×</button></div><div class="field"><label>Что сделали</label><input id="m_title" class="input" placeholder="Замена колодок" autofocus></div><div class="grid2"><div class="field"><label>Дата</label><input id="m_date" class="input" type="date" value="${today()}"></div><div class="field"><label>Пробег, км</label><input id="m_mileage" class="input" type="number" inputmode="numeric"></div></div><div class="field"><label>Заметка</label><input id="m_note" class="input"></div><button class="btn primary" data-action="saveMaint">Сохранить</button>`); }
 function modalDoc(){ openModal(`<div class="mhead"><h3>📄 Документ</h3><button class="x" data-action="close">×</button></div><div class="field"><label>Быстрые названия</label><div class="chips">${DOC_PRESETS.map(t=>`<span class="chip" data-action="docPreset" data-name="${esc(t)}">${esc(t)}</span>`).join("")}</div></div><div class="field"><label>Название</label><input id="m_name" class="input" placeholder="Страховка / Техосмотр" autofocus></div><div class="grid2"><div class="field"><label>Выдан</label><input id="m_issue" class="input" type="date"></div><div class="field"><label>Действует до</label><input id="m_expiry" class="input" type="date"></div></div><div class="field"><label>Заметка</label><input id="m_note" class="input"></div><button class="btn primary" data-action="saveDoc">Сохранить</button>`); }
 async function modalCar(){ const car=await dbGet("car",1)||{}; openModal(`<div class="mhead"><h3>🚗 Автомобиль</h3><button class="x" data-action="close">×</button></div><div class="field"><label>Модель</label><input id="m_model" class="input" value="${esc(car.model||"")}" placeholder="Skoda Octavia"></div><div class="grid2"><div class="field"><label>Номер</label><input id="m_plate" class="input" value="${esc(car.plate||"")}" placeholder="1234 AB-7"></div><div class="field"><label>Расход л/100</label><input id="m_fuel" class="input" type="number" inputmode="decimal" value="${esc(car.fuelPer100||"")}"></div></div><div class="grid2"><div class="field"><label>Текущий пробег</label><input id="m_km" class="input" type="number" inputmode="numeric" value="${esc(car.currentMileage||"")}"></div><div class="field"><label>Масло на км</label><input id="m_oilkm" class="input" type="number" inputmode="numeric" value="${esc(car.lastOilMileage||"")}"></div></div><div class="field"><label>Интервал замены масла, км</label><input id="m_oilint" class="input" type="number" inputmode="numeric" value="${esc(car.oilInterval||"10000")}"></div><button class="btn primary" data-action="saveCar">Сохранить</button>`); }
@@ -509,8 +569,10 @@ function modalFine(){ openModal(`<div class="mhead"><h3>🚨 Штраф</h3><but
 async function fuelPreset(amt){ await dbPut("expenses",{id:uid(),category:"fuel",amount:amt,date:today(),mileage:null,note:"быстрая заправка"}); closeModal(); toast(`Заправка ${money(amt)}`); hapticOk(); renderAsync(); }
 function saveFuelPresets(){ const a=[0,1,2].map(i=>parseFloat($("#fp"+i).value)||0); if(a.some(v=>v<=0)){toast("Все суммы должны быть > 0");hapticBad();return;} setFuelPresets(a); closeModal(); toast("Суммы сохранены"); hapticOk(); }
 function saveDailyRev(){ const date=($("#d_date")?.value)||today(); const rev=parseFloat($("#d_rev").value)||0; const target=parseFloat($("#d_target").value)||0; setDailyRev(date,rev); setDailyTarget(target); closeModal(); toast(rev>0?`Выручка ${money(rev)} · ${date===today()?"сегодня":fmtDate(date)}`:`Выручка за ${fmtDate(date)} очищена`); hapticOk(); renderAsync(); }
-async function saveExpense(){ const amount=parseFloat($("#m_amount").value); if(!amount||amount<=0){toast("Введи сумму");hapticBad();return;} const mileage=parseFloat($("#m_mileage").value);
-  const e={id:state.modalEditId||uid(),category:state.modalCat,amount,date:$("#m_date").value||today(),mileage:mileage>0?mileage:null,note:$("#m_note").value.trim(),receipt:state.modalReceipt||null}; await dbPut("expenses",e);
+async function saveExpense(){ const amount=parseFloat($("#m_amount").value); if(!amount||amount<=0){toast("Введи сумму");hapticBad();return;}
+  const mileEl=$("#m_mileage"); const mileage = mileEl ? (parseFloat(mileEl.value)||0) : 0;
+  const e={id:state.modalEditId||uid(),category:state.modalCat,amount,date:$("#m_date").value||today(),mileage:mileage>0?mileage:null,note:$("#m_note").value.trim(),receipt:state.modalReceipt||null};
+  await dbPut("expenses",e);
   if(e.mileage){ const car=await dbGet("car",1)||{id:1}; if(!car.currentMileage||e.mileage>car.currentMileage){car.currentMileage=e.mileage;await dbPut("car",car);} }
   closeModal(); toast(state.modalEditId?"Изменено":"Расход добавлен"); hapticOk(); renderAsync(); }
 async function editExpense(id){ const r=await dbGet("expenses",id); if(r) modalExpense(r.category,r); }
@@ -534,7 +596,7 @@ function download(name,text,type){ const blob=(text instanceof Blob)?text:new Bl
 async function exportCSV(kind){ const year=YEAR(),q=CUR_Q();
   const months=kind==="quarter"?[`${year}-${String((q-1)*3+1).padStart(2,"0")}`,`${year}-${String((q-1)*3+2).padStart(2,"0")}`,`${year}-${String((q-1)*3+3).padStart(2,"0")}`]:Array.from({length:12},(_,i)=>`${year}-${String(i+1).padStart(2,"0")}`);
   const set=new Set(months); const exps=(await dbAll("expenses")).filter(e=>set.has(e.date.slice(0,7))).sort((a,b)=>a.date.localeCompare(b.date)); const pl=kind==="quarter"?`${year} Q${q}`:`${year}`;
-  const L=[["BLVCK TAXI — сводка за "+pl],["Сформировано",today()],[],["РАСХОДЫ"],["Дата","Категория","Заметка","Пробег км","Есть чек","Сумма "+cur()]]; let total=0;
+  const L=[["BLVCK TAXI — сводка за "+pl],["Сформировано",today()],[],["РАСХОДЫ"],["Дата","Категория","Деталь/Заметка","Пробег км","Есть чек","Сумма "+cur()]]; let total=0;
   exps.forEach(e=>{total+=Number(e.amount||0);L.push([e.date,(CATS[e.category]?.t||e.category),e.note||"",e.mileage||"",e.receipt?"да":"нет",e.amount]);});
   L.push(["","","","","ИТОГО",total.toFixed(2)],[],["ПО КАТЕГОРИЯМ"]); const byCat={}; exps.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0)); Object.entries(byCat).forEach(([k,v])=>L.push([(CATS[k]?.t||k),v.toFixed(2)]));
   L.push([],["ВЫРУЧКА ПО ДНЯМ"]); const drm=dailyRevMap(); Object.keys(drm).filter(d=>set.has(d.slice(0,7))).sort().forEach(d=>L.push([d,Number(drm[d]).toFixed(2)]));
