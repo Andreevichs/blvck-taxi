@@ -4,6 +4,7 @@
    + Telegram Mini App + ФСЗН/налоги ИП + быстрая заправка + чеки + штрафы
    + выручка по дням/план/выгодные дни/тренд + онбординг + scroll-reveal
    + count-up + кольцевой прогресс + спарклайн + ripple
+   FIX: во время онбординга таб-бар скрыт, чтобы не перехватывал тап по кнопке
    ========================================================= */
 
 /* ===== TELEGRAM MINI APP ===== */
@@ -169,13 +170,17 @@ const dbGet=(s,id)=>reqP(tx(s).get(id));
 const dbAll=(s)=>reqP(tx(s).getAll());
 const dbClear=(s)=>reqP(tx(s,"readwrite").clear());
 
-/* ---------- рендер + post-render анимации ---------- */
+/* ---------- рендер + post-render ---------- */
 let revealIO=null;
 async function renderAsync(){
   const app=$("#app"); app.style.animation="none"; void app.offsetWidth; app.style.animation="";
   const html = await ({ dash:screenDash, stats:screenStats, car:screenCar, docs:screenDocs, settings:screenSettings, fszn:screenFszn, fines:screenFines, receipts:screenReceipts }[state.screen])();
-  app.innerHTML = (onboarded()?"":onboardHTML()) + html;
-  renderTabs(); postRender();
+  const showOnboard = !onboarded();
+  app.innerHTML = (showOnboard?onboardHTML():"") + html;
+  renderTabs();
+  // ВАЖНО: пока идёт тур — прячем таб-бар, иначе он перехватывает тап по кнопке «Поехали»
+  const tb=$("#tabbar"); if(tb) tb.style.display = showOnboard ? "none" : "";
+  postRender();
 }
 function postRender(){
   const anim = state._animateScreen;
@@ -209,7 +214,7 @@ function onboardHTML(){
     <div class="ob-step"><div class="n">01</div><div><div class="tt">Вноси в один тап</div><div class="ds">Выручку за день и расходы на авто — быстро, даже в перчатках.</div></div></div>
     <div class="ob-step"><div class="n">02</div><div><div class="tt">Держи всё в одном месте</div><div class="ds">Чеки‑скриншоты, штрафы, ФСЗН и сроки документов — с напоминаниями.</div></div></div>
     <div class="ob-step"><div class="n">03</div><div><div class="tt">Данные только твои</div><div class="ds">Всё хранится в телефоне и работает офлайн. Резервная копия — в один файл.</div></div></div>
-    <button class="btn primary ob-go" data-action="onboardDone">Поехали →</button>
+    <button class="btn primary ob-go" data-action="onboardDone">Поехали <span class="arrow">→</span></button>
   </div>`;
 }
 
