@@ -5,7 +5,7 @@
    + эффективность + режим «за рулём» + стрик + shortcuts + чеки
    + ШТРАФЫ + выручка за день/план/выгодные дни + тренд + пресеты доков
    + ЭКРАН ЧЕКОВ: просмотр галереей + выгрузка HTML(PDF)/ZIP/CSV за период
-   + ВЫРУЧКА ЗА ПРОШЛЫЕ ДНИ (добить месяц задним числом)
+   + ВЫРУЧКА ЗА ПРОШЛЫЕ ДНИ + МИНИ-ГРАФИК по дням (защита от путаницы)
    + ПОЛНЫЙ бэкап
    ========================================================= */
 
@@ -377,7 +377,6 @@ async function screenDash(){
     </div>`;
   })() : "";
 
-  // плашка «добить выручку за прошлые дни этого месяца»
   const missDays = missingWorkDays(exps, ymNow()+"-01", today());
   const missingCard = missDays.length ? `<div class="glass card">
       <div class="row between">
@@ -1097,12 +1096,42 @@ function openDrive(){
   m.hidden = false;
   try{ TG?.BackButton?.show(); }catch{}
 }
-/* выручка за день — можно за сегодня и за прошлые дни */
+/* выручка за день — можно за сегодня и за прошлые дни + мини-график по дням */
 async function modalDailyRev(){
   const exps = await dbAll("expenses");
   const miss = missingWorkDays(exps, daysAgo(34), today()).slice(0,14);
   const def = today();
   const rev = dailyRevOf(def); const target = getDailyTarget();
+
+  // мини-график внесённой выручки по последним 14 дням (чтобы не путать цифры)
+  const days = []; for(let i=13;i>=0;i--) days.push(daysAgo(i));
+  const drm = dailyRevMap();
+  const max = Math.max(...days.map(d=>dailyRevOf(d)), 1);
+  const moShort = d => new Date(d+"T00:00:00").toLocaleDateString("ru-RU",{month:"short"});
+  const chart = `<div class="fszn-note" style="margin:0 0 2px">Выручка по дням — чтобы не путать цифры. Тап по столбику = выбрать день и подставить сумму.</div>
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin:6px 0 4px">
+      <div style="display:flex;gap:6px;align-items:flex-end;height:150px;min-width:100%">
+        ${days.map((d,i)=>{
+          const has = Object.prototype.hasOwnProperty.call(drm,d);
+          const v = dailyRevOf(d);
+          const barH = v>0 ? Math.max(6, Math.round(v/max*104)) : 6;
+          const sel = d===def;
+          const showMo = (i===0) || (moShort(d)!==moShort(days[i-1]));
+          const dd = d.slice(8,10);
+          const mo = moShort(d);
+          const valTxt = has ? (v>0 ? Number(v).toLocaleString("ru-RU",{maximumFractionDigits:0}) : "0") : "·";
+          return `<div class="revcol" data-action="pickDay" data-date="${d}" style="flex:1 0 34px;min-width:34px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;cursor:pointer;outline:${sel?'2px solid var(--accent2)':'none'};outline-offset:1px;border-radius:10px;padding:2px">
+            <div style="font-size:10px;font-weight:800;color:var(--text);opacity:${v>0?1:.4};margin-bottom:3px;white-space:nowrap">${valTxt}</div>
+            <div style="width:78%;height:${barH}px;border-radius:7px 7px 3px 3px;background:${v>0?'linear-gradient(180deg,#7c5cff,#22d3ee)':'var(--glass-strong)'};border:1px solid ${v>0?'transparent':'var(--stroke)'};transition:height .3s"></div>
+            <div style="margin-top:4px;text-align:center;line-height:1.05">
+              <div class="revdd" style="font-size:11px;font-weight:${sel?800:600};color:${sel?'var(--accent2)':'var(--muted)'}">${dd}</div>
+              <div style="font-size:9px;color:var(--muted);visibility:${showMo?'visible':'hidden'}">${mo}</div>
+            </div>
+          </div>`;
+        }).join("")}
+      </div>
+    </div>`;
+
   const chips = miss.length ? `<div class="field"><label>Быстро — рабочие дни без выручки</label>
       <div class="chips">${miss.map(d=>`<span class="chip" data-action="pickDay" data-date="${d}">${d.slice(8,10)}.${d.slice(5,7)}</span>`).join("")}</div>
       <div class="fszn-note">тап по дате подставит её в поле и подтянет сумму, если уже вносил</div></div>` : "";
@@ -1113,10 +1142,20 @@ async function modalDailyRev(){
       <div class="field"><label>Дата</label><input id="d_date" class="input" type="date" value="${def}"></div>
       <div class="field"><label>Выручка за день</label><input id="d_rev" class="input" type="number" inputmode="decimal" value="${rev||""}" placeholder="0"></div>
     </div>
+    <div class="field" style="margin:6px 0 0">${chart}</div>
     ${chips}
     <div class="field"><label>План на день (необязательно, общий)</label><input id="d_target" class="input" type="number" inputmode="decimal" value="${target||""}" placeholder="сколько хочу привезти"></div>
     <button class="btn primary" data-action="saveDailyRev">Сохранить</button>`);
   setTimeout(()=> $("#d_rev")?.focus(), 60);
+}
+/* подсветка выбранного дня в мини-графике */
+function highlightRevCol(date){
+  document.querySelectorAll(".revcol").forEach(el=>{
+    const on = el.dataset.date===date;
+    el.style.outline = on ? "2px solid var(--accent2)" : "none";
+    const dd = el.querySelector(".revdd");
+    if(dd){ dd.style.color = on ? "var(--accent2)" : "var(--muted)"; dd.style.fontWeight = on ? "800":"600"; }
+  });
 }
 function modalExpense(cat, edit=null){
   state.modalCat = edit ? edit.category : cat;
@@ -1457,7 +1496,7 @@ document.addEventListener("click", async (ev)=>{
     case "openDrive":  openDrive(); break;
     case "driveCat":   closeModal(); modalExpense(el.dataset.cat); break;
     case "openDailyRev": await modalDailyRev(); break;
-    case "pickDay": { const i=$("#d_date"); if(i){ i.value=el.dataset.date; const r=dailyRevOf(i.value); const ri=$("#d_rev"); if(ri) ri.value=r||""; ri?.focus(); } } break;
+    case "pickDay": { const i=$("#d_date"); if(i){ i.value=el.dataset.date; const r=dailyRevOf(i.value); const ri=$("#d_rev"); if(ri) ri.value=r||""; highlightRevCol(i.value); ri?.focus(); } } break;
     case "saveDailyRev": saveDailyRev(); break;
     case "openFines":  state.screen = "fines"; renderAsync(); break;
     case "openAddFine":modalFine(); break;
@@ -1513,7 +1552,7 @@ document.addEventListener("click", async (ev)=>{
 });
 document.addEventListener("change", async (ev)=>{
   const el = ev.target;
-  if(el && el.id==="d_date"){ const r=dailyRevOf(el.value); const ri=$("#d_rev"); if(ri) ri.value = r||""; return; }
+  if(el && el.id==="d_date"){ const r=dailyRevOf(el.value); const ri=$("#d_rev"); if(ri) ri.value = r||""; highlightRevCol(el.value); return; }
   const f = ev.target.closest("[data-fszn]"); if(!f) return;
   await saveFsznField(f.dataset.q, f.dataset.fszn, parseFloat(f.value)||0);
   hapticOk(); renderAsync();
