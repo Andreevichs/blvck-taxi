@@ -5,6 +5,7 @@
    + эффективность + режим «за рулём» + стрик + shortcuts + чеки
    + ШТРАФЫ + выручка за день/план/выгодные дни + тренд + пресеты доков
    + ЭКРАН ЧЕКОВ: просмотр галереей + выгрузка HTML(PDF)/ZIP/CSV за период
+   + ВЫРУЧКА ЗА ПРОШЛЫЕ ДНИ (добить месяц задним числом)
    + ПОЛНЫЙ бэкап
    ========================================================= */
 
@@ -69,6 +70,7 @@ const CUR_Q = () => Math.ceil((new Date().getMonth()+1)/3);
 const isIP = () => localStorage.getItem("blvck_is_ip") === "1";
 function ruPlural(n,f){ const a=Math.abs(n)%100,b=a%10; if(a>=11&&a<=14)return f[2]; if(b===1)return f[0]; if(b>=2&&b<=4)return f[1]; return f[2]; }
 function prevYM(ym){ const [y,m]=ym.split("-").map(Number); return new Date(y,m-2,1).toISOString().slice(0,7); }
+function daysAgo(n){ const d=new Date(); d.setDate(d.getDate()-n); return d.toISOString().slice(0,10); }
 
 /* выбор периода со стрелками (для экрана чеков) */
 function periodRange(mode, offset){
@@ -89,7 +91,6 @@ function periodRange(mode, offset){
     const to   = new Date(y,m0+3,0).toISOString().slice(0,10);
     return {from, to, label:`${y} · Q${q+1}`};
   }
-  // year
   const y = now.getFullYear()+offset;
   return {from:`${y}-01-01`, to:`${y}-12-31`, label:`${y}`};
 }
@@ -114,6 +115,13 @@ function sumDaysForYM(ym){ const m=dailyRevMap(); let s=0,n=0; for(const k in m)
 function incomeSource(ym){ const d=sumDaysForYM(ym); if(d.sum>0) return {src:"days", val:d.sum, n:d.n}; const m=rawIncomeOf(ym); if(m>0) return {src:"manual", val:m, n:0}; return {src:"none", val:0, n:0}; }
 const incomeOf = ym => incomeSource(ym).val;
 function quarterIncome(q, year){ let s=0; for(let mo=(q-1)*3+1; mo<=(q-1)*3+3; mo++) s += incomeOf(`${year}-${String(mo).padStart(2,"0")}`); return s; }
+
+/* дни, где были расходы, но выручку не внесли (чтобы добить прошлое) */
+function missingWorkDays(exps, fromDate, toDate){
+  const expDates = new Set(exps.filter(e=> e.date>=fromDate && e.date<=toDate).map(e=>e.date));
+  const rev = dailyRevMap();
+  return [...expDates].filter(d=> !(Number(rev[d])>0)).sort().reverse();
+}
 
 const getDailyTarget = () => Number(localStorage.getItem("blvck_daily_target"))||0;
 const setDailyTarget = v => { if(v>0) localStorage.setItem("blvck_daily_target", String(v)); else localStorage.removeItem("blvck_daily_target"); };
@@ -224,7 +232,7 @@ const CRC_TABLE = (()=>{ const t=new Uint32Array(256); for(let n=0;n<256;n++){ l
 function crc32(bytes){ let c=0xFFFFFFFF; for(let i=0;i<bytes.length;i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c>>>8); return (c ^ 0xFFFFFFFF)>>>0; }
 function b64ToBytes(dataURL){ const b64=dataURL.split(",")[1]||""; const bin=atob(b64); const u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); return u; }
 function strBytes(s){ return new TextEncoder().encode(s); }
-function buildZip(files){ // files: [{name, data:Uint8Array}]
+function buildZip(files){
   const parts=[]; const central=[]; let offset=0;
   const UTF8=0x0800;
   for(const f of files){
@@ -369,6 +377,16 @@ async function screenDash(){
     </div>`;
   })() : "";
 
+  // плашка «добить выручку за прошлые дни этого месяца»
+  const missDays = missingWorkDays(exps, ymNow()+"-01", today());
+  const missingCard = missDays.length ? `<div class="glass card">
+      <div class="row between">
+        <div><div style="font-weight:700">💵 Выручка не внесена за ${missDays.length} ${ruPlural(missDays.length,["день","дня","дней"])} этого месяца</div>
+          <div class="small muted">добей прошлые дни — доход, тренд и карта выгодных дней пересчитаются сами</div></div>
+        <button class="btn sm primary" data-action="openDailyRev" style="width:auto">Добить</button>
+      </div>
+    </div>` : "";
+
   const ym = ymNow(), pym = prevYM(ym);
   const spentPY = exps.filter(e=> e.date.slice(0,7)===pym).reduce((s,e)=>s+Number(e.amount||0),0);
   const revCur = sumDaysForYM(ym).sum, revPY = sumDaysForYM(pym).sum;
@@ -398,6 +416,7 @@ async function screenDash(){
       </div>`).join("")}
 
     ${planCard}
+    ${missingCard}
     ${freeMoneyWidget(spentMonth)}
     ${trendLine}
     ${bestWdLine}
@@ -700,7 +719,6 @@ async function screenReceipts(){
   const sum = list.reduce((s,e)=>s+Number(e.amount||0),0);
   const byCat = {}; list.forEach(e=> byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
 
-  // сверка: все расходы за период (включая без чеков)
   const all = await dbAll("expenses");
   const allInPeriod = all.filter(e=> (!pr.from || e.date>=pr.from) && (!pr.to || e.date<=pr.to)
     && (state.receiptCat==="all" || e.category===state.receiptCat));
@@ -992,7 +1010,7 @@ async function screenSettings(){
 
     <div class="h2">Деньги, штрафы и чеки</div>
     <div class="glass card">
-      <button class="btn primary" data-action="openDailyRev">💵 Выручка сегодня</button>
+      <button class="btn primary" data-action="openDailyRev">💵 Выручка за день</button>
       <div style="height:10px"></div>
       <button class="btn" data-action="openFines">🚨 Штрафы</button>
       <div style="height:10px"></div>
@@ -1079,13 +1097,24 @@ function openDrive(){
   m.hidden = false;
   try{ TG?.BackButton?.show(); }catch{}
 }
-function modalDailyRev(){
-  const t=today(); const rev=dailyRevOf(t); const target=getDailyTarget();
+/* выручка за день — можно за сегодня и за прошлые дни */
+async function modalDailyRev(){
+  const exps = await dbAll("expenses");
+  const miss = missingWorkDays(exps, daysAgo(34), today()).slice(0,14);
+  const def = today();
+  const rev = dailyRevOf(def); const target = getDailyTarget();
+  const chips = miss.length ? `<div class="field"><label>Быстро — рабочие дни без выручки</label>
+      <div class="chips">${miss.map(d=>`<span class="chip" data-action="pickDay" data-date="${d}">${d.slice(8,10)}.${d.slice(5,7)}</span>`).join("")}</div>
+      <div class="fszn-note">тап по дате подставит её в поле и подтянет сумму, если уже вносил</div></div>` : "";
   openModal(`
-    <div class="mhead"><h3>💵 Выручка сегодня</h3><button class="x" data-action="close">×</button></div>
-    <p class="muted small" style="margin-top:0">${fmtDate(t)} · из этих сумм сам соберётся доход за месяц и карта выгодных дней</p>
-    <div class="field"><label>Выручка за день</label><input id="d_rev" class="input" type="number" inputmode="decimal" value="${rev||""}" placeholder="0" autofocus></div>
-    <div class="field"><label>План на день (необязательно)</label><input id="d_target" class="input" type="number" inputmode="decimal" value="${target||""}" placeholder="сколько хочу привезти"></div>
+    <div class="mhead"><h3>💵 Выручка за день</h3><button class="x" data-action="close">×</button></div>
+    <p class="muted small" style="margin-top:0">сегодня или любой прошлый день — доход месяца, тренд и карта выгодных дней пересчитаются сами</p>
+    <div class="grid2">
+      <div class="field"><label>Дата</label><input id="d_date" class="input" type="date" value="${def}"></div>
+      <div class="field"><label>Выручка за день</label><input id="d_rev" class="input" type="number" inputmode="decimal" value="${rev||""}" placeholder="0"></div>
+    </div>
+    ${chips}
+    <div class="field"><label>План на день (необязательно, общий)</label><input id="d_target" class="input" type="number" inputmode="decimal" value="${target||""}" placeholder="сколько хочу привезти"></div>
     <button class="btn primary" data-action="saveDailyRev">Сохранить</button>`);
   setTimeout(()=> $("#d_rev")?.focus(), 60);
 }
@@ -1190,11 +1219,14 @@ function saveFuelPresets(){
   setFuelPresets(a); closeModal(); toast("Суммы сохранены"); hapticOk();
 }
 function saveDailyRev(){
+  const date = ($("#d_date")?.value) || today();
   const rev = parseFloat($("#d_rev").value)||0;
   const target = parseFloat($("#d_target").value)||0;
-  setDailyRev(today(), rev);
+  setDailyRev(date, rev);
   setDailyTarget(target);
-  closeModal(); toast(rev>0?`Выручка ${money(rev)}`:"Выручка очищена"); hapticOk(); renderAsync();
+  closeModal();
+  toast(rev>0 ? `Выручка ${money(rev)} · ${date===today()?"сегодня":fmtDate(date)}` : `Выручка за ${fmtDate(date)} очищена`);
+  hapticOk(); renderAsync();
 }
 async function saveExpense(){
   const amount = parseFloat($("#m_amount").value);
@@ -1424,7 +1456,8 @@ document.addEventListener("click", async (ev)=>{
     case "saveFuelPresets": saveFuelPresets(); break;
     case "openDrive":  openDrive(); break;
     case "driveCat":   closeModal(); modalExpense(el.dataset.cat); break;
-    case "openDailyRev": modalDailyRev(); break;
+    case "openDailyRev": await modalDailyRev(); break;
+    case "pickDay": { const i=$("#d_date"); if(i){ i.value=el.dataset.date; const r=dailyRevOf(i.value); const ri=$("#d_rev"); if(ri) ri.value=r||""; ri?.focus(); } } break;
     case "saveDailyRev": saveDailyRev(); break;
     case "openFines":  state.screen = "fines"; renderAsync(); break;
     case "openAddFine":modalFine(); break;
@@ -1479,8 +1512,10 @@ document.addEventListener("click", async (ev)=>{
   }
 });
 document.addEventListener("change", async (ev)=>{
-  const el = ev.target.closest("[data-fszn]"); if(!el) return;
-  await saveFsznField(el.dataset.q, el.dataset.fszn, parseFloat(el.value)||0);
+  const el = ev.target;
+  if(el && el.id==="d_date"){ const r=dailyRevOf(el.value); const ri=$("#d_rev"); if(ri) ri.value = r||""; return; }
+  const f = ev.target.closest("[data-fszn]"); if(!f) return;
+  await saveFsznField(f.dataset.q, f.dataset.fszn, parseFloat(f.value)||0);
   hapticOk(); renderAsync();
 });
 $("#modal").addEventListener("click", e=>{ if(e.target.id==="modal") closeModal(); });
