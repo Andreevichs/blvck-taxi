@@ -1,10 +1,9 @@
 /* =========================================================
    BLVCK TAXI — instrument minimalism 2026 (black/white/orange)
    vanilla, без зависимостей. IndexedDB + localStorage. Офлайн. Без сервера.
-   СОХРАНЕНИЕ на Android/Telegram: главный путь = «на экране → Печать/PDF»
-   (системный print-поток, не блокируется), плюс blob-скачивание, плюс
-   «Поделиться», плюс «в браузере» (с пометкой, что на Android может не ходить).
-   + экран «Расходы» + полный отчёт + износ деталей + всё остальное.
+   + РЕЖИМ ДЛЯ СКРИНШОТА: весь отчёт белым листом на весь экран,
+     секции-карточки, крупные цифры, чеки по одному — удобно снимать.
+   + Telegram Mini App + ФСЗН/налоги ИП + чеки + штрафы + износ деталей.
    ========================================================= */
 
 /* ===== TELEGRAM MINI APP ===== */
@@ -19,7 +18,7 @@ function setupTelegram(){
     TG.ready(); TG.expand(); syncTgColors();
     const u = TG.initDataUnsafe?.user;
     if(u?.first_name) localStorage.setItem("blvck_tg_name", u.first_name);
-    TG.BackButton.onClick(()=> closeModal());
+    TG.BackButton.onClick(()=>{ const ov=$("#shotmode"); if(ov&&ov.style.display!=="none"){ closeShotMode(); } else { closeModal(); } });
   }catch(e){ console.warn("TG init", e); }
 }
 function syncTgColors(){
@@ -50,8 +49,7 @@ const WD = ["Вс","Пн","Вт","Ср","Чт","Пт","Сб"];
 const WD_ORDER = [1,2,3,4,5,6,0];
 
 const state = { screen:"dash", range:"month", modalCat:"fuel", modalEditId:null, modalReceipt:null,
-                receiptMode:"quarter", receiptOffset:0, receiptCat:"all", _animateScreen:true,
-                expRange:"30", expScale:"day", expCat:"all", expQ:"" };
+                receiptMode:"quarter", receiptOffset:0, receiptCat:"all", _animateScreen:true };
 
 /* ---------- утилиты ---------- */
 const $  = (s, r=document) => r.querySelector(s);
@@ -64,6 +62,8 @@ const today = () => new Date().toISOString().slice(0,10);
 const ymNow = () => today().slice(0,7);
 const fmtDate = d => d ? new Date(d+"T00:00:00").toLocaleDateString("ru-RU",{day:"2-digit",month:"short",year:"numeric"}) : "—";
 const fmtShort = d => d ? new Date(d+"T00:00:00").toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit",year:"2-digit"}) : "—";
+const dayNum = d => d ? new Date(d+"T00:00:00").getDate() : "—";
+const monShort = d => d ? new Date(d+"T00:00:00").toLocaleDateString("ru-RU",{month:"short"}) : "";
 const monthLabel = ym => new Date(ym+"-01T00:00:00").toLocaleDateString("ru-RU",{month:"long",year:"numeric"});
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
 const YEAR = () => new Date().getFullYear();
@@ -135,13 +135,7 @@ function trendPct(c,p){ if(p<=0) return c>0?{dir:"up",pct:null}:{dir:"flat",pct:
 const arrow = d => d==="up"?"↑":d==="down"?"↓":"→";
 
 /* =========================================================
-   СОХРАНЕНИЕ ФАЙЛОВ
-   В Telegram прямой путь в папку закрыт платформой. Поэтому:
-   1) пробуем системное «Поделиться» (если включено в сборке);
-   2) вне Telegram — скачиваем напрямую;
-   3) иначе возвращаем «нужен chooser», и интерфейс даёт честный
-      выбор, где ГЛАВНЫЙ путь = «на экране → Печать/PDF»
-      (системный print-поток, не блокируется на Android).
+   СОХРАНЕНИЕ ФАЙЛОВ (share / picker / download / chooser)
    ========================================================= */
 function makeFile(name, content, mime){
   const blob = (content instanceof Blob) ? content : new Blob([content], {type: mime||"application/octet-stream"});
@@ -210,20 +204,20 @@ function showSaveChooser(opts){
   window.__bt_help = opts;
   const isHtml = !!opts.htmlView;
   const btns = [];
+  btns.push(`<button class="btn primary" data-action="helpShot">📸 Открыть для скриншота</button>`);
   if(isHtml){
-    btns.push(`<button class="btn primary" data-action="helpViewPrint">📄 На экране → Сохранить как PDF</button>`);
+    btns.push(`<button class="btn" data-action="helpViewPrint">📄 На экране → Сохранить как PDF</button>`);
     btns.push(`<button class="btn" data-action="helpDownload">⬇️ Скачать .html файл</button>`);
   } else {
-    btns.push(`<button class="btn primary" data-action="helpDownload">⬇️ Скачать файл</button>`);
+    btns.push(`<button class="btn" data-action="helpDownload">⬇️ Скачать файл</button>`);
   }
   btns.push(`<button class="btn" data-action="helpShare">📂 Через меню «Поделиться»</button>`);
   btns.push(`<button class="btn ghost" data-action="helpBrowser">🌐 В браузере (на Android может не открыться)</button>`);
   openModal(`<div class="mhead"><h3>Куда сохранить?</h3><button class="x" data-action="close">×</button></div>
-    <div class="info" style="opacity:1;transform:none"><div class="it"><span class="d"></span>Telegram не даёт сохранить в папку напрямую</div>
-    <p>Это ограничение мессенджера на Android, не поломка и не твой телефон. Самый надёжный путь — <b>«📄 На экране → PDF»</b>: отчёт откроется на белом экране, сверху кнопка печати, и система сама сохранит PDF. Кнопка <b>«⬇️ Скачать»</b> иногда кладёт файл в «Загрузки» — проверь. Чтобы заработало и <b>«📂 Поделиться»</b> напрямую — поставь свежий Telegram официальным apk с <b>telegram.org</b> (поверх старого, чаты останутся): там включена отдача файлов.</p></div>
+    <div class="info" style="opacity:1;transform:none"><div class="it"><span class="d"></span>Самый надёжный путь — скриншоты</div>
+    <p>Telegram на этом телефоне не отдаёт файл в папку. Нажми <b>«📸 Открыть для скриншота»</b> — отчёт откроется белым листом на весь экран: листай и снимай экран за экраном, все данные видны целиком. Остальные кнопки — запасные: «⬇️ Скачать» иногда кладёт файл в «Загрузки», «📂 Поделиться» заработает, если поставить свежий Telegram apk с telegram.org.</p></div>
     ${btns.join('<div style="height:10px"></div>')}`);
 }
-/* просмотрщик отчёта: белый полноэкранный слой + печать самого документа */
 function openHtmlViewer(html){
   const m=$("#modal");
   m.innerHTML=`<div class="viewer" style="cursor:default;background:#fff;padding:0;display:flex;flex-direction:column">
@@ -235,7 +229,7 @@ function openHtmlViewer(html){
   </div>`;
   m.hidden=false; try{TG?.BackButton?.show();}catch{}
   const ifr=$("#bt_report");
-  const doPrint=()=>{ try{ ifr.contentWindow.focus(); ifr.contentWindow.print(); }catch(e){ toast("Печать не запустилась — сделай скриншоты или обнови Telegram"); } };
+  const doPrint=()=>{ try{ ifr.contentWindow.focus(); ifr.contentWindow.print(); }catch(e){ toast("Печать не запустилась — используй «📸 для скриншота»"); } };
   const pb=$("#bt_print"); if(pb) pb.addEventListener("click", doPrint);
   ifr.addEventListener("load", ()=>{ try{ const b=ifr.contentDocument && ifr.contentDocument.querySelector(".noprint button"); if(b) b.addEventListener("click", doPrint); }catch(e){} });
 }
@@ -245,9 +239,210 @@ async function helpDownload(){
     const blob = (h.content instanceof Blob)? h.content : new Blob([h.content],{type:h.mime||"application/octet-stream"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=h.name||"blvck-taxi-file"; a.rel="noopener";
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),5000);
-    hapticOk(); closeModal(); toast("Проверь «Загрузки». Если пусто — используй «На экране → PDF»");
-  }catch(e){ toast("Не вышло скачать — попробуй «На экране → PDF»"); }
+    hapticOk(); closeModal(); toast("Проверь «Загрузки». Если пусто — «📸 для скриншота»");
+  }catch(e){ toast("Не вышло скачать — используй «📸 для скриншота»"); }
 }
+
+/* =========================================================
+   РЕЖИМ ДЛЯ СКРИНШОТА — белый лист на весь экран
+   ========================================================= */
+const SHOT_STYLE = `<style>
+#shotmode{position:fixed;inset:0;z-index:70;display:none;flex-direction:column;background:#f6f4ef;color:#141414;
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+#shotmode *{box-sizing:border-box}
+#shotmode .shot-bar{flex:none;display:flex;align-items:center;gap:10px;padding:10px 12px;
+  background:rgba(246,244,239,.92);backdrop-filter:blur(8px);border-bottom:1px solid rgba(20,20,20,.10)}
+#shotmode .shot-bar .hint{flex:1;font-size:12px;color:#6b6b65;font-weight:600;line-height:1.3}
+#shotmode .shot-bar .hint b{color:#ff5a00}
+#shotmode .shot-x{flex:none;width:42px;height:42px;border-radius:50%;border:none;background:#141414;color:#fff;font-size:20px;cursor:pointer;display:grid;place-items:center}
+#shotmode .shot-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 0 40px}
+#shotmode .shot-doc{max-width:560px;margin:0 auto;padding:14px 14px 0;position:relative}
+#shotmode .shot-doc::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.5;mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");z-index:0}
+#shotmode .shot-doc > *{position:relative;z-index:1}
+#shotmode .shot-cover{background:#fff;border-radius:20px;padding:22px 20px 20px;margin-bottom:14px;overflow:hidden;
+  box-shadow:0 10px 30px -16px rgba(20,20,20,.25);border:1px solid rgba(20,20,20,.06);position:relative}
+#shotmode .shot-cover::before{content:"";position:absolute;left:0;top:0;right:0;height:6px;
+  background:linear-gradient(90deg,#ff5a00,#ff8a33)}
+#shotmode .shot-cover .mk{display:flex;align-items:center;gap:9px;margin-bottom:14px}
+#shotmode .shot-cover .mk .d{width:11px;height:11px;border-radius:3px;background:#ff5a00}
+#shotmode .shot-cover .mk .nm{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-weight:700;font-size:13px;letter-spacing:2px}
+#shotmode .shot-cover .mk .ac{font-family:ui-monospace,monospace;font-weight:700;font-size:13px;letter-spacing:2px;color:#ff5a00}
+#shotmode .shot-cover h1{margin:0;font-size:30px;font-weight:900;letter-spacing:-1.2px;line-height:1.02}
+#shotmode .shot-cover .meta{margin-top:8px;font-family:ui-monospace,monospace;font-size:11px;color:#6b6b65;letter-spacing:.3px}
+#shotmode .shot-card{background:#fff;border-radius:18px;padding:18px 16px;margin-bottom:14px;
+  box-shadow:0 10px 30px -18px rgba(20,20,20,.22);border:1px solid rgba(20,20,20,.06);
+  opacity:0;transform:translateY(16px);animation:shotIn .5s cubic-bezier(.22,1,.36,1) forwards}
+@keyframes shotIn{to{opacity:1;transform:none}}
+#shotmode .shot-h{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px;
+  padding-bottom:10px;border-bottom:2px solid #141414}
+#shotmode .shot-h .t{font-size:15px;font-weight:900;letter-spacing:.2px;text-transform:uppercase}
+#shotmode .shot-h .n{font-family:ui-monospace,monospace;font-size:11px;color:#ff5a00;font-weight:700}
+#shotmode .kpi{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+#shotmode .kpi .k{background:#faf8f3;border:1px solid rgba(20,20,20,.06);border-radius:14px;padding:14px}
+#shotmode .kpi .k .v{font-family:ui-monospace,monospace;font-size:24px;font-weight:800;letter-spacing:-.6px;line-height:1}
+#shotmode .kpi .k .v.acc{color:#ff5a00}
+#shotmode .kpi .k .l{font-family:ui-monospace,monospace;font-size:9.5px;color:#6b6b65;text-transform:uppercase;letter-spacing:.8px;margin-top:7px}
+#shotmode .free{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+#shotmode .free .v{font-family:ui-monospace,monospace;font-size:34px;font-weight:900;letter-spacing:-1.4px;line-height:.95}
+#shotmode .free .v.pos{color:#ff5a00} #shotmode .free .v.neg{color:#9a9a92}
+#shotmode .free .l{font-family:ui-monospace,monospace;font-size:10px;color:#6b6b65;text-transform:uppercase;letter-spacing:.8px;text-align:right}
+#shotmode .catrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px dashed rgba(20,20,20,.10)}
+#shotmode .catrow:last-child{border-bottom:none}
+#shotmode .catrow .ic{font-size:18px;width:30px;text-align:center;flex:none}
+#shotmode .catrow .nm{font-weight:700;font-size:14px;flex:none;min-width:84px}
+#shotmode .catrow .bar{flex:1;height:8px;border-radius:6px;background:#efece5;overflow:hidden}
+#shotmode .catrow .bar i{display:block;height:100%;width:0;border-radius:6px;background:linear-gradient(90deg,#ff5a00,#ff8a33);transition:width .9s cubic-bezier(.22,1,.36,1)}
+#shotmode .catrow .pc{font-family:ui-monospace,monospace;font-size:11px;color:#6b6b65;width:38px;text-align:right;flex:none}
+#shotmode .catrow .sm{font-family:ui-monospace,monospace;font-size:12px;font-weight:700;width:96px;text-align:right;flex:none}
+#shotmode .exp{display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid rgba(20,20,20,.07)}
+#shotmode .exp:last-child{border-bottom:none}
+#shotmode .exp .dt{flex:none;width:42px;text-align:center;background:#141414;color:#fff;border-radius:9px;padding:6px 0;line-height:1.05}
+#shotmode .exp .dt .d{font-family:ui-monospace,monospace;font-size:16px;font-weight:800}
+#shotmode .exp .dt .m{font-family:ui-monospace,monospace;font-size:9px;opacity:.7;text-transform:uppercase}
+#shotmode .exp .ic{font-size:18px;flex:none}
+#shotmode .exp .mid{flex:1;min-width:0}
+#shotmode .exp .mid .t{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#shotmode .exp .mid .s{font-family:ui-monospace,monospace;font-size:10.5px;color:#6b6b65;margin-top:2px}
+#shotmode .exp .rc{width:40px;height:40px;object-fit:cover;border-radius:8px;border:1px solid rgba(20,20,20,.10);flex:none}
+#shotmode .exp .am{font-family:ui-monospace,monospace;font-weight:800;font-size:15px;flex:none;white-space:nowrap}
+#shotmode .rev{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px dashed rgba(20,20,20,.10)}
+#shotmode .rev:last-child{border-bottom:none}
+#shotmode .rev .dt{font-family:ui-monospace,monospace;font-size:12px;color:#6b6b65;width:78px;flex:none}
+#shotmode .rev .bar{flex:1;height:9px;border-radius:6px;background:#efece5;overflow:hidden}
+#shotmode .rev .bar i{display:block;height:100%;width:0;border-radius:6px;background:linear-gradient(90deg,#ff5a00,#ff8a33);transition:width .9s cubic-bezier(.22,1,.36,1)}
+#shotmode .rev .sm{font-family:ui-monospace,monospace;font-weight:800;font-size:13px;width:104px;text-align:right;flex:none}
+#shotmode .wear{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(20,20,20,.07)}
+#shotmode .wear:last-child{border-bottom:none}
+#shotmode .wear .ic{font-size:18px;flex:none}
+#shotmode .wear .mid{flex:1;min-width:0}
+#shotmode .wear .mid .t{font-weight:700;font-size:13.5px}
+#shotmode .wear .mid .s{font-family:ui-monospace,monospace;font-size:10.5px;color:#6b6b65;margin-top:2px}
+#shotmode .wear .km{font-family:ui-monospace,monospace;font-weight:800;font-size:14px;flex:none}
+#shotmode .pill{font-family:ui-monospace,monospace;font-size:9px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding:3px 8px;border-radius:999px;flex:none}
+#shotmode .pill.on{color:#ff5a00;border:1px solid rgba(255,90,0,.5);background:rgba(255,90,0,.10)}
+#shotmode .pill.off{color:#6b6b65;border:1px solid rgba(20,20,20,.2)}
+#shotmode .fine{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(20,20,20,.07)}
+#shotmode .fine:last-child{border-bottom:none}
+#shotmode .fine .ic{font-size:16px;flex:none}
+#shotmode .fine .mid{flex:1;min-width:0}
+#shotmode .fine .mid .t{font-weight:700;font-size:13.5px}
+#shotmode .fine .mid .s{font-family:ui-monospace,monospace;font-size:10.5px;color:#6b6b65;margin-top:2px}
+#shotmode .fine .am{font-family:ui-monospace,monospace;font-weight:800;font-size:14px;flex:none}
+#shotmode .chk{background:#faf8f3;border:1px solid rgba(20,20,20,.06);border-radius:14px;padding:12px;margin-bottom:12px}
+#shotmode .chk img{width:100%;border-radius:10px;border:1px solid rgba(20,20,20,.10);display:block}
+#shotmode .chk .cap{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}
+#shotmode .chk .cap .l{font-size:13px;font-weight:700}
+#shotmode .chk .cap .l .s{display:block;font-family:ui-monospace,monospace;font-size:10.5px;color:#6b6b65;font-weight:500;margin-top:2px}
+#shotmode .chk .cap .am{font-family:ui-monospace,monospace;font-weight:800;font-size:16px;flex:none}
+#shotmode .shot-foot{text-align:center;font-family:ui-monospace,monospace;font-size:10px;color:#9a9a92;letter-spacing:.5px;padding:18px 0 6px;text-transform:uppercase}
+#shotmode .empty{color:#9a9a92;font-size:13px;text-align:center;padding:8px 0}
+</style>`;
+
+function shotCard(title, num, inner){
+  return `<section class="shot-card"><div class="shot-h"><span class="t">${title}</span><span class="n">${num||""}</span></div>${inner}</section>`;
+}
+async function buildShotDoc(mode){
+  const expsAll = await dbAll("expenses");
+  const car = await dbGet("car",1)||{};
+  const cur_ = cur();
+  let coverTitle = "Полный отчёт", coverNum = "";
+  let sections = "";
+
+  if(mode==="checks"){
+    const pr = periodRange(state.receiptMode, state.receiptOffset);
+    const list = (await getReceiptExpenses());
+    const sum = list.reduce((s,e)=>s+Number(e.amount||0),0);
+    coverTitle = "Чеки"; coverNum = pr.label;
+    const byCat={}; list.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
+    const sumCard = `<div class="kpi">
+      <div class="k"><div class="v acc">${list.length}</div><div class="l">чеков со скрином</div></div>
+      <div class="k"><div class="v">${money(sum)}</div><div class="l">сумма чеков</div></div>
+    </div>`;
+    const catBlock = Object.keys(byCat).length ? shotCard("Сумма по категориям","",
+      Object.entries(byCat).map(([k,v])=>`<div class="catrow"><span class="ic">${CATS[k]?.ico||""}</span><span class="nm">${CATS[k]?.t||k}</span><span class="sm">${money(v)}</span></div>`).join("")
+    ) : "";
+    const checks = list.length ? list.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(e=>{
+      const c=CATS[e.category]||CATS.other;
+      return `<div class="chk">${e.receipt?`<img src="${e.receipt}" alt="чек">`:`<div class="empty">скрин не прикреплён</div>`}
+        <div class="cap"><span class="l">${c.ico} ${c.t}${e.note?`<span class="s">${esc(e.note)}</span>`:""}<span class="s">${fmtDate(e.date)}${e.mileage?" · "+num(e.mileage)+" км":""}</span></span><span class="am">${money(e.amount)}</span></div></div>`;
+    }).join("") : `<div class="empty">За период ${esc(pr.label)} чеков со скринами нет</div>`;
+    sections = shotCard("Сводка","",sumCard) + catBlock + shotCard("Чеки по одному · листай и снимай","",checks);
+  } else {
+    const exps = expsAll.slice().sort((a,b)=>a.date.localeCompare(b.date));
+    const total = exps.reduce((s,e)=>s+Number(e.amount||0),0);
+    const byCat={}; exps.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
+    const rev=dailyRevMap(); const revDays=Object.keys(rev).filter(d=>Number(rev[d])>0).sort();
+    const revTotal=revDays.reduce((s,d)=>s+Number(rev[d]),0);
+    const fines=finesList(); const finesPaid=fines.filter(f=>f.paid); const finesSum=finesPaid.reduce((s,f)=>s+Number(f.amount||0),0);
+    const curMile=Number(car.currentMileage)||0;
+    const recs=exps.filter(e=>(e.category==="repair"||e.category==="parts")&&Number(e.mileage)>0);
+    const groups={}; recs.forEach(e=>{const b=(e.note||"").trim();const k=b?(e.category+"|"+b.toLowerCase()):("id|"+e.id);(groups[k]=groups[k]||[]).push(e);});
+    const wearRows=[]; Object.values(groups).forEach(arr=>{arr.sort((a,b)=>Number(a.mileage)-Number(b.mileage));arr.forEach((e,i)=>{const nx=arr[i+1];const ins=Number(e.mileage);let sp=null,act=!nx,rep=null;if(nx){rep=Number(nx.mileage);sp=Math.max(0,rep-ins);}else if(curMile>ins){sp=curMile-ins;}wearRows.push({e,ins,sp,act,rep});});});
+    wearRows.sort((a,b)=>(b.e.date+b.e.id).localeCompare(a.e.date+a.e.id));
+
+    const ym=ymNow(); const src=incomeSource(ym); const income=src.val;
+    const ms=new Date(); ms.setDate(1); ms.setHours(0,0,0,0);
+    const spentMonth=exps.filter(e=>new Date(e.date)>=ms).reduce((s,e)=>s+Number(e.amount||0),0);
+    const s=fsznSettings(); const fszn=isIP()?(s.rate/100*s.mzp):0; const free=income-spentMonth-fszn;
+
+    const kpi = `<div class="kpi">
+      <div class="k"><div class="v">${money(total)}</div><div class="l">расходов всего</div></div>
+      <div class="k"><div class="v acc">${revTotal>0?money(revTotal):"—"}</div><div class="l">выручки внесено</div></div>
+      <div class="k"><div class="v">${exps.length}</div><div class="l">записей</div></div>
+      <div class="k"><div class="v">${car.currentMileage?num(car.currentMileage):"—"}</div><div class="l">пробег авто, км</div></div>
+    </div>`;
+    const freeBlock = (income>0||spentMonth>0) ? shotCard("Свободно за "+monthLabel(ym),"",
+      `<div class="free"><span class="v ${free>=0?"pos":"neg"}">${free>=0?"+":"−"}${money(Math.abs(free))}</span><span class="l">доход ${money(income)}<br>− расходы ${money(spentMonth)}${isIP()?"<br>− ФСЗН "+money(fszn):""}</span></div>`) : "";
+
+    const catEntries=Object.entries(byCat).sort((a,b)=>b[1]-a[1]); const catMax=Math.max(...catEntries.map(([,v])=>v),1);
+    const catBlock = catEntries.length ? shotCard("Расходы по категориям","",
+      catEntries.map(([k,v])=>`<div class="catrow"><span class="ic">${CATS[k]?.ico||""}</span><span class="nm">${CATS[k]?.t||k}</span><span class="bar"><i data-w="${Math.max(4,Math.round(v/catMax*100))}%"></i></span><span class="pc">${Math.round(v/total*100)}%</span><span class="sm">${money(v)}</span></div>`).join("")
+    ) : "";
+
+    const expBlock = exps.length ? shotCard("Все расходы", exps.length+" · "+money(total),
+      exps.slice().reverse().map(e=>{const c=CATS[e.category]||CATS.other;
+        return `<div class="exp"><div class="dt"><div class="d">${dayNum(e.date)}</div><div class="m">${monShort(e.date)}</div></div><span class="ic">${c.ico}</span><div class="mid"><div class="t">${c.t}${e.note?" · "+esc(e.note):""}</div><div class="s">${fmtDate(e.date)}${e.mileage?" · "+num(e.mileage)+" км":""}</div></div>${e.receipt?`<img class="rc" src="${e.receipt}" alt="">`:""}<span class="am">${money(e.amount)}</span></div>`;}).join("")
+    ) : "";
+
+    const revMax=Math.max(...revDays.map(d=>Number(rev[d])),1);
+    const revBlock = revDays.length ? shotCard("Выручка по дням", revDays.length+" дн. · "+money(revTotal),
+      revDays.slice().reverse().map(d=>`<div class="rev"><span class="dt">${fmtDate(d)}</span><span class="bar"><i data-w="${Math.max(3,Math.round(Number(rev[d])/revMax*100))}%"></i></span><span class="sm">${money(rev[d])}</span></div>`).join("")
+    ) : "";
+
+    const fineBlock = fines.length ? shotCard("Штрафы", finesPaid.length+" оплачено · "+money(finesSum),
+      fines.slice().sort((a,b)=>(b.paidDate||b.date||"").localeCompare(a.paidDate||a.date||"")).map(f=>`<div class="fine"><span class="ic">${f.paid?"✅":"🚨"}</span><div class="mid"><div class="t">${esc(f.name)}</div><div class="s">${f.paid?"оплачен "+fmtDate(f.paidDate):(f.date?"выписан "+fmtDate(f.date):"без даты")}</div></div><span class="am">${money(f.amount)}</span></div>`).join("")
+    ) : "";
+
+    const wearBlock = wearRows.length ? shotCard("Детали и износ","",
+      wearRows.map(r=>{const c=CATS[r.e.category]||CATS.other;return `<div class="wear"><span class="ic">${c.ico}</span><div class="mid"><div class="t">${esc(r.e.note||c.t)}</div><div class="s">установлена ${num(r.ins)} км · ${fmtDate(r.e.date)}</div></div><span class="km">${r.sp!=null?num(r.sp)+" км":"—"}</span><span class="pill ${r.act?"on":"off"}">${r.act?"действует":"заменена"}</span></div>`;}).join("")
+    ) : "";
+
+    let fsznBlock="";
+    if(isIP()){ const y=YEAR(); let paid=0; for(let q=1;q<=4;q++){const r=await dbGet("fszn",`${y}-Q${q}`);paid+=Number(r?.paid)||0;} const goal=s.rate/100*s.mzp*12;
+      const pct=goal>0?Math.min(100,Math.round(paid/goal*100)):0;
+      fsznBlock = shotCard("ФСЗН · "+y, pct+"%",
+        `<div class="kpi"><div class="k"><div class="v acc">${money(paid)}</div><div class="l">уплачено</div></div><div class="k"><div class="v">${money(goal)}</div><div class="l">цель за год</div></div></div>`);
+    }
+
+    sections = shotCard("Сводка","",kpi) + freeBlock + catBlock + expBlock + revBlock + fineBlock + wearBlock + fsznBlock;
+  }
+
+  const cover = `<header class="shot-cover"><div class="mk"><span class="d"></span><span class="nm">BLVCK</span><span class="ac">TAXI</span></div><h1>${coverTitle}</h1><div class="meta">Сформировано ${fmtDate(today())} · валюта ${cur_}${coverNum?" · "+esc(coverNum):""}</div></header>`;
+  const foot = `<div class="shot-foot">BLVCK TAXI · ${esc(coverTitle).toLowerCase()} · конец документа</div>`;
+  return SHOT_STYLE + `<div id="shotmode" style="display:flex"><div class="shot-bar"><span class="hint">Листай вниз и <b>снимай экран за экраном</b> — все данные видны целиком</span><button class="shot-x" data-action="shotClose">✕</button></div><div class="shot-scroll"><div class="shot-doc">${cover}${sections}${foot}</div></div></div>`;
+}
+function openShotMode(html){
+  let ov=$("#shotmode"); if(ov) ov.remove();
+  const wrap=document.createElement("div"); wrap.innerHTML=html; const node=wrap.firstElementChild;
+  document.body.appendChild(node);
+  // анимация баров после вставки
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{ node.querySelectorAll("[data-w]").forEach(b=>{ b.style.width=b.getAttribute("data-w"); }); }));
+  try{ TG?.BackButton?.show(); }catch{}
+}
+function closeShotMode(){ const ov=$("#shotmode"); if(ov) ov.remove(); try{ if($("#modal")&&!$("#modal").hidden){TG?.BackButton?.show();} else {TG?.BackButton?.hide();} }catch{} }
+async function exportShotFull(){ openShotMode(await buildShotDoc("full")); }
+async function exportShotChecks(){ openShotMode(await buildShotDoc("checks")); }
 
 /* ---------- визуальные хелперы ---------- */
 function ringSVG(pct){ const r=30, c=2*Math.PI*r, off=c*(1-Math.min(100,Math.max(0,pct))/100);
@@ -537,10 +732,10 @@ async function screenExpenses(){
 
     <div class="row between" style="margin:4px 2px 8px"><span class="kicker">найдено: ${rows.length}</span><span class="kicker">${money(sum)}</span></div>
 
-    <button class="btn primary" data-action="exportFullPdf" style="margin-bottom:10px">📄 Полный отчёт (PDF)</button>
+    <button class="btn primary" data-action="exportShotFull" style="margin-bottom:10px">📸 Отчёт для скриншота</button>
     <div class="row" style="gap:10px;margin-bottom:10px">
-      <button class="btn" data-action="exportFullHtml">⬇️ файлом</button>
-      <button class="btn" data-action="exportFullBrowser">🌐 в браузере</button>
+      <button class="btn" data-action="exportFullPdf">📄 PDF</button>
+      <button class="btn" data-action="exportFullHtml">⬇️ файл</button>
     </div>
 
     ${rows.length?`<div class="list">${rows.map(expenseRow).join("")}</div>`:`<div class="glass empty">Ничего не найдено. Сбрось фильтр или поиск.</div>`}
@@ -655,14 +850,14 @@ async function screenReceipts(){ const pr=periodRange(state.receiptMode,state.re
     <div class="chips" style="margin:6px 0">${catChips.map(([k,t])=>`<span class="chip ${state.receiptCat===k?"on":""}" data-action="setReceiptCat" data-cat="${k}">${t}</span>`).join("")}</div>
     <div class="glass card"><div class="row between"><b>Чеков со скрином</b><b>${list.length}</b></div><div class="row between"><span class="muted">сумма чеков</span><b>${money(sum)}</b></div>${Object.entries(byCat).map(([k,v])=>`<div class="row between small"><span class="muted">${CATS[k]?.ico||""} ${CATS[k]?.t||k}</span><b>${money(v)}</b></div>`).join("")}<div class="divider"></div><div class="row between small"><span class="muted">все расходы за период</span><b>${money(allSum)}</b></div></div>
     <div class="h2">выгрузить</div><div class="glass card">
-      <button class="btn primary" data-action="exportReceiptsHtml" ${list.length?"":"disabled"}>📄 Отчёт с чеками (PDF)</button>
+      <button class="btn primary" data-action="exportShotChecks" ${list.length?"":"disabled"}>📸 Чеки для скриншота</button>
       <div style="height:10px"></div>
-      <button class="btn" data-action="exportReceiptsBrowser" ${list.length?"":"disabled"}>🌐 Отчёт в браузере</button>
+      <button class="btn" data-action="exportReceiptsHtml" ${list.length?"":"disabled"}>📄 Отчёт с чеками (PDF)</button>
       <div style="height:10px"></div>
       <button class="btn" data-action="exportReceiptsZip" ${list.length?"":"disabled"}>📦 Чеки папкой (ZIP)</button>
       <div style="height:10px"></div>
       <button class="btn" data-action="exportReceiptsCsv" ${list.length?"":"disabled"}>📊 Таблица чеков (CSV)</button>
-      <div class="fszn-note">Самый надёжный путь на телефоне — «📄 Отчёт (PDF)»: откроется на экране, сверху «🖨 Сохранить как PDF». «🌐 в браузере» на Android может не открыться.</div>
+      <div class="fszn-note">Самый надёжный путь на телефоне — «📸 для скриншота»: белые листы на весь экран, листай и снимай. Чеки идут по одному, крупно и читаемо.</div>
     </div>
     <div class="h2">галерея</div>${list.length?`<div class="list">${list.map(e=>{const c=CATS[e.category]||CATS.other;return `<div class="item"><img class="rthumb" src="${e.receipt}" data-action="viewReceipt" data-id="${e.id}" alt="чек"><div class="meta"><div class="t">${c.ico} ${c.t}${e.note?": "+esc(e.note):""}</div><div class="s">${fmtDate(e.date)}</div></div><div class="amt">−${money(e.amount)}</div></div>`;}).join("")}</div>`:`<div class="glass empty">За этот период чеков нет</div>`}`; }
 function receiptsCsvText(list,pr){ const sum=list.reduce((s,e)=>s+Number(e.amount||0),0); const byCat={}; list.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
@@ -676,13 +871,13 @@ function exportReceiptsHtml(){ getReceiptExpenses().then(async list=>{ if(!list.
   const r=await saveFile(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.html`, html, "text/html;charset=utf-8", {title:"Чеки BLVCK TAXI", htmlView:html}); handleSaveResult(r); }); }
 function exportReceiptsBrowser(){ getReceiptExpenses().then(async list=>{ if(!list.length){toast("Нет чеков за период");return;} const pr=periodRange(state.receiptMode,state.receiptOffset); const html=buildReceiptsReport(list,pr,false);
   const r=await openBrowserWith(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.html`, html, "text/html;charset=utf-8");
-  if(r.ok){ hapticOk(); toast("Открываю в браузере → там ⋮ «Скачать» / «Печать→PDF»"); } else { toast("Браузер не открылся — используй «Отчёт с чеками (PDF)»"); } }); }
+  if(r.ok){ hapticOk(); toast("Открываю в браузере → там ⋮ «Скачать» / «Печать→PDF»"); } else { toast("Браузер не открылся — используй «📸 для скриншота»"); } }); }
 function exportReceiptsZip(){ getReceiptExpenses().then(async list=>{ if(!list.length){toast("Нет чеков за период");return;} const pr=periodRange(state.receiptMode,state.receiptOffset); const files=[],used={};
   list.slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>{let base=`${e.date}_${e.category}_${Number(e.amount).toFixed(2).replace(".","_")}`,name=base+".jpg",i=2;while(used[name]){name=`${base}_${i}.jpg`;i++;}used[name]=1;files.push({name,data:b64ToBytes(e.receipt)});});
   files.push({name:"itogi.csv",data:strBytes(receiptsCsvText(list,pr))}); const blob=buildZip(files);
   const r=await saveFile(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.zip`, blob, "application/zip", {title:"Чеки BLVCK TAXI (папка)"}); handleSaveResult(r); }); }
 
-/* ---------- ОТЧЁТЫ ---------- */
+/* ---------- ОТЧЁТЫ (для печати/файла) ---------- */
 function reportShell(title, sub, body){
   const wrapped = body.replace(/<table>/g,'<div class="tblwrap"><table>').replace(/<\/table>/g,'</table></div>');
   return `<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>BLVCK TAXI — ${title}</title>
@@ -772,14 +967,14 @@ async function exportFullPdf(){
 }
 async function exportFullHtml(){ const html=await buildFullReport(true); const r=await saveFile(`blvck-taxi-otchet-${today()}.html`, html, "text/html;charset=utf-8", {title:"Полный отчёт BLVCK TAXI", htmlView:html}); handleSaveResult(r); }
 async function exportFullBrowser(){ const html=await buildFullReport(false); const r=await openBrowserWith(`blvck-taxi-otchet-${today()}.html`, html, "text/html;charset=utf-8");
-  if(r.ok){ hapticOk(); toast("Открываю в браузере → там ⋮ «Скачать» / «Печать→PDF»"); } else { toast("Браузер не открылся — используй «Полный отчёт (PDF)»"); } }
+  if(r.ok){ hapticOk(); toast("Открываю в браузере → там ⋮ «Скачать» / «Печать→PDF»"); } else { toast("Браузер не открылся — используй «📸 для скриншота»"); } }
 
 /* ---------- ФСЗН ---------- */
 function fsznSettings(){ return { mzp:parseFloat(localStorage.getItem("blvck_fszn_mzp"))||726, rate:parseFloat(localStorage.getItem("blvck_fszn_rate"))||35 }; }
 async function screenFszn(){ const s=fsznSettings(); const year=YEAR(),cq=CUR_Q(); const minMonth=s.rate/100*s.mzp,minQ=minMonth*3,minYear=minMonth*12;
   const qs=[]; let paidYTD=0,minYTD=0,paidAll=0,targetAll=0;
   for(let q=1;q<=4;q++){ const rec=await dbGet("fszn",`${year}-Q${q}`)||{income:0,paid:0}; const monthSum=quarterIncome(q,year); const income=monthSum>0?monthSum:(Number(rec.income)||0); const paid=Number(rec.paid)||0; const fromIncome=income>0?s.rate/100*income:0; const target=Math.max(minQ,fromIncome); let status,badge;
-    if(q<cq){status=paid>=target?"good":(paid>0?"warn":"bad");badge=paid>=target?"✅ закрыто":(paid>0?"🟡 частично":"⏰ не уплачено");}
+    if(q<cq){status=paid>=target?"good":(paid>0?"warn":"bad");badge=paid>=target?"✅ закрыто":(paid>0?"🟡 частично":" не уплачено");}
     else if(q===cq){status=paid>=target?"good":(paid>0?"warn":"soon");badge=paid>=target?"✅ закрыто":(paid>0?"🟡 в процессе":"🔵 в процессе");}
     else{status="soon";badge="🔮 предстоит";}
     qs.push({q,monthSum,manual:Number(rec.income)||0,paid,target,status,badge}); if(q<=cq){paidYTD+=paid;minYTD+=minQ;} paidAll+=paid;targetAll+=target; }
@@ -792,7 +987,7 @@ async function screenFszn(){ const s=fsznSettings(); const year=YEAR(),cq=CUR_Q(
     <div class="h2">кварталы</div>${qs.map(q=>`<div class="glass qcard-f"><div class="qhead"><div class="qtitle">${q.q}-й квартал</div><span class="badge ${q.status}">${q.badge}</span></div><div class="qmini"><span>минимум за квартал</span><b>${money(minQ)}</b></div><div class="qmini"><span>доход (авто)</span><b>${q.monthSum>0?money(q.monthSum):"—"}</b></div><div class="grid2"><div class="field" style="margin:8px 0 0"><label>Доход вручную</label><input class="input" type="number" inputmode="decimal" data-fszn="income" data-q="${q.q}" value="${q.manual||""}" placeholder="0"></div><div class="field" style="margin:8px 0 0"><label>Уплачено взносов</label><input class="input" type="number" inputmode="decimal" data-fszn="paid" data-q="${q.q}" value="${q.paid||""}" placeholder="0"></div></div><div class="qmini"><span>прикидка «к уплате»</span><b>${money(q.target)}</b></div></div>`).join("")}
     <div class="h2">сроки и налоги</div><div class="glass card"><button class="btn primary" data-action="openAddTax">➕ Добавить напоминание</button><p class="fszn-note">Заведи свои сроки (название + дата + повтор). Просроченные и близкие — баннером на главной. Даты ставишь ты — я не бухгалтер.</p></div>
     ${taxes.length?`<div class="list">${taxes.map(r=>{const days=r.date?Math.round((new Date(r.date)-new Date())/86400000):null;const rep=r.repeat&&r.repeat!=="none"?` · повтор: ${{month:"мес.",quarter:"квартал",year:"год"}[r.repeat]}`:"";return `<div class="item"><div class="ic">${days!=null&&days<0?"⛔":""}</div><div class="meta"><div class="t">${esc(r.name)}</div><div class="s">${r.date?fmtDate(r.date)+(days!=null?(days<0?" · просрочено":` · ${days} дн.`):""):"без даты"}${rep}</div></div><button class="edit" data-action="taxPaid" data-id="${r.id}" title="уплачено">✅</button><button class="del" data-action="taxDel" data-id="${r.id}">🗑</button></div>`;}).join("")}</div>`:`<div class="glass empty">Пока нет напоминаний</div>`}
-    <div class="h2">отчёты для бухгалтера</div><div class="glass card"><p class="fszn-note" style="margin-top:0">Полный отчёт со всем — кнопка «📄 Полный отчёт (PDF)» на экране «Расходы». Здесь — сводки CSV.</p><button class="btn" data-action="exportCsvQ">📤 Сводка за квартал (CSV)</button><div style="height:10px"></div><button class="btn" data-action="exportCsvY">📤 Сводка за год (CSV)</button></div>
+    <div class="h2">отчёты для бухгалтера</div><div class="glass card"><p class="fszn-note" style="margin-top:0">Полный отчёт со всем — кнопка «📸 для скриншота» на экране «Расходы». Здесь — сводки CSV.</p><button class="btn" data-action="exportCsvQ">📤 Сводка за квартал (CSV)</button><div style="height:10px"></div><button class="btn" data-action="exportCsvY">📤 Сводка за год (CSV)</button></div>
     <div class="glass card"><div class="row between"><b>Параметры ФСЗН</b><button class="btn sm" data-action="saveFsznSettings">💾 Сохранить</button></div><div class="grid2"><div class="field"><label>МЗП за месяц (${year})</label><input id="fszn_mzp" class="input" type="number" inputmode="decimal" value="${s.mzp}"></div><div class="field"><label>Ставка взносов, %</label><input id="fszn_rate" class="input" type="number" inputmode="decimal" value="${s.rate}"></div></div><div class="fszn-note">Мин. взнос за месяц = ставка × МЗП = <b>${money(minMonth)}</b>. Сверяй на portal.ssf.gov.by / в налоговой.</div></div>`; }
 function fsznBars(qs){ const W=320,H=150,pad=20,max=Math.max(...qs.map(q=>Math.max(q.target,q.paid)),1),gw=(W-pad*2)/qs.length;
   const cols=qs.map((q,i)=>{const x=pad+i*gw,hT=(q.target/max)*(H-pad*2),hP=(q.paid/max)*(H-pad*2),yT=H-pad-hT,yP=H-pad-hP;const pct=q.target>0?Math.min(100,Math.round(q.paid/q.target*100)):0;return `<g><rect class="need" x="${x+gw*0.12}" y="${yT}" width="${gw*0.30}" height="${hT}" rx="4"/><rect x="${x+gw*0.50}" y="${yP}" width="${gw*0.30}" height="${hP}" rx="4" fill="url(#g2)"><animate attributeName="height" from="0" to="${hP}" dur=".5s" fill="freeze"/><animate attributeName="y" from="${H-pad}" to="${yP}" dur=".5s" fill="freeze"/></rect><text class="cm" x="${x+gw*0.5}" y="${H-6}" text-anchor="middle" font-size="9">Q${q.q}</text><text class="ct" x="${x+gw*0.5}" y="${Math.min(yT,yP)-5}" text-anchor="middle" font-size="9" font-weight="700">${pct}%</text></g>`;}).join("");
@@ -805,7 +1000,7 @@ async function screenSettings(){ const exps=await dbAll("expenses"); const tgNam
   return `<div class="h1">Настройки</div>
     <div class="glass card"><div class="row between"><span>Тема</span><button class="btn sm" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙 Тёмная":"☀️ Светлая"}</button></div><div class="divider"></div><div class="row between"><span>Валюта</span><div class="chips">${CURS.map(c=>`<span class="chip ${c===cur()?"on":""}" data-action="setCur" data-cur="${c}">${c}</span>`).join("")}</div></div></div>
 
-    <div class="info"><div class="it"><span class="d"></span>Где живут данные</div><p>Все твои цифры хранятся <b>только в этом приложении на этом телефоне</b> — в облако ничего не уходит, серверов нет. Запись пишется сама, как ты нажал «Сохранить» в окне ввода. Чтобы не потерять данные при поломке/смене телефона — делай <b>резервную копию</b> ниже. На телефоне самый надёжный путь сохранения — «📄 На экране → PDF».</p></div>
+    <div class="info"><div class="it"><span class="d"></span>Где живут данные</div><p>Все твои цифры хранятся <b>только в этом приложении на этом телефоне</b> — в облако ничего не уходит, серверов нет. Запись пишется сама, как ты нажал «Сохранить» в окне ввода. Чтобы не потерять данные при поломке/смене телефона — делай <b>резервную копию</b> ниже. На телефоне самый надёжный путь — «📸 для скриншота».</p></div>
 
     <div class="h2">деньги, штрафы и чеки</div><div class="glass card"><button class="btn primary" data-action="openDailyRev">💵 Выручка за день</button><div style="height:10px"></div><button class="btn" data-action="openExpenses">📋 Все расходы и графики</button><div style="height:10px"></div><button class="btn" data-action="openFines">🚨 Штрафы</button><div style="height:10px"></div><button class="btn" data-action="openReceipts">🧾 Чеки и выгрузка</button></div>
 
@@ -818,12 +1013,12 @@ async function screenSettings(){ const exps=await dbAll("expenses"); const tgNam
       <p class="muted small" style="margin-top:0">Копия = один файл со всем (расходы, чеки, доход, штрафы, настройки). Отчёт = читаемый документ со всеми таблицами.</p>
       <button class="btn primary" data-action="export">⬇️ Сохранить копию</button>
       <div style="height:10px"></div>
-      <button class="btn" data-action="exportBackupBrowser">🌐 Копию в браузер</button>
-      <div style="height:10px"></div>
       <button class="btn" data-action="import">⬆️ Восстановить из файла</button>
       <div style="height:10px"></div>
+      <button class="btn" data-action="exportShotFull">📸 Отчёт для скриншота</button>
+      <div style="height:10px"></div>
       <button class="btn" data-action="exportFullPdf">📄 Полный отчёт (PDF)</button>
-      <div class="fszn-note">В Telegram при сохранении откроется выбор «куда»: самый надёжный — <b>«📄 На экране → PDF»</b> (системная печать). «⬇️ Скачать» иногда кладёт файл в «Загрузки». Чтобы заработало «📂 Поделиться» — поставь свежий Telegram apk с telegram.org. «🌐 в браузер» на Android может не открыться.</div>
+      <div class="fszn-note">В Telegram при сохранении откроется выбор «куда»: самый надёжный — <b>«📸 для скриншота»</b> (белые листы на весь экран). «⬇️ Сохранить копию» иногда кладёт файл в «Загрузки». Чтобы заработало «📂 Поделиться» — поставь свежий Telegram apk с telegram.org.</div>
     </div>
 
     <div class="h2">опасная зона</div><div class="glass card"><button class="btn danger" data-action="wipe">🧹 Удалить все данные</button><p class="muted small" style="margin:8px 2px 0">Записей расходов: ${exps.length}</p></div>
@@ -909,10 +1104,6 @@ const LS_KEYS=["blvck_cur","blvck_theme","blvck_is_ip","blvck_income","blvck_km"
 async function buildBackupPayload(){ const data={_app:"BLVCK TAXI",_v:3,_at:new Date().toISOString()}; for(const s of STORES) data[s]=await dbAll(s); data._ls=Object.fromEntries(LS_KEYS.map(k=>[k,localStorage.getItem(k)]).filter(([,v])=>v!=null)); return data; }
 async function exportBackup(){ const data=await buildBackupPayload();
   const r=await saveFile(`blvck-taxi-backup-${today()}.json`, JSON.stringify(data,null,2), "application/json", {title:"Резервная копия BLVCK TAXI", text:"Файл резервной копии"}); handleSaveResult(r); }
-async function exportBackupBrowser(){ const data=await buildBackupPayload(); const json=JSON.stringify(data);
-  if(json.length > 1500000){ toast("Копия большая (есть чеки‑картинки) — сохрани через «Сохранить копию»"); return; }
-  const r=await openBrowserWith(`blvck-taxi-backup-${today()}.json`, json, "application/json");
-  if(r.ok){ hapticOk(); toast("Открываю в браузере → там ⋮ «Скачать»"); } else { toast("Браузер не открылся — используй «Сохранить копию»"); } }
 function importBackup(){ $("#restoreInput").click(); }
 async function handleRestoreFile(file){ if(!file) return; try{ const data=JSON.parse(await file.text()); if(!confirm("Заменить ВСЕ текущие данные данными из файла?")) return; for(const s of STORES){ await dbClear(s); for(const v of (data[s]||[])) await dbPut(s,v); } if(data._ls&&typeof data._ls==="object"){ for(const k of LS_KEYS){ if(data._ls[k]!=null) localStorage.setItem(k,data._ls[k]); else localStorage.removeItem(k); } } applyTheme(); toast("Данные восстановлены полностью"); hapticOk(); renderAsync(); }catch(e){ toast("Ошибка файла"); hapticBad(); } }
 async function wipe(){ if(!confirm("Удалить ВСЕ данные приложения? Это необратимо.")) return; for(const s of STORES) await dbClear(s); LS_KEYS.filter(k=>k!=="blvck_theme"&&k!=="blvck_cur"&&k!=="blvck_onboarded").forEach(k=>localStorage.removeItem(k)); toast("Всё удалено"); hapticOk(); renderAsync(); }
@@ -930,7 +1121,7 @@ document.addEventListener("input",(ev)=>{ const el=ev.target; if(el&&el.id==="ex
 
 /* ---------- события ---------- */
 document.addEventListener("click", async (ev)=>{
-  const host=ev.target.closest(".btn,.qcard,.preset,.chip,.tab,.dcat,.dbig,.pbtn,.iconbtn,.seg button");
+  const host=ev.target.closest(".btn,.qcard,.preset,.chip,.tab,.dcat,.dbig,.pbtn,.iconbtn,.seg button,.shot-x");
   if(host){ const r=document.createElement("span"); r.className="ripple"; const rc=host.getBoundingClientRect(); const sz=Math.max(rc.width,rc.height); r.style.width=r.style.height=sz+"px"; r.style.left=(ev.clientX-rc.left-sz/2)+"px"; r.style.top=(ev.clientY-rc.top-sz/2)+"px"; host.appendChild(r); setTimeout(()=>r.remove(),600); }
   const el=ev.target.closest("[data-action]"); if(!el) return; const a=el.dataset.action; haptic("light");
   switch(a){
@@ -950,14 +1141,17 @@ document.addEventListener("click", async (ev)=>{
     case "setExpRange": state.expRange=el.dataset.range; renderAsync(); break;
     case "setExpScale": state.expScale=el.dataset.scale; renderAsync(); break;
     case "setExpCat": state.expCat=el.dataset.cat; renderAsync(); break;
+    case "exportShotFull": exportShotFull(); break;
+    case "exportShotChecks": exportShotChecks(); break;
+    case "shotClose": closeShotMode(); break;
     case "exportFullPdf": exportFullPdf(); break;
     case "exportFullHtml": exportFullHtml(); break;
     case "exportFullBrowser": exportFullBrowser(); break;
-    case "exportBackupBrowser": exportBackupBrowser(); break;
+    case "helpShot": { closeModal(); exportShotFull(); } break;
     case "helpViewPrint": { const h=window.__bt_help; if(h&&h.htmlView){ openHtmlViewer(h.htmlView); } else { toast("Для этого файла просмотр на экране недоступен"); } } break;
     case "helpDownload": helpDownload(); break;
-    case "helpShare": { const h=window.__bt_help; if(h){ const sr=await shareFiles(h.name||"blvck-taxi-file", h.content, h.mime, {title:"BLVCK TAXI"}); if(sr.ok){ hapticOk(); toast("Готово"); closeModal(); } else if(sr.aborted){ /* закрыл меню */ } else { toast("Меню не открылось — обнови Telegram или «На экране → PDF»"); } } } break;
-    case "helpBrowser": { const h=window.__bt_help; if(h){ const r=await openBrowserWith(h.name||"blvck-taxi-file", h.content, h.mime); if(r.ok){ hapticOk(); toast("Открываю в браузере → там ⋮ «Скачать» / «Печать→PDF»"); closeModal(); } else { toast("На Android обычно не открывается — используй «На экране → PDF»"); } } } break;
+    case "helpShare": { const h=window.__bt_help; if(h){ const sr=await shareFiles(h.name||"blvck-taxi-file", h.content, h.mime, {title:"BLVCK TAXI"}); if(sr.ok){ hapticOk(); toast("Готово"); closeModal(); } else if(sr.aborted){ /* закрыл меню */ } else { toast("Меню не открылось — обнови Telegram или «📸 для скриншота»"); } } } break;
+    case "helpBrowser": { const h=window.__bt_help; if(h){ const r=await openBrowserWith(h.name||"blvck-taxi-file", h.content, h.mime); if(r.ok){ hapticOk(); toast("Открываю в браузере → там ⋮ «Скачать» / «Печать→PDF»"); closeModal(); } else { toast("На Android обычно не открывается — используй «📸 для скриншота»"); } } } break;
     case "openFines": state.screen="fines"; state._animateScreen=true; renderAsync(); break;
     case "openAddFine": modalFine(); break;
     case "finePreset": { const i=$("#f_name"); if(i&&!i.value) i.value=el.dataset.name; } break;
