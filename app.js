@@ -1,9 +1,10 @@
 /* =========================================================
    BLVCK TAXI — instrument minimalism 2026 (black/white/orange)
    vanilla, без зависимостей. IndexedDB + localStorage. Офлайн. Без сервера.
-   СОХРАНЕНИЕ/ВЫГРУЗКА: Web Share API (системное меню «куда сохранить») как
-   основной путь в Telegram/Android + честные фолбэки без лживых тостов.
-   + экран «Расходы» + полный отчёт + износ деталей + всё остальное
+   СОХРАНЕНИЕ: в браузере — напрямую; в Telegram — честный chooser
+   «куда сохранить» (в браузер / «Поделиться» / на экране) без лживых тостов.
+   + мостик «🌐 в браузере» для отчётов/CSV/копии (Chrome сам скачает/PDF).
+   + экран «Расходы» + полный отчёт + износ деталей + всё остальное.
    ========================================================= */
 
 /* ===== TELEGRAM MINI APP ===== */
@@ -62,6 +63,7 @@ const num   = n => (Number(n)||0).toLocaleString("ru-RU");
 const today = () => new Date().toISOString().slice(0,10);
 const ymNow = () => today().slice(0,7);
 const fmtDate = d => d ? new Date(d+"T00:00:00").toLocaleDateString("ru-RU",{day:"2-digit",month:"short",year:"numeric"}) : "—";
+const fmtShort = d => d ? new Date(d+"T00:00:00").toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit",year:"2-digit"}) : "—";
 const monthLabel = ym => new Date(ym+"-01T00:00:00").toLocaleDateString("ru-RU",{month:"long",year:"numeric"});
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
 const YEAR = () => new Date().getFullYear();
@@ -133,68 +135,100 @@ function trendPct(c,p){ if(p<=0) return c>0?{dir:"up",pct:null}:{dir:"flat",pct:
 const arrow = d => d==="up"?"↑":d==="down"?"↓":"→";
 
 /* =========================================================
-   СОХРАНЕНИЕ ФАЙЛОВ — share-first (работает в Telegram/Android)
-   Возвращает {ok, via, aborted, uncertain}. НИКОГДА не врёт об успехе.
+   СОХРАНЕНИЕ ФАЙЛОВ
+   Вне Telegram — скачиваем напрямую. В Telegram — системное
+   «Поделиться», если повезёт; иначе возвращаем «нужен chooser»,
+   и интерфейс покажет честный выбор «куда сохранить».
+   Мостик в браузер (openBrowserWith) выносит документ в Chrome,
+   где нативно работают «Скачать» и «Печать → PDF».
    ========================================================= */
 function makeFile(name, content, mime){
   const blob = (content instanceof Blob) ? content : new Blob([content], {type: mime||"application/octet-stream"});
   try{ return new File([blob], name, {type: mime||blob.type||"application/octet-stream"}); }
-  catch(e){ return blob; } // очень старые среды без File
+  catch(e){ return blob; }
 }
-async function saveFile(name, content, mime, opts={}){
+function blobToDataUrl(blob){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(blob); }); }
+function strToDataUrl(content, mime){ return "data:"+(mime||"application/octet-stream")+";base64,"+btoa(unescape(encodeURIComponent(content))); }
+async function dataUrlFor(content, mime){ return (content instanceof Blob) ? await blobToDataUrl(content) : strToDataUrl(content, mime); }
+
+async function shareFiles(name, content, mime, opts={}){
   const file = makeFile(name, content, mime);
-  // 1) системное меню «Поделиться» = выбор, КУДА сохранить (Файлы / Диск / Избранное / браузер)
   try{
     if(navigator.canShare && navigator.canShare({files:[file]})){
       await navigator.share({ files:[file], title: opts.title||"BLVCK TAXI", text: opts.text||name });
-      return {ok:true, via:"share"};
+      return {ok:true};
     }
-  }catch(e){
-    if(e && e.name==="AbortError") return {ok:false, via:"share", aborted:true}; // сам отменил меню
-    // иначе — среда не дала, падаем в фолбэки
-  }
-  // 2) десктопный диалог «Сохранить как» (Chrome на ПК)
+  }catch(e){ if(e && e.name==="AbortError") return {aborted:true}; }
+  return {ok:false};
+}
+/* мостик: открыть документ во ВНЕШНЕМ браузере (Chrome сам скачает / сделает PDF) */
+async function openBrowserWith(name, content, mime){
+  let dataUrl;
+  try{ dataUrl = await dataUrlFor(content, mime); }catch(e){ return {ok:false}; }
+  let opened=false;
+  try{ if(TG && TG.openLink){ TG.openLink(dataUrl); opened=true; } }catch(e){}
+  if(!opened){ try{ const w=window.open(dataUrl,"_blank"); opened = !!w; }catch(e){} }
+  return {ok:opened};
+}
+async function saveFile(name, content, mime, opts={}){
+  // 1) системное меню «Поделиться» (работает, если включено в этой сборке Telegram / в браузере)
+  const sr = await shareFiles(name, content, mime, opts);
+  if(sr.ok) return {ok:true, via:"share"};
+  if(sr.aborted) return {ok:false, via:"share", aborted:true};
+  // 2) десктопный диалог «Сохранить как»
   if(window.showSaveFilePicker){
     try{
       const ex=(/\.([a-z0-9]+)$/i.exec(name)||[,"bin"])[1];
       const h=await window.showSaveFilePicker({ suggestedName:name, types:[{ description:opts.desc||"Файл BLVCK TAXI", accept:{[mime||"application/octet-stream"]:["."+ex]} }] });
-      const w=await h.createWritable(); await w.write(file); await w.close();
+      const w=await h.createWritable(); await w.write(makeFile(name,content,mime)); await w.close();
       return {ok:true, via:"picker"};
     }catch(e){ if(e && e.name==="AbortError") return {ok:false, via:"picker", aborted:true}; }
   }
-  // 3) обычное скачивание — работает в браузере ВНЕ Telegram; в Telegram часто НЕ доходит до папки
-  try{
-    const url=URL.createObjectURL(file); const a=document.createElement("a");
-    a.href=url; a.download=name; a.rel="noopener";
-    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),5000);
-    return {ok: !isTelegram, via:"download", uncertain: isTelegram};
-  }catch(e){ return {ok:false, via:"download"}; }
+  // 3) обычное скачивание — работает ВНЕ Telegram
+  if(!isTelegram){
+    try{
+      const href = await dataUrlFor(content, mime);
+      const a=document.createElement("a"); a.href=href; a.download=name; a.rel="noopener";
+      document.body.appendChild(a); a.click(); a.remove();
+      return {ok:true, via:"download"};
+    }catch(e){ return {ok:false, via:"download"}; }
+  }
+  // 4) Telegram: напрямую не отдать — нужен chooser «куда сохранить»
+  return {ok:false, via:"chooser", name, content, mime, htmlView: opts.htmlView||null};
 }
-/* единая обработка результата сохранения: честный тост / модалка-помощь */
 function handleSaveResult(r, opts={}){
-  if(r.aborted) return;                       // пользователь сам закрыл меню — тишина
-  if(r.ok && r.via==="share"){ hapticOk(); toast("Готово"); return; }
-  if(r.ok && r.via==="picker"){ hapticOk(); toast("Сохранено"); return; }
-  if(r.ok && r.via==="download"){ hapticOk(); toast("Сохранено в «Загрузки»"); return; }
-  // не получилось автоматически (типично для Telegram) — честная помощь, без лжи
-  showSaveHelp(opts);
+  if(r.aborted) return; // сам закрыл меню — тишина
+  if(r.ok){
+    hapticOk();
+    toast(r.via==="share" ? "Готово" : r.via==="picker" ? "Сохранено" : "Сохранено в «Загрузки»");
+    return;
+  }
+  // не получилось автоматически → честный выбор «куда сохранить»
+  showSaveChooser({
+    name: r.name || opts.name,
+    content: (r.content!==undefined ? r.content : opts.content),
+    mime: r.mime || opts.mime,
+    htmlView: r.htmlView || opts.htmlView || null,
+  });
 }
-function showSaveHelp(opts={}){
+function showSaveChooser(opts){
   window.__bt_help = opts;
-  const viewBtn = opts.htmlView ? `<button class="btn" data-action="helpView">📖 Показать отчёт на экране (для скриншота)</button><div style="height:10px"></div>` : "";
-  openModal(`<div class="mhead"><h3>Файл не сохранился автоматически</h3><button class="x" data-action="close">×</button></div>
-    <div class="info" style="opacity:1;transform:none"><div class="it"><span class="d"></span>Это ограничение Telegram, не приложения</div>
-    <p>Telegram на этом устройстве не дал приложению отдать файл в папку напрямую. Обычно при нажатии «Сохранить» должно открываться системное меню <b>«Поделиться»</b> — там выбери <b>«Файлы» / «Сохранить на устройство» / Google Диск / «Избранное Telegram»</b>, и файл ляжет куда ты укажешь.</p>
-    <p>Если меню не появилось — <b>обнови Telegram</b> до последней версии и попробуй снова. На компьютере та же кнопка сохраняет файл как обычно.</p></div>
+  const viewBtn = opts.htmlView ? `<button class="btn" data-action="helpView">📖 Показать на экране (для скриншота)</button><div style="height:10px"></div>` : "";
+  openModal(`<div class="mhead"><h3>Куда сохранить файл?</h3><button class="x" data-action="close">×</button></div>
+    <div class="info" style="opacity:1;transform:none"><div class="it"><span class="d"></span>Telegram не даёт сохранить напрямую</div>
+    <p>Это ограничение мессенджера, не приложения. Выбери способ ниже. Самый надёжный — <b>«🌐 в браузере»</b>: документ откроется в Chrome, а там <b>⋮ → «Скачать»</b> или <b>⋮ → «Печать» → «Сохранить как PDF»</b>.</p></div>
+    <button class="btn primary" data-action="helpBrowser">🌐 Открыть в браузере</button>
+    <div style="height:10px"></div>
+    <button class="btn" data-action="helpShare">📂 Через меню «Поделиться»</button>
+    <div style="height:10px"></div>
     ${viewBtn}
-    <button class="btn primary" data-action="helpRetry">🔁 Попробовать сохранить ещё раз</button>`);
+    <div class="fszn-note">Если «Поделиться» не открывается — обнови Telegram до последней версии. На компьютере сохранение работает как обычно.</div>`);
 }
 function openHtmlViewer(html){
   const m=$("#modal");
   m.innerHTML=`<div class="viewer" style="cursor:default;background:var(--bg);padding:10px"><button class="x vclose" data-action="close">×</button><iframe srcdoc="${esc(html)}" style="width:100%;height:100%;border:0;background:#fff;border-radius:12px"></iframe></div>`;
   m.hidden=false; try{TG?.BackButton?.show();}catch{}
 }
-function stripImages(html){ return html.replace(/<img[^>]*>/g,'<span style="color:#888">🧾 чек прикреплён в приложении</span>'); }
 
 /* ---------- визуальные хелперы ---------- */
 function ringSVG(pct){ const r=30, c=2*Math.PI*r, off=c*(1-Math.min(100,Math.max(0,pct))/100);
@@ -451,6 +485,8 @@ async function screenExpenses(){
     const map={}; chartAll.forEach(e=>{ const m=e.date.slice(0,7); map[m]=(map[m]||0)+Number(e.amount||0); });
     chartData=Object.keys(map).sort().map(m=>({label:new Date(m+"-01T00:00:00").toLocaleDateString("ru-RU",{month:"short"}),value:map[m]}));
   }
+  const dayCount = chartData.length;
+  const sparse = dayCount>40 ? 5 : dayCount>16 ? 3 : 1;
 
   const rangeChips=[["7","7д"],["30","30д"],["month","месяц"],["quarter","квартал"],["year","год"],["all","всё"]];
   const catChips=[["all","Все"],...Object.entries(CATS).map(([k,c])=>[k,c.ico+" "+c.t])];
@@ -473,7 +509,7 @@ async function screenExpenses(){
 
     <div class="glass card" style="margin-top:6px">
       <div class="row between"><span class="kicker">расходы · ${w.label}</span><b>${money(sum)}</b></div>
-      ${chartData.length&&chartData.some(d=>d.value>0)?bars(chartData):`<div class="empty" style="padding:14px 0 4px">нет расходов за период</div>`}
+      ${chartData.length&&chartData.some(d=>d.value>0)?bars(chartData,{sparse, small: dayCount>20}):`<div class="empty" style="padding:14px 0 4px">нет расходов за период</div>`}
     </div>
 
     <div class="chips" style="margin:6px 0">${catChips.map(([k,t])=>`<span class="chip ${state.expCat===k?"on":""}" data-action="setExpCat" data-cat="${k}">${t}</span>`).join("")}</div>
@@ -482,9 +518,10 @@ async function screenExpenses(){
 
     <div class="row between" style="margin:4px 2px 8px"><span class="kicker">найдено: ${rows.length}</span><span class="kicker">${money(sum)}</span></div>
 
+    <button class="btn primary" data-action="exportFullPdf" style="margin-bottom:10px">📄 Полный отчёт (PDF)</button>
     <div class="row" style="gap:10px;margin-bottom:10px">
-      <button class="btn primary" data-action="exportFullPdf">📄 Полный отчёт (PDF)</button>
       <button class="btn" data-action="exportFullHtml">⬇️ файлом</button>
+      <button class="btn" data-action="exportFullBrowser">🌐 в браузере</button>
     </div>
 
     ${rows.length?`<div class="list">${rows.map(expenseRow).join("")}</div>`:`<div class="glass empty">Ничего не найдено. Сбрось фильтр или поиск.</div>`}
@@ -524,8 +561,13 @@ function donut(byCat){ const e=Object.entries(byCat).filter(([,v])=>v>0); const 
   const paths=e.map(([k,v])=>`<path d="${arc(a0+(v/total)*Math.PI*2)}" fill="${colors[k]||"#888"}" opacity=".95"/>`).join("");
   const legend=e.map(([k,v])=>`<div class="li"><span class="dot" style="background:${colors[k]||"#888"}"></span>${(CATS[k]?.t||k)} · ${Math.round(v/total*100)}%</div>`).join("");
   return `<div class="row" style="gap:18px;margin-top:10px"><svg class="chart" viewBox="0 0 160 160" width="140" height="140">${paths}<text class="ct" x="80" y="78" text-anchor="middle" font-size="14" font-weight="800">${money(total).split(" ")[0]}</text><text class="cm" x="80" y="94" text-anchor="middle" font-size="9">${cur()}</text></svg><div class="legend col">${legend}</div></div>`; }
-function bars(data){ const W=320,H=140,pad=18,max=Math.max(...data.map(d=>d.value),1),bw=(W-pad*2)/data.length;
-  const cols=data.map((d,i)=>{const h=(d.value/max)*(H-pad*2),x=pad+i*bw+bw*0.15,y=H-pad-h;return `<g><rect x="${x}" y="${y}" width="${bw*0.7}" height="${h}" rx="4" fill="url(#g1)"><animate attributeName="height" from="0" to="${h}" dur=".5s" fill="freeze"/><animate attributeName="y" from="${H-pad}" to="${y}" dur=".5s" fill="freeze"/></rect><text class="cm" x="${x+bw*0.35}" y="${H-5}" text-anchor="middle" font-size="9">${d.label}</text></g>`;}).join("");
+function bars(data, opts={}){
+  const W=320,H=140,pad=18,max=Math.max(...data.map(d=>d.value),1),bw=(W-pad*2)/data.length;
+  const sparse = opts.sparse||1;
+  const fs = opts.small ? 7 : 9;
+  const cols=data.map((d,i)=>{const h=(d.value/max)*(H-pad*2),x=pad+i*bw+bw*0.15,y=H-pad-h;
+    const show = (i % sparse === 0) || i===data.length-1;
+    return `<g><rect x="${x}" y="${y}" width="${bw*0.7}" height="${h}" rx="4" fill="url(#g1)"><animate attributeName="height" from="0" to="${h}" dur=".5s" fill="freeze"/><animate attributeName="y" from="${H-pad}" to="${y}" dur=".5s" fill="freeze"/></rect><text class="cm" x="${x+bw*0.35}" y="${H-5}" text-anchor="middle" font-size="${fs}" style="visibility:${show?'visible':'hidden'}">${d.label}</text></g>`;}).join("");
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" style="margin-top:10px"><defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff5a00"/><stop offset="1" stop-color="#ff7d24"/></linearGradient></defs>${cols}</svg>`; }
 
 /* ---------- АВТО + износ ---------- */
@@ -593,7 +635,16 @@ async function screenReceipts(){ const pr=periodRange(state.receiptMode,state.re
     ${state.receiptMode!=="all"?`<div class="periodnav"><button class="pbtn" data-action="receiptPrev">‹</button><div class="plabel">${esc(pr.label)}</div><button class="pbtn" data-action="receiptNext">›</button></div>`:`<div class="periodnav"><div class="plabel">${esc(pr.label)}</div></div>`}
     <div class="chips" style="margin:6px 0">${catChips.map(([k,t])=>`<span class="chip ${state.receiptCat===k?"on":""}" data-action="setReceiptCat" data-cat="${k}">${t}</span>`).join("")}</div>
     <div class="glass card"><div class="row between"><b>Чеков со скрином</b><b>${list.length}</b></div><div class="row between"><span class="muted">сумма чеков</span><b>${money(sum)}</b></div>${Object.entries(byCat).map(([k,v])=>`<div class="row between small"><span class="muted">${CATS[k]?.ico||""} ${CATS[k]?.t||k}</span><b>${money(v)}</b></div>`).join("")}<div class="divider"></div><div class="row between small"><span class="muted">все расходы за период</span><b>${money(allSum)}</b></div></div>
-    <div class="h2">выгрузить</div><div class="glass card"><button class="btn primary" data-action="exportReceiptsHtml" ${list.length?"":"disabled"}>📄 Отчёт с чеками (PDF)</button><div style="height:10px"></div><button class="btn" data-action="exportReceiptsZip" ${list.length?"":"disabled"}>📦 Чеки папкой (ZIP)</button><div style="height:10px"></div><button class="btn" data-action="exportReceiptsCsv" ${list.length?"":"disabled"}>📊 Таблица чеков (CSV)</button><div class="fszn-note">Сохранение идёт через системное меню «Поделиться» → выбери «Файлы / Диск / Избранное». Для PDF выбери в меню браузер → там «Сохранить как PDF».</div></div>
+    <div class="h2">выгрузить</div><div class="glass card">
+      <button class="btn primary" data-action="exportReceiptsHtml" ${list.length?"":"disabled"}>📄 Отчёт с чеками (PDF)</button>
+      <div style="height:10px"></div>
+      <button class="btn" data-action="exportReceiptsBrowser" ${list.length?"":"disabled"}>🌐 Отчёт в браузере</button>
+      <div style="height:10px"></div>
+      <button class="btn" data-action="exportReceiptsZip" ${list.length?"":"disabled"}>📦 Чеки папкой (ZIP)</button>
+      <div style="height:10px"></div>
+      <button class="btn" data-action="exportReceiptsCsv" ${list.length?"":"disabled"}>📊 Таблица чеков (CSV)</button>
+      <div class="fszn-note">«🌐 в браузере» откроет документ в Chrome → там ⋮ «Скачать» или «Печать → PDF». «Поделиться»/скачивание напрямую в Telegram может не работать — это ограничение мессенджера.</div>
+    </div>
     <div class="h2">галерея</div>${list.length?`<div class="list">${list.map(e=>{const c=CATS[e.category]||CATS.other;return `<div class="item"><img class="rthumb" src="${e.receipt}" data-action="viewReceipt" data-id="${e.id}" alt="чек"><div class="meta"><div class="t">${c.ico} ${c.t}${e.note?": "+esc(e.note):""}</div><div class="s">${fmtDate(e.date)}</div></div><div class="amt">−${money(e.amount)}</div></div>`;}).join("")}</div>`:`<div class="glass empty">За этот период чеков нет</div>`}`; }
 function receiptsCsvText(list,pr){ const sum=list.reduce((s,e)=>s+Number(e.amount||0),0); const byCat={}; list.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
   const L=[["BLVCK TAXI — чеки за "+pr.label],["Фильтр",state.receiptCat==="all"?"все":(CATS[state.receiptCat]?.t||state.receiptCat)],["Сформировано",today()],[],["Дата","Категория","Заметка","Сумма "+cur()]];
@@ -602,18 +653,19 @@ function receiptsCsvText(list,pr){ const sum=list.reduce((s,e)=>s+Number(e.amoun
   return "\uFEFF"+L.map(r=>r.map(csvCell).join(";")).join("\r\n"); }
 function exportReceiptsCsv(){ getReceiptExpenses().then(async list=>{ if(!list.length){toast("Нет чеков за период");return;} const pr=periodRange(state.receiptMode,state.receiptOffset);
   const r=await saveFile(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.csv`, receiptsCsvText(list,pr), "text/csv;charset=utf-8", {title:"Чеки BLVCK TAXI"}); handleSaveResult(r); }); }
-function exportReceiptsHtml(){ getReceiptExpenses().then(async list=>{ if(!list.length){toast("Нет чеков за период");return;} const pr=periodRange(state.receiptMode,state.receiptOffset); const sum=list.reduce((s,e)=>s+Number(e.amount||0),0); const byCat={}; list.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
-  const rows=list.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(e=>{const c=CATS[e.category]||CATS.other;return `<div class="rc"><img src="${e.receipt}" alt="чек"><div class="cap">${fmtDate(e.date)} · ${c.ico} ${esc(c.t)}${e.note?" · "+esc(e.note):""}<br><b>${money(e.amount)}</b></div></div>`;}).join("");
-  const tot=Object.entries(byCat).map(([k,v])=>`<tr><td>${CATS[k]?.ico||""} ${esc(CATS[k]?.t||k)}</td><td>${money(v)}</td></tr>`).join("");
-  const html=reportShell(`Чеки за ${esc(pr.label)}`,`Категория: ${state.receiptCat==="all"?"все":esc(CATS[state.receiptCat]?.t||state.receiptCat)} · чеков: ${list.length} · ${fmtDate(today())}`,`<table>${tot}<tr class="tot"><td>ИТОГО ЧЕКОВ</td><td>${money(sum)}</td></tr></table>${rows}`);
-  const r=await saveFile(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.html`, html, "text/html;charset=utf-8", {title:"Чеки BLVCK TAXI", text:"Открой в браузере → Сохранить как PDF"}); handleSaveResult(r,{htmlView:html}); }); }
+function exportReceiptsHtml(){ getReceiptExpenses().then(async list=>{ if(!list.length){toast("Нет чеков за период");return;} const pr=periodRange(state.receiptMode,state.receiptOffset); const html=buildReceiptsReport(list,pr,true);
+  const r=await saveFile(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.html`, html, "text/html;charset=utf-8", {title:"Чеки BLVCK TAXI", htmlView:html}); handleSaveResult(r); }); }
+function exportReceiptsBrowser(){ getReceiptExpenses().then(async list=>{ if(!list.length){toast("Нет чеков за период");return;} const pr=periodRange(state.receiptMode,state.receiptOffset); const html=buildReceiptsReport(list,pr,false);
+  const r=await openBrowserWith(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.html`, html, "text/html;charset=utf-8");
+  if(r.ok){ hapticOk(); toast("Открываю в браузере → там ⋮ «Скачать» / «Печать→PDF»"); } else { toast("Браузер не открылся — обнови Telegram или используй «Отчёт с чеками»"); } }); }
 function exportReceiptsZip(){ getReceiptExpenses().then(async list=>{ if(!list.length){toast("Нет чеков за период");return;} const pr=periodRange(state.receiptMode,state.receiptOffset); const files=[],used={};
   list.slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>{let base=`${e.date}_${e.category}_${Number(e.amount).toFixed(2).replace(".","_")}`,name=base+".jpg",i=2;while(used[name]){name=`${base}_${i}.jpg`;i++;}used[name]=1;files.push({name,data:b64ToBytes(e.receipt)});});
   files.push({name:"itogi.csv",data:strBytes(receiptsCsvText(list,pr))}); const blob=buildZip(files);
   const r=await saveFile(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.zip`, blob, "application/zip", {title:"Чеки BLVCK TAXI (папка)"}); handleSaveResult(r); }); }
 
-/* ---------- ПОЛНЫЙ ОТЧЁТ ---------- */
+/* ---------- ОТЧЁТЫ (оболочка + сборка) ---------- */
 function reportShell(title, sub, body){
+  const wrapped = body.replace(/<table>/g,'<div class="tblwrap"><table>').replace(/<\/table>/g,'</table></div>');
   return `<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>BLVCK TAXI — ${title}</title>
 <style>
  *{box-sizing:border-box} body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;padding:22px;color:#141414;background:#f3f2ee}
@@ -622,23 +674,25 @@ function reportShell(title, sub, body){
  .hd h1{font-size:22px;margin:0;letter-spacing:-.4px}
  .sub{color:#6b6b65;font-size:12.5px;margin:0 0 16px}
  h2{font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#ff5a00;margin:20px 0 8px}
- table{border-collapse:collapse;width:100%;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.06);margin-bottom:6px}
- td{padding:8px 10px;border-bottom:1px solid #eee;font-size:12.5px;vertical-align:top}
+ .tblwrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -2px 6px}
+ table{border-collapse:collapse;width:100%;min-width:480px;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.06)}
+ td{padding:6px 8px;border-bottom:1px solid #eee;font-size:11.5px;vertical-align:top}
  td.r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+ td.nowrap{white-space:nowrap}
  tr.tot td{background:#0a0a0a;color:#fff;font-weight:800}
  .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
  .kp{background:#fff;border-radius:10px;padding:10px 12px;box-shadow:0 4px 16px rgba(0,0,0,.06)}
  .kp .v{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}
  .kp .k{font-size:10px;color:#6b6b65;text-transform:uppercase;letter-spacing:.8px}
  .rc img{width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #eee}
- .noprint{position:sticky;top:0;background:#f3f2ee;padding:6px 0 12px;display:flex;gap:8px}
+ .noprint{position:sticky;top:0;background:#f3f2ee;padding:6px 0 12px;display:flex;gap:8px;z-index:5}
  .noprint button{background:#ff5a00;color:#fff;border:none;border-radius:10px;padding:11px 16px;font-size:14px;font-weight:700;cursor:pointer}
  @media print{.noprint{display:none} body{background:#fff;padding:0} table,.kp{box-shadow:none}}
 </style></head><body>
 <div class="noprint"><button onclick="window.print()">🖨 Сохранить как PDF / распечатать</button></div>
 <div class="hd"><span class="dot"></span><h1>BLVCK TAXI — ${title}</h1></div>
 <p class="sub">${sub}</p>
-${body}
+${wrapped}
 </body></html>`;
 }
 async function buildFullReport(embedImages=true){
@@ -657,10 +711,10 @@ async function buildFullReport(embedImages=true){
   wearRows.sort((a,b)=>(b.e.date+b.e.id).localeCompare(a.e.date+a.e.id));
 
   const catRows=Object.entries(byCat).map(([k,v])=>`<tr><td>${CATS[k]?.ico||""} ${esc(CATS[k]?.t||k)}</td><td class="r">${money(v)}</td></tr>`).join("");
-  const cell = (e) => embedImages && e.receipt ? `<img src="${e.receipt}" alt="">` : (e.receipt?`<span style="color:#888">🧾</span>`:"");
-  const expRows=exps.map(e=>{const c=CATS[e.category]||CATS.other;return `<tr><td>${fmtDate(e.date)}</td><td>${c.ico} ${esc(c.t)}</td><td>${esc(e.note||"")}</td><td class="r">${e.mileage?num(e.mileage):"—"}</td><td>${cell(e)}</td><td class="r">${money(e.amount)}</td></tr>`;}).join("");
-  const revRows=revDays.map(d=>`<tr><td>${fmtDate(d)}</td><td class="r">${money(rev[d])}</td></tr>`).join("");
-  const fineRows=fines.map(f=>`<tr><td>${f.paid?fmtDate(f.paidDate):"—"}</td><td>${esc(f.name)}</td><td>${f.paid?"оплачен":"не оплачен"}</td><td class="r">${money(f.amount)}</td></tr>`).join("");
+  const cell = (e) => embedImages && e.receipt ? `<img src="${e.receipt}" alt="">` : (e.receipt?`<span style="color:#888">🧾</span>`:"—");
+  const expRows=exps.map(e=>{const c=CATS[e.category]||CATS.other;return `<tr><td class="nowrap">${fmtShort(e.date)}</td><td>${c.ico} ${esc(c.t)}</td><td>${esc(e.note||"")}</td><td class="r">${e.mileage?num(e.mileage):"—"}</td><td>${cell(e)}</td><td class="r">${money(e.amount)}</td></tr>`;}).join("");
+  const revRows=revDays.map(d=>`<tr><td class="nowrap">${fmtShort(d)}</td><td class="r">${money(rev[d])}</td></tr>`).join("");
+  const fineRows=fines.map(f=>`<tr><td class="nowrap">${f.paid?fmtShort(f.paidDate):"—"}</td><td>${esc(f.name)}</td><td>${f.paid?"оплачен":"не оплачен"}</td><td class="r">${money(f.amount)}</td></tr>`).join("");
   const wearTbl=wearRows.map(r=>{const c=CATS[r.e.category]||CATS.other;return `<tr><td>${c.ico} ${esc(r.e.note||c.t)}</td><td class="r">${num(r.ins)}</td><td class="r">${r.sp!=null?num(r.sp)+" км":"—"}</td><td>${r.act?"действует":"заменена"}</td></tr>`;}).join("");
 
   let fsznBlock="";
@@ -682,15 +736,24 @@ async function buildFullReport(embedImages=true){
     ${fsznBlock}`;
   return reportShell("Полный отчёт", `Сформировано ${fmtDate(today())} · записей: ${exps.length} · валюта ${cur()}`, body);
 }
+function buildReceiptsReport(list, pr, embedImages){
+  const sum=list.reduce((s,e)=>s+Number(e.amount||0),0); const byCat={}; list.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
+  const rows=list.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(e=>{const c=CATS[e.category]||CATS.other;
+    const rc = embedImages && e.receipt ? `<img src="${e.receipt}" alt="чек">` : (e.receipt?`<span style="color:#888">🧾 в приложении</span>`:"—");
+    return `<div class="rc">${rc}<div class="cap">${fmtShort(e.date)} · ${c.ico} ${esc(c.t)}${e.note?" · "+esc(e.note):""}<br><b>${money(e.amount)}</b></div></div>`;}).join("");
+  const tot=Object.entries(byCat).map(([k,v])=>`<tr><td>${CATS[k]?.ico||""} ${esc(CATS[k]?.t||k)}</td><td class="r">${money(v)}</td></tr>`).join("");
+  const body=`<table>${tot}<tr class="tot"><td>ИТОГО ЧЕКОВ</td><td class="r">${money(sum)}</td></tr></table>${rows||`<p>нет чеков</p>`}`;
+  return reportShell(`Чеки за ${esc(pr.label)}`, `Категория: ${state.receiptCat==="all"?"все":esc(CATS[state.receiptCat]?.t||state.receiptCat)} · чеков: ${list.length} · ${fmtDate(today())}`, body);
+}
 async function exportFullPdf(){
   const html=await buildFullReport(true);
   const name=`blvck-taxi-otchet-${today()}.html`;
-  // отдаём HTML-файл в системное меню: там выбор «браузер» → в браузере кнопка «Сохранить как PDF»
-  const r=await saveFile(name, html, "text/html;charset=utf-8", {title:"Полный отчёт BLVCK TAXI", text:"Открой в браузере → ⋮ → Печать → Сохранить как PDF"});
-  if(r.ok && r.via==="share"){ hapticOk(); toast("Открой файл в браузере → Сохранить как PDF"); return; }
-  handleSaveResult(r,{htmlView:html});
+  const r=await saveFile(name, html, "text/html;charset=utf-8", {title:"Полный отчёт BLVCK TAXI", htmlView:html});
+  handleSaveResult(r);
 }
-async function exportFullHtml(){ const html=await buildFullReport(true); const r=await saveFile(`blvck-taxi-otchet-${today()}.html`, html, "text/html;charset=utf-8", {title:"Полный отчёт BLVCK TAXI"}); handleSaveResult(r,{htmlView:html}); }
+async function exportFullHtml(){ const html=await buildFullReport(true); const r=await saveFile(`blvck-taxi-otchet-${today()}.html`, html, "text/html;charset=utf-8", {title:"Полный отчёт BLVCK TAXI", htmlView:html}); handleSaveResult(r); }
+async function exportFullBrowser(){ const html=await buildFullReport(false); const r=await openBrowserWith(`blvck-taxi-otchet-${today()}.html`, html, "text/html;charset=utf-8");
+  if(r.ok){ hapticOk(); toast("Открываю в браузере → там ⋮ «Скачать» / «Печать→PDF»"); } else { toast("Браузер не открылся — обнови Telegram или используй «Полный отчёт (PDF)»"); } }
 
 /* ---------- ФСЗН ---------- */
 function fsznSettings(){ return { mzp:parseFloat(localStorage.getItem("blvck_fszn_mzp"))||726, rate:parseFloat(localStorage.getItem("blvck_fszn_rate"))||35 }; }
@@ -723,7 +786,7 @@ async function screenSettings(){ const exps=await dbAll("expenses"); const tgNam
   return `<div class="h1">Настройки</div>
     <div class="glass card"><div class="row between"><span>Тема</span><button class="btn sm" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙 Тёмная":"☀️ Светлая"}</button></div><div class="divider"></div><div class="row between"><span>Валюта</span><div class="chips">${CURS.map(c=>`<span class="chip ${c===cur()?"on":""}" data-action="setCur" data-cur="${c}">${c}</span>`).join("")}</div></div></div>
 
-    <div class="info"><div class="it"><span class="d"></span>Где живут данные</div><p>Все твои цифры хранятся <b>только в этом приложении на этом телефоне</b> — в облако ничего не уходит, серверов нет. Запись пишется сама, как ты нажал «Сохранить» в окне ввода. Чтобы не потерять данные при поломке/смене телефона — делай <b>резервную копию</b> ниже: сохранение идёт через системное меню «Поделиться», где ты сам выбираешь, куда положить файл (Файлы / Диск / Избранное Telegram).</p></div>
+    <div class="info"><div class="it"><span class="d"></span>Где живут данные</div><p>Все твои цифры хранятся <b>только в этом приложении на этом телефоне</b> — в облако ничего не уходит, серверов нет. Запись пишется сама, как ты нажал «Сохранить» в окне ввода. Чтобы не потерять данные при поломке/смене телефона — делай <b>резервную копию</b> ниже. В Telegram сохранение идёт через выбор «куда»: чаще всего надёжнее всего «🌐 в браузере».</p></div>
 
     <div class="h2">деньги, штрафы и чеки</div><div class="glass card"><button class="btn primary" data-action="openDailyRev">💵 Выручка за день</button><div style="height:10px"></div><button class="btn" data-action="openExpenses">📋 Все расходы и графики</button><div style="height:10px"></div><button class="btn" data-action="openFines">🚨 Штрафы</button><div style="height:10px"></div><button class="btn" data-action="openReceipts">🧾 Чеки и выгрузка</button></div>
 
@@ -733,13 +796,15 @@ async function screenSettings(){ const exps=await dbAll("expenses"); const tgNam
 
     <div class="h2">резервная копия и отчёты</div>
     <div class="glass card">
-      <p class="muted small" style="margin-top:0">Копия = один файл со всем (расходы, чеки, доход, штрафы, настройки). Отчёт = читаемый документ со всеми таблицами. Сохранение — через системное меню «Поделиться».</p>
+      <p class="muted small" style="margin-top:0">Копия = один файл со всем (расходы, чеки, доход, штрафы, настройки). Отчёт = читаемый документ со всеми таблицами.</p>
       <button class="btn primary" data-action="export">⬇️ Сохранить копию</button>
+      <div style="height:10px"></div>
+      <button class="btn" data-action="exportBackupBrowser">🌐 Копию в браузер</button>
       <div style="height:10px"></div>
       <button class="btn" data-action="import">⬆️ Восстановить из файла</button>
       <div style="height:10px"></div>
       <button class="btn" data-action="exportFullPdf">📄 Полный отчёт (PDF)</button>
-      <div class="fszn-note">При нажатии откроется меню «Поделиться» → выбери <b>«Файлы» / «Сохранить на устройство» / Google Диск / «Избранное Telegram»</b>. Для PDF выбери в меню браузер → там «Сохранить как PDF». Если меню не открылось — обнови Telegram.</div>
+      <div class="fszn-note">В Telegram при сохранении откроется выбор «куда»: <b>🌐 в браузере</b> (Chrome сам скачает / сделает PDF), <b>📂 «Поделиться»</b> или <b>📖 на экране</b>. Если «Поделиться» не появляется — обнови Telegram. «Копию в браузер» может не влезть, если чеков‑картинок много — тогда используй «Сохранить копию».</div>
     </div>
 
     <div class="h2">опасная зона</div><div class="glass card"><button class="btn danger" data-action="wipe">🧹 Удалить все данные</button><p class="muted small" style="margin:8px 2px 0">Записей расходов: ${exps.length}</p></div>
@@ -822,8 +887,13 @@ async function exportCSV(kind){ const year=YEAR(),q=CUR_Q();
 
 /* ---------- бэкап ---------- */
 const LS_KEYS=["blvck_cur","blvck_theme","blvck_is_ip","blvck_income","blvck_km","blvck_hours","blvck_fuel_presets","blvck_tax_reminders","blvck_fszn_mzp","blvck_fszn_rate","blvck_streak_best","blvck_fines","blvck_daily_rev","blvck_daily_target","blvck_tg_name","blvck_onboarded"];
-async function exportBackup(){ const data={_app:"BLVCK TAXI",_v:3,_at:new Date().toISOString()}; for(const s of STORES) data[s]=await dbAll(s); data._ls=Object.fromEntries(LS_KEYS.map(k=>[k,localStorage.getItem(k)]).filter(([,v])=>v!=null));
-  const r=await saveFile(`blvck-taxi-backup-${today()}.json`, JSON.stringify(data,null,2), "application/json", {title:"Резервная копия BLVCK TAXI", text:"Файл резервной копии — сохрани в Файлы/Диск/Избранное"}); handleSaveResult(r); }
+async function buildBackupPayload(){ const data={_app:"BLVCK TAXI",_v:3,_at:new Date().toISOString()}; for(const s of STORES) data[s]=await dbAll(s); data._ls=Object.fromEntries(LS_KEYS.map(k=>[k,localStorage.getItem(k)]).filter(([,v])=>v!=null)); return data; }
+async function exportBackup(){ const data=await buildBackupPayload();
+  const r=await saveFile(`blvck-taxi-backup-${today()}.json`, JSON.stringify(data,null,2), "application/json", {title:"Резервная копия BLVCK TAXI", text:"Файл резервной копии"}); handleSaveResult(r); }
+async function exportBackupBrowser(){ const data=await buildBackupPayload(); const json=JSON.stringify(data);
+  if(json.length > 1500000){ toast("Копия большая (есть чеки‑картинки) — сохрани через «Сохранить копию»"); return; }
+  const r=await openBrowserWith(`blvck-taxi-backup-${today()}.json`, json, "application/json");
+  if(r.ok){ hapticOk(); toast("Открываю в браузере → там ⋮ «Скачать»"); } else { toast("Браузер не открылся — используй «Сохранить копию»"); } }
 function importBackup(){ $("#restoreInput").click(); }
 async function handleRestoreFile(file){ if(!file) return; try{ const data=JSON.parse(await file.text()); if(!confirm("Заменить ВСЕ текущие данные данными из файла?")) return; for(const s of STORES){ await dbClear(s); for(const v of (data[s]||[])) await dbPut(s,v); } if(data._ls&&typeof data._ls==="object"){ for(const k of LS_KEYS){ if(data._ls[k]!=null) localStorage.setItem(k,data._ls[k]); else localStorage.removeItem(k); } } applyTheme(); toast("Данные восстановлены полностью"); hapticOk(); renderAsync(); }catch(e){ toast("Ошибка файла"); hapticBad(); } }
 async function wipe(){ if(!confirm("Удалить ВСЕ данные приложения? Это необратимо.")) return; for(const s of STORES) await dbClear(s); LS_KEYS.filter(k=>k!=="blvck_theme"&&k!=="blvck_cur"&&k!=="blvck_onboarded").forEach(k=>localStorage.removeItem(k)); toast("Всё удалено"); hapticOk(); renderAsync(); }
@@ -863,8 +933,12 @@ document.addEventListener("click", async (ev)=>{
     case "setExpCat": state.expCat=el.dataset.cat; renderAsync(); break;
     case "exportFullPdf": exportFullPdf(); break;
     case "exportFullHtml": exportFullHtml(); break;
+    case "exportFullBrowser": exportFullBrowser(); break;
+    case "exportBackupBrowser": exportBackupBrowser(); break;
+    case "helpBrowser": { const h=window.__bt_help; if(h){ const r=await openBrowserWith(h.name||"blvck-taxi-file", h.content, h.mime); if(r.ok){ hapticOk(); toast("Открываю в браузере → там ⋮ «Скачать» / «Печать→PDF»"); closeModal(); } else { toast("Браузер не открылся — обнови Telegram или «на экране»"); } } } break;
+    case "helpShare": { const h=window.__bt_help; if(h){ const sr=await shareFiles(h.name||"blvck-taxi-file", h.content, h.mime, {title:"BLVCK TAXI"}); if(sr.ok){ hapticOk(); toast("Готово"); closeModal(); } else if(sr.aborted){ /* закрыл меню */ } else { toast("Меню не открылось — обнови Telegram или «в браузере»"); } } } break;
     case "helpView": { const h=window.__bt_help; if(h&&h.htmlView){ openHtmlViewer(h.htmlView); } } break;
-    case "helpRetry": { const h=window.__bt_help; if(h){ closeModal(); const r=await saveFile(h.name||"blvck-taxi-file", h.content||"", h.mime||"application/octet-stream", {title:"BLVCK TAXI"}); handleSaveResult(r, h); } } break;
+    case "helpRetry": { const h=window.__bt_help; if(h){ closeModal(); const r=await saveFile(h.name||"blvck-taxi-file", h.content, h.mime, {htmlView:h.htmlView}); handleSaveResult(r, h); } } break;
     case "openFines": state.screen="fines"; state._animateScreen=true; renderAsync(); break;
     case "openAddFine": modalFine(); break;
     case "finePreset": { const i=$("#f_name"); if(i&&!i.value) i.value=el.dataset.name; } break;
@@ -877,6 +951,7 @@ document.addEventListener("click", async (ev)=>{
     case "receiptNext": state.receiptOffset++; renderAsync(); break;
     case "setReceiptCat": state.receiptCat=el.dataset.cat; renderAsync(); break;
     case "exportReceiptsHtml": exportReceiptsHtml(); break;
+    case "exportReceiptsBrowser": exportReceiptsBrowser(); break;
     case "exportReceiptsZip": exportReceiptsZip(); break;
     case "exportReceiptsCsv": exportReceiptsCsv(); break;
     case "editExpense": await editExpense(el.dataset.id); break;
