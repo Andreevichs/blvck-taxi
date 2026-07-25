@@ -1,9 +1,8 @@
 /* =========================================================
    BLVCK TAXI — instrument minimalism 2026 (black/white/orange)
    vanilla, без зависимостей. IndexedDB + localStorage. Офлайн. Без сервера.
-   + РЕЖИМ ДЛЯ СКРИНШОТА: весь отчёт белым листом на весь экран,
-     секции-карточки, крупные цифры, чеки по одному — удобно снимать.
-   + Telegram Mini App + ФСЗН/налоги ИП + чеки + штрафы + износ деталей.
+   ФИНАЛ: две двери сохранения · строка стоимости владения машиной ·
+   тихий ремень безопасности про бэкап · режим скриншота. Дизайн не тронут.
    ========================================================= */
 
 /* ===== TELEGRAM MINI APP ===== */
@@ -36,6 +35,7 @@ const CATS = {
   rent:   { ico:"🗝️", t:"Аренда авто" },
   other:  { ico:"📦", t:"Другое" },
 };
+const CAR_CATS = ["fuel","parts","repair","wash","rent"];
 const WEAR_CATS = ["fuel","repair","parts"];
 const CURS = ["BYN","₽","$","€","₸"];
 const TABS = [
@@ -135,7 +135,7 @@ function trendPct(c,p){ if(p<=0) return c>0?{dir:"up",pct:null}:{dir:"flat",pct:
 const arrow = d => d==="up"?"↑":d==="down"?"↓":"→";
 
 /* =========================================================
-   СОХРАНЕНИЕ ФАЙЛОВ (share / picker / download / chooser)
+   СОХРАНЕНИЕ ФАЙЛОВ — две двери: скриншот (главная) + файл (запасная)
    ========================================================= */
 function makeFile(name, content, mime){
   const blob = (content instanceof Blob) ? content : new Blob([content], {type: mime||"application/octet-stream"});
@@ -155,14 +155,6 @@ async function shareFiles(name, content, mime, opts={}){
     }
   }catch(e){ if(e && e.name==="AbortError") return {aborted:true}; }
   return {ok:false};
-}
-async function openBrowserWith(name, content, mime){
-  let dataUrl;
-  try{ dataUrl = await dataUrlFor(content, mime); }catch(e){ return {ok:false}; }
-  let opened=false;
-  try{ if(TG && TG.openLink){ TG.openLink(dataUrl); opened=true; } }catch(e){}
-  if(!opened){ try{ const w=window.open(dataUrl,"_blank"); opened = !!w; }catch(e){} }
-  return {ok:opened};
 }
 async function saveFile(name, content, mime, opts={}){
   const sr = await shareFiles(name, content, mime, opts);
@@ -200,38 +192,17 @@ function handleSaveResult(r, opts={}){
     htmlView: r.htmlView || opts.htmlView || null,
   });
 }
+/* chooser: максимум две кнопки — скрин (если есть html) + скачать файл */
 function showSaveChooser(opts){
   window.__bt_help = opts;
   const isHtml = !!opts.htmlView;
   const btns = [];
-  btns.push(`<button class="btn primary" data-action="helpShot">📸 Открыть для скриншота</button>`);
-  if(isHtml){
-    btns.push(`<button class="btn" data-action="helpViewPrint">📄 На экране → Сохранить как PDF</button>`);
-    btns.push(`<button class="btn" data-action="helpDownload">⬇️ Скачать .html файл</button>`);
-  } else {
-    btns.push(`<button class="btn" data-action="helpDownload">⬇️ Скачать файл</button>`);
-  }
-  btns.push(`<button class="btn" data-action="helpShare">📂 Через меню «Поделиться»</button>`);
-  btns.push(`<button class="btn ghost" data-action="helpBrowser">🌐 В браузере (на Android может не открыться)</button>`);
+  if(isHtml) btns.push(`<button class="btn primary" data-action="helpShot">📸 Открыть для скриншота</button>`);
+  btns.push(`<button class="btn ${isHtml?"":"primary"}" data-action="helpDownload">⬇️ Скачать файл</button>`);
   openModal(`<div class="mhead"><h3>Куда сохранить?</h3><button class="x" data-action="close">×</button></div>
-    <div class="info" style="opacity:1;transform:none"><div class="it"><span class="d"></span>Самый надёжный путь — скриншоты</div>
-    <p>Telegram на этом телефоне не отдаёт файл в папку. Нажми <b>«📸 Открыть для скриншота»</b> — отчёт откроется белым листом на весь экран: листай и снимай экран за экраном, все данные видны целиком. Остальные кнопки — запасные: «⬇️ Скачать» иногда кладёт файл в «Загрузки», «📂 Поделиться» заработает, если поставить свежий Telegram apk с telegram.org.</p></div>
+    <div class="info" style="opacity:1;transform:none"><div class="it"><span class="d"></span>Telegram не отдаёт файл в папку</div>
+    <p>${isHtml?'Самый надёжный путь — <b>«📸 для скриншота»</b>: белый лист на весь экран, листай и снимай экран за экраном.':'На этом телефоне Telegram может не сохранить файл в папку. Если после «⬇️ Скачать» в «Загрузках» пусто — это ограничение Telegram, не поломка.'} «⬇️ Скачать» работает в обычном браузере и на компьютере.</p></div>
     ${btns.join('<div style="height:10px"></div>')}`);
-}
-function openHtmlViewer(html){
-  const m=$("#modal");
-  m.innerHTML=`<div class="viewer" style="cursor:default;background:#fff;padding:0;display:flex;flex-direction:column">
-    <div style="display:flex;gap:8px;align-items:center;padding:10px 12px;background:#fff;border-bottom:1px solid #eee;flex:none">
-      <button class="btn primary sm" id="bt_print" style="flex:1">🖨 Сохранить как PDF / распечатать</button>
-      <button class="x" data-action="close" style="position:static;background:#111;color:#fff;border-radius:50%;width:42px;height:42px;display:grid;place-items:center">✕</button>
-    </div>
-    <iframe id="bt_report" srcdoc="${esc(html)}" style="flex:1;width:100%;border:0;background:#fff;display:block"></iframe>
-  </div>`;
-  m.hidden=false; try{TG?.BackButton?.show();}catch{}
-  const ifr=$("#bt_report");
-  const doPrint=()=>{ try{ ifr.contentWindow.focus(); ifr.contentWindow.print(); }catch(e){ toast("Печать не запустилась — используй «📸 для скриншота»"); } };
-  const pb=$("#bt_print"); if(pb) pb.addEventListener("click", doPrint);
-  ifr.addEventListener("load", ()=>{ try{ const b=ifr.contentDocument && ifr.contentDocument.querySelector(".noprint button"); if(b) b.addEventListener("click", doPrint); }catch(e){} });
 }
 async function helpDownload(){
   const h=window.__bt_help; if(!h) return;
@@ -262,8 +233,7 @@ const SHOT_STYLE = `<style>
 #shotmode .shot-doc > *{position:relative;z-index:1}
 #shotmode .shot-cover{background:#fff;border-radius:20px;padding:22px 20px 20px;margin-bottom:14px;overflow:hidden;
   box-shadow:0 10px 30px -16px rgba(20,20,20,.25);border:1px solid rgba(20,20,20,.06);position:relative}
-#shotmode .shot-cover::before{content:"";position:absolute;left:0;top:0;right:0;height:6px;
-  background:linear-gradient(90deg,#ff5a00,#ff8a33)}
+#shotmode .shot-cover::before{content:"";position:absolute;left:0;top:0;right:0;height:6px;background:linear-gradient(90deg,#ff5a00,#ff8a33)}
 #shotmode .shot-cover .mk{display:flex;align-items:center;gap:9px;margin-bottom:14px}
 #shotmode .shot-cover .mk .d{width:11px;height:11px;border-radius:3px;background:#ff5a00}
 #shotmode .shot-cover .mk .nm{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-weight:700;font-size:13px;letter-spacing:2px}
@@ -274,8 +244,7 @@ const SHOT_STYLE = `<style>
   box-shadow:0 10px 30px -18px rgba(20,20,20,.22);border:1px solid rgba(20,20,20,.06);
   opacity:0;transform:translateY(16px);animation:shotIn .5s cubic-bezier(.22,1,.36,1) forwards}
 @keyframes shotIn{to{opacity:1;transform:none}}
-#shotmode .shot-h{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px;
-  padding-bottom:10px;border-bottom:2px solid #141414}
+#shotmode .shot-h{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #141414}
 #shotmode .shot-h .t{font-size:15px;font-weight:900;letter-spacing:.2px;text-transform:uppercase}
 #shotmode .shot-h .n{font-family:ui-monospace,monospace;font-size:11px;color:#ff5a00;font-weight:700}
 #shotmode .kpi{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -384,6 +353,7 @@ async function buildShotDoc(mode){
     const ym=ymNow(); const src=incomeSource(ym); const income=src.val;
     const ms=new Date(); ms.setDate(1); ms.setHours(0,0,0,0);
     const spentMonth=exps.filter(e=>new Date(e.date)>=ms).reduce((s,e)=>s+Number(e.amount||0),0);
+    const carCost=exps.filter(e=>CAR_CATS.includes(e.category)&&new Date(e.date)>=ms).reduce((s,e)=>s+Number(e.amount||0),0);
     const s=fsznSettings(); const fszn=isIP()?(s.rate/100*s.mzp):0; const free=income-spentMonth-fszn;
 
     const kpi = `<div class="kpi">
@@ -392,6 +362,14 @@ async function buildShotDoc(mode){
       <div class="k"><div class="v">${exps.length}</div><div class="l">записей</div></div>
       <div class="k"><div class="v">${car.currentMileage?num(car.currentMileage):"—"}</div><div class="l">пробег авто, км</div></div>
     </div>`;
+    const ownCard = (carCost>0 && income>0) ? (()=>{ const pct=Math.round(carCost/income*100); const after=income-carCost; const warn=pct>=60;
+      return shotCard("Доля машины в выручке","",
+        `<div class="free"><span class="v ${warn?'':'pos'}" style="${warn?'color:#ff5a00':''}">${pct}%</span><span class="l">машина съела<br>${money(carCost)}</span></div>
+         <div style="height:10px"></div>
+         <div class="catrow" style="border:none;padding:0"><span class="bar" style="height:10px"><i data-w="${Math.min(100,pct)}%"></i></span></div>
+         <div style="height:8px"></div>
+         <div class="free" style="align-items:center"><span class="l" style="text-align:left">после машины</span><span class="v ${after>=0?'pos':'neg'}" style="font-size:22px">${after>=0?"+":"−"}${money(Math.abs(after)).replace(cur(),"").trim()} ${cur_}</span></div>`);
+    })() : (carCost>0 ? shotCard("Доля машины в выручке","",`<div class="empty" style="text-align:left;color:#6b6b65">На авто за месяц <b style="color:#141414">${money(carCost)}</b>. Внеси выручку за день — и я покажу, какую долю она съедает.</div>`) : "");
     const freeBlock = (income>0||spentMonth>0) ? shotCard("Свободно за "+monthLabel(ym),"",
       `<div class="free"><span class="v ${free>=0?"pos":"neg"}">${free>=0?"+":"−"}${money(Math.abs(free))}</span><span class="l">доход ${money(income)}<br>− расходы ${money(spentMonth)}${isIP()?"<br>− ФСЗН "+money(fszn):""}</span></div>`) : "";
 
@@ -425,7 +403,7 @@ async function buildShotDoc(mode){
         `<div class="kpi"><div class="k"><div class="v acc">${money(paid)}</div><div class="l">уплачено</div></div><div class="k"><div class="v">${money(goal)}</div><div class="l">цель за год</div></div></div>`);
     }
 
-    sections = shotCard("Сводка","",kpi) + freeBlock + catBlock + expBlock + revBlock + fineBlock + wearBlock + fsznBlock;
+    sections = shotCard("Сводка","",kpi) + ownCard + freeBlock + catBlock + expBlock + revBlock + fineBlock + wearBlock + fsznBlock;
   }
 
   const cover = `<header class="shot-cover"><div class="mk"><span class="d"></span><span class="nm">BLVCK</span><span class="ac">TAXI</span></div><h1>${coverTitle}</h1><div class="meta">Сформировано ${fmtDate(today())} · валюта ${cur_}${coverNum?" · "+esc(coverNum):""}</div></header>`;
@@ -436,7 +414,6 @@ function openShotMode(html){
   let ov=$("#shotmode"); if(ov) ov.remove();
   const wrap=document.createElement("div"); wrap.innerHTML=html; const node=wrap.firstElementChild;
   document.body.appendChild(node);
-  // анимация баров после вставки
   requestAnimationFrame(()=>requestAnimationFrame(()=>{ node.querySelectorAll("[data-w]").forEach(b=>{ b.style.width=b.getAttribute("data-w"); }); }));
   try{ TG?.BackButton?.show(); }catch{}
 }
@@ -518,7 +495,7 @@ function postRender(){
   const anim = state._animateScreen;
   if(revealIO){ revealIO.disconnect(); revealIO=null; }
   const gen = ++revealGen;
-  const SEL=".app .glass,.app .item,.app .alert,.app .h1,.app .h2,.app .qcard-f,.app .hero,.app .quickrow,.app .streak,.app .toolgrid,.app .metricrow,.app .today,.app .sparkcard,.app .seg,.app .searchwrap,.app .info";
+  const SEL=".app .glass,.app .item,.app .alert,.app .h1,.app .h2,.app .qcard-f,.app .hero,.app .quickrow,.app .streak,.app .toolgrid,.app .metricrow,.app .today,.app .sparkcard,.app .seg,.app .searchwrap,.app .info,.app .ownblock,.app .backupbelt";
   const els=[...document.querySelectorAll(SEL)];
   requestAnimationFrame(()=>{
     document.querySelectorAll("[data-ring]").forEach(c=>{ c.style.strokeDashoffset=c.getAttribute("data-ring"); });
@@ -597,6 +574,28 @@ async function screenDash(){
     const f=(x,c,l)=>x.dir==="flat"?`<span class="flat">${l} →</span>`:`<span class="${c}">${l} ${arrow(x.dir)}${x.pct!=null?x.pct+"%":""}</span>`;
     return (spentMonth||spPY||rC||rPY)?`<div class="trendrow">${f(ts,c1,"расходы")} · ${f(tr,c2,"выручка")}</div>`:""; })();
 
+  /* строка стоимости владения машиной */
+  let carCostBlock="";
+  { const carCost=exps.filter(e=>CAR_CATS.includes(e.category)&&new Date(e.date)>=monthStart).reduce((s,e)=>s+Number(e.amount||0),0);
+    const incM=sumDaysForYM(ymNow()).sum;
+    if(carCost>0 && incM>0){ const pct=Math.round(carCost/incM*100); const after=incM-carCost; const warn=pct>=60;
+      carCostBlock=`<section class="glass ownblock">
+        <div class="ob-top"><div class="ob-pct ${warn?'warn':''}" data-count="${pct}" data-dec="0" data-suffix="%">${pct}%</div><div class="ob-lbl">доля машины<br>в выручке</div></div>
+        <div class="ob-bar"><i class="${warn?'warn':''}" data-w="${Math.min(100,pct)}%"></i></div>
+        <div class="ob-foot"><span>машина съела <b>${money(carCost)}</b></span><span>после авто <b class="${after>=0?'':'neg'}">${after>=0?'+':''}${money(after).replace(cur(),'').trim()} ${cur()}</b></span></div>
+      </section>`; }
+    else if(carCost>0){ carCostBlock=`<section class="glass ownblock"><div class="ob-empty">🚗 На авто за месяц <b>${money(carCost)}</b>. Внеси выручку за день — и я покажу, какую долю она съедает.</div></section>`; }
+  }
+
+  /* тихий ремень безопасности про бэкап */
+  let backupBelt="";
+  { const hasData = exps.length>0 || Object.keys(dailyRevMap()).some(d=>Number(dailyRevMap()[d])>0) || finesList().length>0;
+    if(hasData){ const lb=Number(localStorage.getItem("blvck_last_backup"))||0; const ak=Number(localStorage.getItem("blvck_backup_ack"))||0; const eff=Math.max(lb,ak); const nowMs=Date.now(); const days=eff?Math.floor((nowMs-eff)/86400000):null;
+      if(eff===0 || days>=14){ const msg = eff===0 ? `Ты ещё ни разу не защищал данные — если телефон сломается, всё пропадёт.` : `Прошло <b>${days} ${ruPlural(days,["день","дня","дней"])}</b> с последней защиты — сделай копию или скриншоты сводки.`;
+        backupBelt=`<div class="backupbelt"><div class="bb-ic">🛡️</span><div class="bb-txt">${msg}</div><div class="bb-acts"><button class="btn sm primary" data-action="export">💾 Копию</button><button class="btn sm ghost" data-action="dismissBackup">снял скриншоты</button></div></div>`; }
+    }
+  }
+
   const quick = [["fuel",true],["parts",false],["repair",false],["wash",false],["rent",false],["other",false]].map(([k,add])=>{
     const c=CATS[k];
     return add
@@ -607,10 +606,12 @@ async function screenDash(){
   return `
     <div class="topbar">
       <div class="brand"><span class="brand-dot"></span><span class="brand-name">BLVCK</span><span class="brand-sub">TAXI</span></div>
-      <div class="topbar-r">${tgName?`<span class="who">${esc(tgName)}</span>`:""}<button class="iconbtn" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙":"☀️"}</button></div>
+      <div class="topbar-r">${tgName?`<span class="who">${esc(tgName)}</span>`:""}<button class="iconbtn" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙":"️"}</button></div>
     </div>
 
     ${alerts.map(a=>`<div class="alert ${a.bad?"bad":""}"><span>${a.bad?"⚠️":"🔔"}</span><div><div style="font-weight:700">${a.t}</div><div class="small muted">${a.s}</div></div></div>`).join("")}
+
+    ${backupBelt}
 
     <section class="hero">
       <div class="hero-top"><span class="kicker">свободно · ${monthLabel(ymNow())}</span><span class="badge ${cls}">${free>=0?"в плюсе":"в минусе"}</span></div>
@@ -618,6 +619,8 @@ async function screenDash(){
       <div class="hero-sub"><span>доход <b>${income>0?money(income):"—"}</b></span><span class="dotsep">·</span><span>расходы <b>−${money(spentMonth)}</b></span>${isIP()?`<span class="dotsep">·</span><span>ФСЗН <b>−${money(fszn)}</b></span>`:""}</div>
       ${trend}
     </section>
+
+    ${carCostBlock}
 
     ${curStreak>0?`<div class="streak">🔥 ${curStreak} ${ruPlural(curStreak,["день","дня","дней"])} подряд · рекорд ${best}</div>`:(best>0?`<div class="streak" style="border-color:var(--line);background:transparent;color:var(--muted)">рекорд 🔥 ${best} ${ruPlural(best,["день","дня","дней"])}</div>`:"")}
 
@@ -733,10 +736,7 @@ async function screenExpenses(){
     <div class="row between" style="margin:4px 2px 8px"><span class="kicker">найдено: ${rows.length}</span><span class="kicker">${money(sum)}</span></div>
 
     <button class="btn primary" data-action="exportShotFull" style="margin-bottom:10px">📸 Отчёт для скриншота</button>
-    <div class="row" style="gap:10px;margin-bottom:10px">
-      <button class="btn" data-action="exportFullPdf">📄 PDF</button>
-      <button class="btn" data-action="exportFullHtml">⬇️ файл</button>
-    </div>
+    <div class="row" style="gap:10px;margin-bottom:10px"><button class="btn" data-action="exportFullHtml">⬇️ файл</button></div>
 
     ${rows.length?`<div class="list">${rows.map(expenseRow).join("")}</div>`:`<div class="glass empty">Ничего не найдено. Сбрось фильтр или поиск.</div>`}
   `;
@@ -852,12 +852,10 @@ async function screenReceipts(){ const pr=periodRange(state.receiptMode,state.re
     <div class="h2">выгрузить</div><div class="glass card">
       <button class="btn primary" data-action="exportShotChecks" ${list.length?"":"disabled"}>📸 Чеки для скриншота</button>
       <div style="height:10px"></div>
-      <button class="btn" data-action="exportReceiptsHtml" ${list.length?"":"disabled"}>📄 Отчёт с чеками (PDF)</button>
+      <button class="btn" data-action="exportReceiptsCsv" ${list.length?"":"disabled"}>📊 Таблица (CSV)</button>
       <div style="height:10px"></div>
-      <button class="btn" data-action="exportReceiptsZip" ${list.length?"":"disabled"}>📦 Чеки папкой (ZIP)</button>
-      <div style="height:10px"></div>
-      <button class="btn" data-action="exportReceiptsCsv" ${list.length?"":"disabled"}>📊 Таблица чеков (CSV)</button>
-      <div class="fszn-note">Самый надёжный путь на телефоне — «📸 для скриншота»: белые листы на весь экран, листай и снимай. Чеки идут по одному, крупно и читаемо.</div>
+      <button class="btn" data-action="exportReceiptsZip" ${list.length?"":"disabled"}>📦 Папка (ZIP)</button>
+      <div class="fszn-note">Самый надёжный путь — «📸 для скриншота»: белые листы на весь экран, каждый чек крупно. CSV/ZIP — для бухгалтера; на этом телефоне Telegram может не сохранить файл (тогда в «Загрузках» пусто — это его ограничение).</div>
     </div>
     <div class="h2">галерея</div>${list.length?`<div class="list">${list.map(e=>{const c=CATS[e.category]||CATS.other;return `<div class="item"><img class="rthumb" src="${e.receipt}" data-action="viewReceipt" data-id="${e.id}" alt="чек"><div class="meta"><div class="t">${c.ico} ${c.t}${e.note?": "+esc(e.note):""}</div><div class="s">${fmtDate(e.date)}</div></div><div class="amt">−${money(e.amount)}</div></div>`;}).join("")}</div>`:`<div class="glass empty">За этот период чеков нет</div>`}`; }
 function receiptsCsvText(list,pr){ const sum=list.reduce((s,e)=>s+Number(e.amount||0),0); const byCat={}; list.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
@@ -867,17 +865,12 @@ function receiptsCsvText(list,pr){ const sum=list.reduce((s,e)=>s+Number(e.amoun
   return "\uFEFF"+L.map(r=>r.map(csvCell).join(";")).join("\r\n"); }
 function exportReceiptsCsv(){ getReceiptExpenses().then(async list=>{ if(!list.length){toast("Нет чеков за период");return;} const pr=periodRange(state.receiptMode,state.receiptOffset);
   const r=await saveFile(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.csv`, receiptsCsvText(list,pr), "text/csv;charset=utf-8", {title:"Чеки BLVCK TAXI"}); handleSaveResult(r); }); }
-function exportReceiptsHtml(){ getReceiptExpenses().then(async list=>{ if(!list.length){toast("Нет чеков за период");return;} const pr=periodRange(state.receiptMode,state.receiptOffset); const html=buildReceiptsReport(list,pr,true);
-  const r=await saveFile(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.html`, html, "text/html;charset=utf-8", {title:"Чеки BLVCK TAXI", htmlView:html}); handleSaveResult(r); }); }
-function exportReceiptsBrowser(){ getReceiptExpenses().then(async list=>{ if(!list.length){toast("Нет чеков за период");return;} const pr=periodRange(state.receiptMode,state.receiptOffset); const html=buildReceiptsReport(list,pr,false);
-  const r=await openBrowserWith(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.html`, html, "text/html;charset=utf-8");
-  if(r.ok){ hapticOk(); toast("Открываю в браузере → там ⋮ «Скачать» / «Печать→PDF»"); } else { toast("Браузер не открылся — используй «📸 для скриншота»"); } }); }
 function exportReceiptsZip(){ getReceiptExpenses().then(async list=>{ if(!list.length){toast("Нет чеков за период");return;} const pr=periodRange(state.receiptMode,state.receiptOffset); const files=[],used={};
   list.slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>{let base=`${e.date}_${e.category}_${Number(e.amount).toFixed(2).replace(".","_")}`,name=base+".jpg",i=2;while(used[name]){name=`${base}_${i}.jpg`;i++;}used[name]=1;files.push({name,data:b64ToBytes(e.receipt)});});
   files.push({name:"itogi.csv",data:strBytes(receiptsCsvText(list,pr))}); const blob=buildZip(files);
   const r=await saveFile(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.zip`, blob, "application/zip", {title:"Чеки BLVCK TAXI (папка)"}); handleSaveResult(r); }); }
 
-/* ---------- ОТЧЁТЫ (для печати/файла) ---------- */
+/* ---------- ОТЧЁТ (файл) ---------- */
 function reportShell(title, sub, body){
   const wrapped = body.replace(/<table>/g,'<div class="tblwrap"><table>').replace(/<\/table>/g,'</table></div>');
   return `<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>BLVCK TAXI — ${title}</title>
@@ -909,7 +902,7 @@ function reportShell(title, sub, body){
 ${wrapped}
 </body></html>`;
 }
-async function buildFullReport(embedImages=true){
+async function buildFullReport(){
   const exps=(await dbAll("expenses")).slice().sort((a,b)=>a.date.localeCompare(b.date));
   const car=await dbGet("car",1)||{};
   const total=exps.reduce((s,e)=>s+Number(e.amount||0),0);
@@ -925,7 +918,7 @@ async function buildFullReport(embedImages=true){
   wearRows.sort((a,b)=>(b.e.date+b.e.id).localeCompare(a.e.date+a.e.id));
 
   const catRows=Object.entries(byCat).map(([k,v])=>`<tr><td>${CATS[k]?.ico||""} ${esc(CATS[k]?.t||k)}</td><td class="r">${money(v)}</td></tr>`).join("");
-  const cell = (e) => embedImages && e.receipt ? `<img src="${e.receipt}" alt="">` : (e.receipt?`<span style="color:#888">🧾</span>`:"—");
+  const cell = (e) => e.receipt ? `<span style="color:#888">🧾</span>` : "—";
   const expRows=exps.map(e=>{const c=CATS[e.category]||CATS.other;return `<tr><td class="nowrap">${fmtShort(e.date)}</td><td>${c.ico} ${esc(c.t)}</td><td>${esc(e.note||"")}</td><td class="r">${e.mileage?num(e.mileage):"—"}</td><td>${cell(e)}</td><td class="r">${money(e.amount)}</td></tr>`;}).join("");
   const revRows=revDays.map(d=>`<tr><td class="nowrap">${fmtShort(d)}</td><td class="r">${money(rev[d])}</td></tr>`).join("");
   const fineRows=fines.map(f=>`<tr><td class="nowrap">${f.paid?fmtShort(f.paidDate):"—"}</td><td>${esc(f.name)}</td><td>${f.paid?"оплачен":"не оплачен"}</td><td class="r">${money(f.amount)}</td></tr>`).join("");
@@ -950,31 +943,14 @@ async function buildFullReport(embedImages=true){
     ${fsznBlock}`;
   return reportShell("Полный отчёт", `Сформировано ${fmtDate(today())} · записей: ${exps.length} · валюта ${cur()}`, body);
 }
-function buildReceiptsReport(list, pr, embedImages){
-  const sum=list.reduce((s,e)=>s+Number(e.amount||0),0); const byCat={}; list.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
-  const rows=list.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(e=>{const c=CATS[e.category]||CATS.other;
-    const rc = embedImages && e.receipt ? `<img src="${e.receipt}" alt="чек">` : (e.receipt?`<span style="color:#888">🧾 в приложении</span>`:"—");
-    return `<div class="rc">${rc}<div class="cap">${fmtShort(e.date)} · ${c.ico} ${esc(c.t)}${e.note?" · "+esc(e.note):""}<br><b>${money(e.amount)}</b></div></div>`;}).join("");
-  const tot=Object.entries(byCat).map(([k,v])=>`<tr><td>${CATS[k]?.ico||""} ${esc(CATS[k]?.t||k)}</td><td class="r">${money(v)}</td></tr>`).join("");
-  const body=`<table>${tot}<tr class="tot"><td>ИТОГО ЧЕКОВ</td><td class="r">${money(sum)}</td></tr></table>${rows||`<p>нет чеков</p>`}`;
-  return reportShell(`Чеки за ${esc(pr.label)}`, `Категория: ${state.receiptCat==="all"?"все":esc(CATS[state.receiptCat]?.t||state.receiptCat)} · чеков: ${list.length} · ${fmtDate(today())}`, body);
-}
-async function exportFullPdf(){
-  const html=await buildFullReport(true);
-  const name=`blvck-taxi-otchet-${today()}.html`;
-  const r=await saveFile(name, html, "text/html;charset=utf-8", {title:"Полный отчёт BLVCK TAXI", htmlView:html});
-  handleSaveResult(r);
-}
-async function exportFullHtml(){ const html=await buildFullReport(true); const r=await saveFile(`blvck-taxi-otchet-${today()}.html`, html, "text/html;charset=utf-8", {title:"Полный отчёт BLVCK TAXI", htmlView:html}); handleSaveResult(r); }
-async function exportFullBrowser(){ const html=await buildFullReport(false); const r=await openBrowserWith(`blvck-taxi-otchet-${today()}.html`, html, "text/html;charset=utf-8");
-  if(r.ok){ hapticOk(); toast("Открываю в браузере → там ⋮ «Скачать» / «Печать→PDF»"); } else { toast("Браузер не открылся — используй «📸 для скриншота»"); } }
+async function exportFullHtml(){ const html=await buildFullReport(); const r=await saveFile(`blvck-taxi-otchet-${today()}.html`, html, "text/html;charset=utf-8", {title:"Полный отчёт BLVCK TAXI", htmlView:html}); handleSaveResult(r); }
 
 /* ---------- ФСЗН ---------- */
 function fsznSettings(){ return { mzp:parseFloat(localStorage.getItem("blvck_fszn_mzp"))||726, rate:parseFloat(localStorage.getItem("blvck_fszn_rate"))||35 }; }
 async function screenFszn(){ const s=fsznSettings(); const year=YEAR(),cq=CUR_Q(); const minMonth=s.rate/100*s.mzp,minQ=minMonth*3,minYear=minMonth*12;
   const qs=[]; let paidYTD=0,minYTD=0,paidAll=0,targetAll=0;
   for(let q=1;q<=4;q++){ const rec=await dbGet("fszn",`${year}-Q${q}`)||{income:0,paid:0}; const monthSum=quarterIncome(q,year); const income=monthSum>0?monthSum:(Number(rec.income)||0); const paid=Number(rec.paid)||0; const fromIncome=income>0?s.rate/100*income:0; const target=Math.max(minQ,fromIncome); let status,badge;
-    if(q<cq){status=paid>=target?"good":(paid>0?"warn":"bad");badge=paid>=target?"✅ закрыто":(paid>0?"🟡 частично":" не уплачено");}
+    if(q<cq){status=paid>=target?"good":(paid>0?"warn":"bad");badge=paid>=target?"✅ закрыто":(paid>0?"🟡 частично":"⏰ не уплачено");}
     else if(q===cq){status=paid>=target?"good":(paid>0?"warn":"soon");badge=paid>=target?"✅ закрыто":(paid>0?"🟡 в процессе":"🔵 в процессе");}
     else{status="soon";badge="🔮 предстоит";}
     qs.push({q,monthSum,manual:Number(rec.income)||0,paid,target,status,badge}); if(q<=cq){paidYTD+=paid;minYTD+=minQ;} paidAll+=paid;targetAll+=target; }
@@ -987,7 +963,7 @@ async function screenFszn(){ const s=fsznSettings(); const year=YEAR(),cq=CUR_Q(
     <div class="h2">кварталы</div>${qs.map(q=>`<div class="glass qcard-f"><div class="qhead"><div class="qtitle">${q.q}-й квартал</div><span class="badge ${q.status}">${q.badge}</span></div><div class="qmini"><span>минимум за квартал</span><b>${money(minQ)}</b></div><div class="qmini"><span>доход (авто)</span><b>${q.monthSum>0?money(q.monthSum):"—"}</b></div><div class="grid2"><div class="field" style="margin:8px 0 0"><label>Доход вручную</label><input class="input" type="number" inputmode="decimal" data-fszn="income" data-q="${q.q}" value="${q.manual||""}" placeholder="0"></div><div class="field" style="margin:8px 0 0"><label>Уплачено взносов</label><input class="input" type="number" inputmode="decimal" data-fszn="paid" data-q="${q.q}" value="${q.paid||""}" placeholder="0"></div></div><div class="qmini"><span>прикидка «к уплате»</span><b>${money(q.target)}</b></div></div>`).join("")}
     <div class="h2">сроки и налоги</div><div class="glass card"><button class="btn primary" data-action="openAddTax">➕ Добавить напоминание</button><p class="fszn-note">Заведи свои сроки (название + дата + повтор). Просроченные и близкие — баннером на главной. Даты ставишь ты — я не бухгалтер.</p></div>
     ${taxes.length?`<div class="list">${taxes.map(r=>{const days=r.date?Math.round((new Date(r.date)-new Date())/86400000):null;const rep=r.repeat&&r.repeat!=="none"?` · повтор: ${{month:"мес.",quarter:"квартал",year:"год"}[r.repeat]}`:"";return `<div class="item"><div class="ic">${days!=null&&days<0?"⛔":""}</div><div class="meta"><div class="t">${esc(r.name)}</div><div class="s">${r.date?fmtDate(r.date)+(days!=null?(days<0?" · просрочено":` · ${days} дн.`):""):"без даты"}${rep}</div></div><button class="edit" data-action="taxPaid" data-id="${r.id}" title="уплачено">✅</button><button class="del" data-action="taxDel" data-id="${r.id}">🗑</button></div>`;}).join("")}</div>`:`<div class="glass empty">Пока нет напоминаний</div>`}
-    <div class="h2">отчёты для бухгалтера</div><div class="glass card"><p class="fszn-note" style="margin-top:0">Полный отчёт со всем — кнопка «📸 для скриншота» на экране «Расходы». Здесь — сводки CSV.</p><button class="btn" data-action="exportCsvQ">📤 Сводка за квартал (CSV)</button><div style="height:10px"></div><button class="btn" data-action="exportCsvY">📤 Сводка за год (CSV)</button></div>
+    <div class="h2">отчёты для бухгалтера</div><div class="glass card"><p class="fszn-note" style="margin-top:0">Полный отчёт со всем — «📸 для скриншота» на экране «Расходы». Здесь — сводки CSV.</p><button class="btn" data-action="exportCsvQ">📤 Сводка за квартал (CSV)</button><div style="height:10px"></div><button class="btn" data-action="exportCsvY">📤 Сводка за год (CSV)</button></div>
     <div class="glass card"><div class="row between"><b>Параметры ФСЗН</b><button class="btn sm" data-action="saveFsznSettings">💾 Сохранить</button></div><div class="grid2"><div class="field"><label>МЗП за месяц (${year})</label><input id="fszn_mzp" class="input" type="number" inputmode="decimal" value="${s.mzp}"></div><div class="field"><label>Ставка взносов, %</label><input id="fszn_rate" class="input" type="number" inputmode="decimal" value="${s.rate}"></div></div><div class="fszn-note">Мин. взнос за месяц = ставка × МЗП = <b>${money(minMonth)}</b>. Сверяй на portal.ssf.gov.by / в налоговой.</div></div>`; }
 function fsznBars(qs){ const W=320,H=150,pad=20,max=Math.max(...qs.map(q=>Math.max(q.target,q.paid)),1),gw=(W-pad*2)/qs.length;
   const cols=qs.map((q,i)=>{const x=pad+i*gw,hT=(q.target/max)*(H-pad*2),hP=(q.paid/max)*(H-pad*2),yT=H-pad-hT,yP=H-pad-hP;const pct=q.target>0?Math.min(100,Math.round(q.paid/q.target*100)):0;return `<g><rect class="need" x="${x+gw*0.12}" y="${yT}" width="${gw*0.30}" height="${hT}" rx="4"/><rect x="${x+gw*0.50}" y="${yP}" width="${gw*0.30}" height="${hP}" rx="4" fill="url(#g2)"><animate attributeName="height" from="0" to="${hP}" dur=".5s" fill="freeze"/><animate attributeName="y" from="${H-pad}" to="${yP}" dur=".5s" fill="freeze"/></rect><text class="cm" x="${x+gw*0.5}" y="${H-6}" text-anchor="middle" font-size="9">Q${q.q}</text><text class="ct" x="${x+gw*0.5}" y="${Math.min(yT,yP)-5}" text-anchor="middle" font-size="9" font-weight="700">${pct}%</text></g>`;}).join("");
@@ -1000,7 +976,7 @@ async function screenSettings(){ const exps=await dbAll("expenses"); const tgNam
   return `<div class="h1">Настройки</div>
     <div class="glass card"><div class="row between"><span>Тема</span><button class="btn sm" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙 Тёмная":"☀️ Светлая"}</button></div><div class="divider"></div><div class="row between"><span>Валюта</span><div class="chips">${CURS.map(c=>`<span class="chip ${c===cur()?"on":""}" data-action="setCur" data-cur="${c}">${c}</span>`).join("")}</div></div></div>
 
-    <div class="info"><div class="it"><span class="d"></span>Где живут данные</div><p>Все твои цифры хранятся <b>только в этом приложении на этом телефоне</b> — в облако ничего не уходит, серверов нет. Запись пишется сама, как ты нажал «Сохранить» в окне ввода. Чтобы не потерять данные при поломке/смене телефона — делай <b>резервную копию</b> ниже. На телефоне самый надёжный путь — «📸 для скриншота».</p></div>
+    <div class="info"><div class="it"><span class="d"></span>Где живут данные</div><p>Все твои цифры хранятся <b>только в этом приложении на этом телефоне</b> — в облако ничего не уходит, серверов нет. Запись пишется сама, как ты нажал «Сохранить» в окне ввода. Чтобы не потерять данные при поломке/смене телефона — делай <b>резервную копию</b> ниже или «📸 для скриншота».</p></div>
 
     <div class="h2">деньги, штрафы и чеки</div><div class="glass card"><button class="btn primary" data-action="openDailyRev">💵 Выручка за день</button><div style="height:10px"></div><button class="btn" data-action="openExpenses">📋 Все расходы и графики</button><div style="height:10px"></div><button class="btn" data-action="openFines">🚨 Штрафы</button><div style="height:10px"></div><button class="btn" data-action="openReceipts">🧾 Чеки и выгрузка</button></div>
 
@@ -1008,17 +984,15 @@ async function screenSettings(){ const exps=await dbAll("expenses"); const tgNam
 
     ${TG?`<div class="h2">telegram</div><div class="glass card"><div class="row between"><span>Ты вошёл как</span><b>${esc(tgName||"—")}</b></div><p class="muted small" style="margin:8px 2px 0">Данные хранятся только в этом Telegram на этом устройстве.</p><div class="divider"></div><button class="btn" data-action="tgClose">✖️ Закрыть приложение</button></div>`:""}
 
-    <div class="h2">резервная копия и отчёты</div>
+    <div class="h2">резервная копия и отчёт</div>
     <div class="glass card">
-      <p class="muted small" style="margin-top:0">Копия = один файл со всем (расходы, чеки, доход, штрафы, настройки). Отчёт = читаемый документ со всеми таблицами.</p>
-      <button class="btn primary" data-action="export">⬇️ Сохранить копию</button>
+      <p class="muted small" style="margin-top:0">Копия = один файл со всем. На этом телефоне в Telegram файл может не сохраниться — тогда делай «📸 для скриншота».</p>
+      <button class="btn primary" data-action="export">💾 Сохранить копию</button>
       <div style="height:10px"></div>
       <button class="btn" data-action="import">⬆️ Восстановить из файла</button>
       <div style="height:10px"></div>
       <button class="btn" data-action="exportShotFull">📸 Отчёт для скриншота</button>
-      <div style="height:10px"></div>
-      <button class="btn" data-action="exportFullPdf">📄 Полный отчёт (PDF)</button>
-      <div class="fszn-note">В Telegram при сохранении откроется выбор «куда»: самый надёжный — <b>«📸 для скриншота»</b> (белые листы на весь экран). «⬇️ Сохранить копию» иногда кладёт файл в «Загрузки». Чтобы заработало «📂 Поделиться» — поставь свежий Telegram apk с telegram.org.</div>
+      <div class="fszn-note">«💾 Сохранить копию» пытается отдать файл системе: на компьютере и в обычном браузере сработает сразу; в Telegram на некоторых телефонах — нет, тогда используй скриншоты.</div>
     </div>
 
     <div class="h2">опасная зона</div><div class="glass card"><button class="btn danger" data-action="wipe">🧹 Удалить все данные</button><p class="muted small" style="margin:8px 2px 0">Записей расходов: ${exps.length}</p></div>
@@ -1099,11 +1073,14 @@ async function exportCSV(kind){ const year=YEAR(),q=CUR_Q();
   const csv="\uFEFF"+L.map(r=>r.map(csvCell).join(";")).join("\r\n");
   const r=await saveFile(`blvck-taxi-${kind}-${pl.replace(/\s/g,"")}.csv`, csv, "text/csv;charset=utf-8", {title:"Сводка BLVCK TAXI"}); handleSaveResult(r); }
 
-/* ---------- бэкап ---------- */
-const LS_KEYS=["blvck_cur","blvck_theme","blvck_is_ip","blvck_income","blvck_km","blvck_hours","blvck_fuel_presets","blvck_tax_reminders","blvck_fszn_mzp","blvck_fszn_rate","blvck_streak_best","blvck_fines","blvck_daily_rev","blvck_daily_target","blvck_tg_name","blvck_onboarded"];
+/* ---------- бэкап + ремень безопасности ---------- */
+const LS_KEYS=["blvck_cur","blvck_theme","blvck_is_ip","blvck_income","blvck_km","blvck_hours","blvck_fuel_presets","blvck_tax_reminders","blvck_fszn_mzp","blvck_fszn_rate","blvck_streak_best","blvck_fines","blvck_daily_rev","blvck_daily_target","blvck_tg_name","blvck_onboarded","blvck_last_backup","blvck_backup_ack"];
 async function buildBackupPayload(){ const data={_app:"BLVCK TAXI",_v:3,_at:new Date().toISOString()}; for(const s of STORES) data[s]=await dbAll(s); data._ls=Object.fromEntries(LS_KEYS.map(k=>[k,localStorage.getItem(k)]).filter(([,v])=>v!=null)); return data; }
 async function exportBackup(){ const data=await buildBackupPayload();
-  const r=await saveFile(`blvck-taxi-backup-${today()}.json`, JSON.stringify(data,null,2), "application/json", {title:"Резервная копия BLVCK TAXI", text:"Файл резервной копии"}); handleSaveResult(r); }
+  const r=await saveFile(`blvck-taxi-backup-${today()}.json`, JSON.stringify(data,null,2), "application/json", {title:"Резервная копия BLVCK TAXI", text:"Файл резервной копии"});
+  if(r.ok){ localStorage.setItem("blvck_last_backup", String(Date.now())); }
+  handleSaveResult(r); }
+function dismissBackup(){ localStorage.setItem("blvck_backup_ack", String(Date.now())); toast("Отметил · напомню через 2 недели"); hapticOk(); renderAsync(); }
 function importBackup(){ $("#restoreInput").click(); }
 async function handleRestoreFile(file){ if(!file) return; try{ const data=JSON.parse(await file.text()); if(!confirm("Заменить ВСЕ текущие данные данными из файла?")) return; for(const s of STORES){ await dbClear(s); for(const v of (data[s]||[])) await dbPut(s,v); } if(data._ls&&typeof data._ls==="object"){ for(const k of LS_KEYS){ if(data._ls[k]!=null) localStorage.setItem(k,data._ls[k]); else localStorage.removeItem(k); } } applyTheme(); toast("Данные восстановлены полностью"); hapticOk(); renderAsync(); }catch(e){ toast("Ошибка файла"); hapticBad(); } }
 async function wipe(){ if(!confirm("Удалить ВСЕ данные приложения? Это необратимо.")) return; for(const s of STORES) await dbClear(s); LS_KEYS.filter(k=>k!=="blvck_theme"&&k!=="blvck_cur"&&k!=="blvck_onboarded").forEach(k=>localStorage.removeItem(k)); toast("Всё удалено"); hapticOk(); renderAsync(); }
@@ -1144,14 +1121,10 @@ document.addEventListener("click", async (ev)=>{
     case "exportShotFull": exportShotFull(); break;
     case "exportShotChecks": exportShotChecks(); break;
     case "shotClose": closeShotMode(); break;
-    case "exportFullPdf": exportFullPdf(); break;
     case "exportFullHtml": exportFullHtml(); break;
-    case "exportFullBrowser": exportFullBrowser(); break;
     case "helpShot": { closeModal(); exportShotFull(); } break;
-    case "helpViewPrint": { const h=window.__bt_help; if(h&&h.htmlView){ openHtmlViewer(h.htmlView); } else { toast("Для этого файла просмотр на экране недоступен"); } } break;
     case "helpDownload": helpDownload(); break;
-    case "helpShare": { const h=window.__bt_help; if(h){ const sr=await shareFiles(h.name||"blvck-taxi-file", h.content, h.mime, {title:"BLVCK TAXI"}); if(sr.ok){ hapticOk(); toast("Готово"); closeModal(); } else if(sr.aborted){ /* закрыл меню */ } else { toast("Меню не открылось — обнови Telegram или «📸 для скриншота»"); } } } break;
-    case "helpBrowser": { const h=window.__bt_help; if(h){ const r=await openBrowserWith(h.name||"blvck-taxi-file", h.content, h.mime); if(r.ok){ hapticOk(); toast("Открываю в браузере → там ⋮ «Скачать» / «Печать→PDF»"); closeModal(); } else { toast("На Android обычно не открывается — используй «📸 для скриншота»"); } } } break;
+    case "dismissBackup": dismissBackup(); break;
     case "openFines": state.screen="fines"; state._animateScreen=true; renderAsync(); break;
     case "openAddFine": modalFine(); break;
     case "finePreset": { const i=$("#f_name"); if(i&&!i.value) i.value=el.dataset.name; } break;
@@ -1163,10 +1136,8 @@ document.addEventListener("click", async (ev)=>{
     case "receiptPrev": state.receiptOffset--; renderAsync(); break;
     case "receiptNext": state.receiptOffset++; renderAsync(); break;
     case "setReceiptCat": state.receiptCat=el.dataset.cat; renderAsync(); break;
-    case "exportReceiptsHtml": exportReceiptsHtml(); break;
-    case "exportReceiptsBrowser": exportReceiptsBrowser(); break;
-    case "exportReceiptsZip": exportReceiptsZip(); break;
     case "exportReceiptsCsv": exportReceiptsCsv(); break;
+    case "exportReceiptsZip": exportReceiptsZip(); break;
     case "editExpense": await editExpense(el.dataset.id); break;
     case "pickReceipt": await addReceiptFromPicker(); break;
     case "clearReceipt": state.modalReceipt=null; { const b=$("#m_receipt_box"); if(b) b.innerHTML=receiptBoxHTML(); } haptic(); break;
