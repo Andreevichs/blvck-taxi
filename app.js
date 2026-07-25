@@ -1,9 +1,9 @@
 /* =========================================================
    BLVCK TAXI — instrument minimalism 2026 (black/white/orange)
    vanilla, без зависимостей. IndexedDB + localStorage. Офлайн. Без сервера.
-   СОХРАНЕНИЕ: в браузере — напрямую; в Telegram — честный chooser
-   «куда сохранить» (в браузер / «Поделиться» / на экране) без лживых тостов.
-   + мостик «🌐 в браузере» для отчётов/CSV/копии (Chrome сам скачает/PDF).
+   СОХРАНЕНИЕ на Android/Telegram: главный путь = «на экране → Печать/PDF»
+   (системный print-поток, не блокируется), плюс blob-скачивание, плюс
+   «Поделиться», плюс «в браузере» (с пометкой, что на Android может не ходить).
    + экран «Расходы» + полный отчёт + износ деталей + всё остальное.
    ========================================================= */
 
@@ -136,11 +136,12 @@ const arrow = d => d==="up"?"↑":d==="down"?"↓":"→";
 
 /* =========================================================
    СОХРАНЕНИЕ ФАЙЛОВ
-   Вне Telegram — скачиваем напрямую. В Telegram — системное
-   «Поделиться», если повезёт; иначе возвращаем «нужен chooser»,
-   и интерфейс покажет честный выбор «куда сохранить».
-   Мостик в браузер (openBrowserWith) выносит документ в Chrome,
-   где нативно работают «Скачать» и «Печать → PDF».
+   В Telegram прямой путь в папку закрыт платформой. Поэтому:
+   1) пробуем системное «Поделиться» (если включено в сборке);
+   2) вне Telegram — скачиваем напрямую;
+   3) иначе возвращаем «нужен chooser», и интерфейс даёт честный
+      выбор, где ГЛАВНЫЙ путь = «на экране → Печать/PDF»
+      (системный print-поток, не блокируется на Android).
    ========================================================= */
 function makeFile(name, content, mime){
   const blob = (content instanceof Blob) ? content : new Blob([content], {type: mime||"application/octet-stream"});
@@ -161,7 +162,6 @@ async function shareFiles(name, content, mime, opts={}){
   }catch(e){ if(e && e.name==="AbortError") return {aborted:true}; }
   return {ok:false};
 }
-/* мостик: открыть документ во ВНЕШНЕМ браузере (Chrome сам скачает / сделает PDF) */
 async function openBrowserWith(name, content, mime){
   let dataUrl;
   try{ dataUrl = await dataUrlFor(content, mime); }catch(e){ return {ok:false}; }
@@ -171,11 +171,9 @@ async function openBrowserWith(name, content, mime){
   return {ok:opened};
 }
 async function saveFile(name, content, mime, opts={}){
-  // 1) системное меню «Поделиться» (работает, если включено в этой сборке Telegram / в браузере)
   const sr = await shareFiles(name, content, mime, opts);
   if(sr.ok) return {ok:true, via:"share"};
   if(sr.aborted) return {ok:false, via:"share", aborted:true};
-  // 2) десктопный диалог «Сохранить как»
   if(window.showSaveFilePicker){
     try{
       const ex=(/\.([a-z0-9]+)$/i.exec(name)||[,"bin"])[1];
@@ -184,7 +182,6 @@ async function saveFile(name, content, mime, opts={}){
       return {ok:true, via:"picker"};
     }catch(e){ if(e && e.name==="AbortError") return {ok:false, via:"picker", aborted:true}; }
   }
-  // 3) обычное скачивание — работает ВНЕ Telegram
   if(!isTelegram){
     try{
       const href = await dataUrlFor(content, mime);
@@ -193,17 +190,15 @@ async function saveFile(name, content, mime, opts={}){
       return {ok:true, via:"download"};
     }catch(e){ return {ok:false, via:"download"}; }
   }
-  // 4) Telegram: напрямую не отдать — нужен chooser «куда сохранить»
   return {ok:false, via:"chooser", name, content, mime, htmlView: opts.htmlView||null};
 }
 function handleSaveResult(r, opts={}){
-  if(r.aborted) return; // сам закрыл меню — тишина
+  if(r.aborted) return;
   if(r.ok){
     hapticOk();
     toast(r.via==="share" ? "Готово" : r.via==="picker" ? "Сохранено" : "Сохранено в «Загрузки»");
     return;
   }
-  // не получилось автоматически → честный выбор «куда сохранить»
   showSaveChooser({
     name: r.name || opts.name,
     content: (r.content!==undefined ? r.content : opts.content),
@@ -213,21 +208,45 @@ function handleSaveResult(r, opts={}){
 }
 function showSaveChooser(opts){
   window.__bt_help = opts;
-  const viewBtn = opts.htmlView ? `<button class="btn" data-action="helpView">📖 Показать на экране (для скриншота)</button><div style="height:10px"></div>` : "";
-  openModal(`<div class="mhead"><h3>Куда сохранить файл?</h3><button class="x" data-action="close">×</button></div>
-    <div class="info" style="opacity:1;transform:none"><div class="it"><span class="d"></span>Telegram не даёт сохранить напрямую</div>
-    <p>Это ограничение мессенджера, не приложения. Выбери способ ниже. Самый надёжный — <b>«🌐 в браузере»</b>: документ откроется в Chrome, а там <b>⋮ → «Скачать»</b> или <b>⋮ → «Печать» → «Сохранить как PDF»</b>.</p></div>
-    <button class="btn primary" data-action="helpBrowser">🌐 Открыть в браузере</button>
-    <div style="height:10px"></div>
-    <button class="btn" data-action="helpShare">📂 Через меню «Поделиться»</button>
-    <div style="height:10px"></div>
-    ${viewBtn}
-    <div class="fszn-note">Если «Поделиться» не открывается — обнови Telegram до последней версии. На компьютере сохранение работает как обычно.</div>`);
+  const isHtml = !!opts.htmlView;
+  const btns = [];
+  if(isHtml){
+    btns.push(`<button class="btn primary" data-action="helpViewPrint">📄 На экране → Сохранить как PDF</button>`);
+    btns.push(`<button class="btn" data-action="helpDownload">⬇️ Скачать .html файл</button>`);
+  } else {
+    btns.push(`<button class="btn primary" data-action="helpDownload">⬇️ Скачать файл</button>`);
+  }
+  btns.push(`<button class="btn" data-action="helpShare">📂 Через меню «Поделиться»</button>`);
+  btns.push(`<button class="btn ghost" data-action="helpBrowser">🌐 В браузере (на Android может не открыться)</button>`);
+  openModal(`<div class="mhead"><h3>Куда сохранить?</h3><button class="x" data-action="close">×</button></div>
+    <div class="info" style="opacity:1;transform:none"><div class="it"><span class="d"></span>Telegram не даёт сохранить в папку напрямую</div>
+    <p>Это ограничение мессенджера на Android, не поломка и не твой телефон. Самый надёжный путь — <b>«📄 На экране → PDF»</b>: отчёт откроется на белом экране, сверху кнопка печати, и система сама сохранит PDF. Кнопка <b>«⬇️ Скачать»</b> иногда кладёт файл в «Загрузки» — проверь. Чтобы заработало и <b>«📂 Поделиться»</b> напрямую — поставь свежий Telegram официальным apk с <b>telegram.org</b> (поверх старого, чаты останутся): там включена отдача файлов.</p></div>
+    ${btns.join('<div style="height:10px"></div>')}`);
 }
+/* просмотрщик отчёта: белый полноэкранный слой + печать самого документа */
 function openHtmlViewer(html){
   const m=$("#modal");
-  m.innerHTML=`<div class="viewer" style="cursor:default;background:var(--bg);padding:10px"><button class="x vclose" data-action="close">×</button><iframe srcdoc="${esc(html)}" style="width:100%;height:100%;border:0;background:#fff;border-radius:12px"></iframe></div>`;
+  m.innerHTML=`<div class="viewer" style="cursor:default;background:#fff;padding:0;display:flex;flex-direction:column">
+    <div style="display:flex;gap:8px;align-items:center;padding:10px 12px;background:#fff;border-bottom:1px solid #eee;flex:none">
+      <button class="btn primary sm" id="bt_print" style="flex:1">🖨 Сохранить как PDF / распечатать</button>
+      <button class="x" data-action="close" style="position:static;background:#111;color:#fff;border-radius:50%;width:42px;height:42px;display:grid;place-items:center">✕</button>
+    </div>
+    <iframe id="bt_report" srcdoc="${esc(html)}" style="flex:1;width:100%;border:0;background:#fff;display:block"></iframe>
+  </div>`;
   m.hidden=false; try{TG?.BackButton?.show();}catch{}
+  const ifr=$("#bt_report");
+  const doPrint=()=>{ try{ ifr.contentWindow.focus(); ifr.contentWindow.print(); }catch(e){ toast("Печать не запустилась — сделай скриншоты или обнови Telegram"); } };
+  const pb=$("#bt_print"); if(pb) pb.addEventListener("click", doPrint);
+  ifr.addEventListener("load", ()=>{ try{ const b=ifr.contentDocument && ifr.contentDocument.querySelector(".noprint button"); if(b) b.addEventListener("click", doPrint); }catch(e){} });
+}
+async function helpDownload(){
+  const h=window.__bt_help; if(!h) return;
+  try{
+    const blob = (h.content instanceof Blob)? h.content : new Blob([h.content],{type:h.mime||"application/octet-stream"});
+    const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=h.name||"blvck-taxi-file"; a.rel="noopener";
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),5000);
+    hapticOk(); closeModal(); toast("Проверь «Загрузки». Если пусто — используй «На экране → PDF»");
+  }catch(e){ toast("Не вышло скачать — попробуй «На экране → PDF»"); }
 }
 
 /* ---------- визуальные хелперы ---------- */
@@ -643,7 +662,7 @@ async function screenReceipts(){ const pr=periodRange(state.receiptMode,state.re
       <button class="btn" data-action="exportReceiptsZip" ${list.length?"":"disabled"}>📦 Чеки папкой (ZIP)</button>
       <div style="height:10px"></div>
       <button class="btn" data-action="exportReceiptsCsv" ${list.length?"":"disabled"}>📊 Таблица чеков (CSV)</button>
-      <div class="fszn-note">«🌐 в браузере» откроет документ в Chrome → там ⋮ «Скачать» или «Печать → PDF». «Поделиться»/скачивание напрямую в Telegram может не работать — это ограничение мессенджера.</div>
+      <div class="fszn-note">Самый надёжный путь на телефоне — «📄 Отчёт (PDF)»: откроется на экране, сверху «🖨 Сохранить как PDF». «🌐 в браузере» на Android может не открыться.</div>
     </div>
     <div class="h2">галерея</div>${list.length?`<div class="list">${list.map(e=>{const c=CATS[e.category]||CATS.other;return `<div class="item"><img class="rthumb" src="${e.receipt}" data-action="viewReceipt" data-id="${e.id}" alt="чек"><div class="meta"><div class="t">${c.ico} ${c.t}${e.note?": "+esc(e.note):""}</div><div class="s">${fmtDate(e.date)}</div></div><div class="amt">−${money(e.amount)}</div></div>`;}).join("")}</div>`:`<div class="glass empty">За этот период чеков нет</div>`}`; }
 function receiptsCsvText(list,pr){ const sum=list.reduce((s,e)=>s+Number(e.amount||0),0); const byCat={}; list.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
@@ -657,13 +676,13 @@ function exportReceiptsHtml(){ getReceiptExpenses().then(async list=>{ if(!list.
   const r=await saveFile(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.html`, html, "text/html;charset=utf-8", {title:"Чеки BLVCK TAXI", htmlView:html}); handleSaveResult(r); }); }
 function exportReceiptsBrowser(){ getReceiptExpenses().then(async list=>{ if(!list.length){toast("Нет чеков за период");return;} const pr=periodRange(state.receiptMode,state.receiptOffset); const html=buildReceiptsReport(list,pr,false);
   const r=await openBrowserWith(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.html`, html, "text/html;charset=utf-8");
-  if(r.ok){ hapticOk(); toast("Открываю в браузере → там ⋮ «Скачать» / «Печать→PDF»"); } else { toast("Браузер не открылся — обнови Telegram или используй «Отчёт с чеками»"); } }); }
+  if(r.ok){ hapticOk(); toast("Открываю в браузере → там ⋮ «Скачать» / «Печать→PDF»"); } else { toast("Браузер не открылся — используй «Отчёт с чеками (PDF)»"); } }); }
 function exportReceiptsZip(){ getReceiptExpenses().then(async list=>{ if(!list.length){toast("Нет чеков за период");return;} const pr=periodRange(state.receiptMode,state.receiptOffset); const files=[],used={};
   list.slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>{let base=`${e.date}_${e.category}_${Number(e.amount).toFixed(2).replace(".","_")}`,name=base+".jpg",i=2;while(used[name]){name=`${base}_${i}.jpg`;i++;}used[name]=1;files.push({name,data:b64ToBytes(e.receipt)});});
   files.push({name:"itogi.csv",data:strBytes(receiptsCsvText(list,pr))}); const blob=buildZip(files);
   const r=await saveFile(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.zip`, blob, "application/zip", {title:"Чеки BLVCK TAXI (папка)"}); handleSaveResult(r); }); }
 
-/* ---------- ОТЧЁТЫ (оболочка + сборка) ---------- */
+/* ---------- ОТЧЁТЫ ---------- */
 function reportShell(title, sub, body){
   const wrapped = body.replace(/<table>/g,'<div class="tblwrap"><table>').replace(/<\/table>/g,'</table></div>');
   return `<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>BLVCK TAXI — ${title}</title>
@@ -753,7 +772,7 @@ async function exportFullPdf(){
 }
 async function exportFullHtml(){ const html=await buildFullReport(true); const r=await saveFile(`blvck-taxi-otchet-${today()}.html`, html, "text/html;charset=utf-8", {title:"Полный отчёт BLVCK TAXI", htmlView:html}); handleSaveResult(r); }
 async function exportFullBrowser(){ const html=await buildFullReport(false); const r=await openBrowserWith(`blvck-taxi-otchet-${today()}.html`, html, "text/html;charset=utf-8");
-  if(r.ok){ hapticOk(); toast("Открываю в браузере → там ⋮ «Скачать» / «Печать→PDF»"); } else { toast("Браузер не открылся — обнови Telegram или используй «Полный отчёт (PDF)»"); } }
+  if(r.ok){ hapticOk(); toast("Открываю в браузере → там ⋮ «Скачать» / «Печать→PDF»"); } else { toast("Браузер не открылся — используй «Полный отчёт (PDF)»"); } }
 
 /* ---------- ФСЗН ---------- */
 function fsznSettings(){ return { mzp:parseFloat(localStorage.getItem("blvck_fszn_mzp"))||726, rate:parseFloat(localStorage.getItem("blvck_fszn_rate"))||35 }; }
@@ -786,7 +805,7 @@ async function screenSettings(){ const exps=await dbAll("expenses"); const tgNam
   return `<div class="h1">Настройки</div>
     <div class="glass card"><div class="row between"><span>Тема</span><button class="btn sm" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙 Тёмная":"☀️ Светлая"}</button></div><div class="divider"></div><div class="row between"><span>Валюта</span><div class="chips">${CURS.map(c=>`<span class="chip ${c===cur()?"on":""}" data-action="setCur" data-cur="${c}">${c}</span>`).join("")}</div></div></div>
 
-    <div class="info"><div class="it"><span class="d"></span>Где живут данные</div><p>Все твои цифры хранятся <b>только в этом приложении на этом телефоне</b> — в облако ничего не уходит, серверов нет. Запись пишется сама, как ты нажал «Сохранить» в окне ввода. Чтобы не потерять данные при поломке/смене телефона — делай <b>резервную копию</b> ниже. В Telegram сохранение идёт через выбор «куда»: чаще всего надёжнее всего «🌐 в браузере».</p></div>
+    <div class="info"><div class="it"><span class="d"></span>Где живут данные</div><p>Все твои цифры хранятся <b>только в этом приложении на этом телефоне</b> — в облако ничего не уходит, серверов нет. Запись пишется сама, как ты нажал «Сохранить» в окне ввода. Чтобы не потерять данные при поломке/смене телефона — делай <b>резервную копию</b> ниже. На телефоне самый надёжный путь сохранения — «📄 На экране → PDF».</p></div>
 
     <div class="h2">деньги, штрафы и чеки</div><div class="glass card"><button class="btn primary" data-action="openDailyRev">💵 Выручка за день</button><div style="height:10px"></div><button class="btn" data-action="openExpenses">📋 Все расходы и графики</button><div style="height:10px"></div><button class="btn" data-action="openFines">🚨 Штрафы</button><div style="height:10px"></div><button class="btn" data-action="openReceipts">🧾 Чеки и выгрузка</button></div>
 
@@ -804,7 +823,7 @@ async function screenSettings(){ const exps=await dbAll("expenses"); const tgNam
       <button class="btn" data-action="import">⬆️ Восстановить из файла</button>
       <div style="height:10px"></div>
       <button class="btn" data-action="exportFullPdf">📄 Полный отчёт (PDF)</button>
-      <div class="fszn-note">В Telegram при сохранении откроется выбор «куда»: <b>🌐 в браузере</b> (Chrome сам скачает / сделает PDF), <b>📂 «Поделиться»</b> или <b>📖 на экране</b>. Если «Поделиться» не появляется — обнови Telegram. «Копию в браузер» может не влезть, если чеков‑картинок много — тогда используй «Сохранить копию».</div>
+      <div class="fszn-note">В Telegram при сохранении откроется выбор «куда»: самый надёжный — <b>«📄 На экране → PDF»</b> (системная печать). «⬇️ Скачать» иногда кладёт файл в «Загрузки». Чтобы заработало «📂 Поделиться» — поставь свежий Telegram apk с telegram.org. «🌐 в браузер» на Android может не открыться.</div>
     </div>
 
     <div class="h2">опасная зона</div><div class="glass card"><button class="btn danger" data-action="wipe">🧹 Удалить все данные</button><p class="muted small" style="margin:8px 2px 0">Записей расходов: ${exps.length}</p></div>
@@ -935,10 +954,10 @@ document.addEventListener("click", async (ev)=>{
     case "exportFullHtml": exportFullHtml(); break;
     case "exportFullBrowser": exportFullBrowser(); break;
     case "exportBackupBrowser": exportBackupBrowser(); break;
-    case "helpBrowser": { const h=window.__bt_help; if(h){ const r=await openBrowserWith(h.name||"blvck-taxi-file", h.content, h.mime); if(r.ok){ hapticOk(); toast("Открываю в браузере → там ⋮ «Скачать» / «Печать→PDF»"); closeModal(); } else { toast("Браузер не открылся — обнови Telegram или «на экране»"); } } } break;
-    case "helpShare": { const h=window.__bt_help; if(h){ const sr=await shareFiles(h.name||"blvck-taxi-file", h.content, h.mime, {title:"BLVCK TAXI"}); if(sr.ok){ hapticOk(); toast("Готово"); closeModal(); } else if(sr.aborted){ /* закрыл меню */ } else { toast("Меню не открылось — обнови Telegram или «в браузере»"); } } } break;
-    case "helpView": { const h=window.__bt_help; if(h&&h.htmlView){ openHtmlViewer(h.htmlView); } } break;
-    case "helpRetry": { const h=window.__bt_help; if(h){ closeModal(); const r=await saveFile(h.name||"blvck-taxi-file", h.content, h.mime, {htmlView:h.htmlView}); handleSaveResult(r, h); } } break;
+    case "helpViewPrint": { const h=window.__bt_help; if(h&&h.htmlView){ openHtmlViewer(h.htmlView); } else { toast("Для этого файла просмотр на экране недоступен"); } } break;
+    case "helpDownload": helpDownload(); break;
+    case "helpShare": { const h=window.__bt_help; if(h){ const sr=await shareFiles(h.name||"blvck-taxi-file", h.content, h.mime, {title:"BLVCK TAXI"}); if(sr.ok){ hapticOk(); toast("Готово"); closeModal(); } else if(sr.aborted){ /* закрыл меню */ } else { toast("Меню не открылось — обнови Telegram или «На экране → PDF»"); } } } break;
+    case "helpBrowser": { const h=window.__bt_help; if(h){ const r=await openBrowserWith(h.name||"blvck-taxi-file", h.content, h.mime); if(r.ok){ hapticOk(); toast("Открываю в браузере → там ⋮ «Скачать» / «Печать→PDF»"); closeModal(); } else { toast("На Android обычно не открывается — используй «На экране → PDF»"); } } } break;
     case "openFines": state.screen="fines"; state._animateScreen=true; renderAsync(); break;
     case "openAddFine": modalFine(); break;
     case "finePreset": { const i=$("#f_name"); if(i&&!i.value) i.value=el.dataset.name; } break;
