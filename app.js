@@ -1,14 +1,14 @@
 /* =========================================================
    BLVCK TAXI — instrument minimalism 2026 (black/white/orange)
    vanilla, без зависимостей. IndexedDB + localStorage. Офлайн. Без сервера.
-   + экран «Расходы»: все записи + график по дням/месяцам + фильтр + поиск
-   + полный отчёт → PDF (системный диалог) / HTML-файл
-   + сохранение с выбором папки где возможно (showSaveFilePicker)
-   + категории Запчасти/Аренда + износ деталей + пояснение «где данные»
+   СОХРАНЕНИЕ/ВЫГРУЗКА: Web Share API (системное меню «куда сохранить») как
+   основной путь в Telegram/Android + честные фолбэки без лживых тостов.
+   + экран «Расходы» + полный отчёт + износ деталей + всё остальное
    ========================================================= */
 
 /* ===== TELEGRAM MINI APP ===== */
 const TG = window.Telegram?.WebApp;
+const isTelegram = !!TG;
 const haptic    = (t="light") => { try{ TG?.HapticFeedback?.impactOccurred(t); }catch{} };
 const hapticOk  = () => { try{ TG?.HapticFeedback?.notificationOccurred?.("success"); }catch{} };
 const hapticBad = () => { try{ TG?.HapticFeedback?.notificationOccurred?.("error"); }catch{} };
@@ -81,7 +81,6 @@ function periodRange(mode, offset){
     return {from:new Date(y,m0,1).toISOString().slice(0,10), to:new Date(y,m0+3,0).toISOString().slice(0,10), label:`${y} · Q${q+1}`}; }
   const y=now.getFullYear()+offset; return {from:`${y}-01-01`, to:`${y}-12-31`, label:`${y}`};
 }
-/* окно дат для экрана расходов */
 function expWindow(range){
   const now=new Date(); const to=today();
   if(range==="all") return {from:null,to,label:"Всё время"};
@@ -133,6 +132,70 @@ function weekdayAvg(){ const m=dailyRevMap(); const s=[0,0,0,0,0,0,0],c=[0,0,0,0
 function trendPct(c,p){ if(p<=0) return c>0?{dir:"up",pct:null}:{dir:"flat",pct:null}; const pct=Math.round((c-p)/p*100); return {dir:pct>0?"up":pct<0?"down":"flat",pct}; }
 const arrow = d => d==="up"?"↑":d==="down"?"↓":"→";
 
+/* =========================================================
+   СОХРАНЕНИЕ ФАЙЛОВ — share-first (работает в Telegram/Android)
+   Возвращает {ok, via, aborted, uncertain}. НИКОГДА не врёт об успехе.
+   ========================================================= */
+function makeFile(name, content, mime){
+  const blob = (content instanceof Blob) ? content : new Blob([content], {type: mime||"application/octet-stream"});
+  try{ return new File([blob], name, {type: mime||blob.type||"application/octet-stream"}); }
+  catch(e){ return blob; } // очень старые среды без File
+}
+async function saveFile(name, content, mime, opts={}){
+  const file = makeFile(name, content, mime);
+  // 1) системное меню «Поделиться» = выбор, КУДА сохранить (Файлы / Диск / Избранное / браузер)
+  try{
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({ files:[file], title: opts.title||"BLVCK TAXI", text: opts.text||name });
+      return {ok:true, via:"share"};
+    }
+  }catch(e){
+    if(e && e.name==="AbortError") return {ok:false, via:"share", aborted:true}; // сам отменил меню
+    // иначе — среда не дала, падаем в фолбэки
+  }
+  // 2) десктопный диалог «Сохранить как» (Chrome на ПК)
+  if(window.showSaveFilePicker){
+    try{
+      const ex=(/\.([a-z0-9]+)$/i.exec(name)||[,"bin"])[1];
+      const h=await window.showSaveFilePicker({ suggestedName:name, types:[{ description:opts.desc||"Файл BLVCK TAXI", accept:{[mime||"application/octet-stream"]:["."+ex]} }] });
+      const w=await h.createWritable(); await w.write(file); await w.close();
+      return {ok:true, via:"picker"};
+    }catch(e){ if(e && e.name==="AbortError") return {ok:false, via:"picker", aborted:true}; }
+  }
+  // 3) обычное скачивание — работает в браузере ВНЕ Telegram; в Telegram часто НЕ доходит до папки
+  try{
+    const url=URL.createObjectURL(file); const a=document.createElement("a");
+    a.href=url; a.download=name; a.rel="noopener";
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),5000);
+    return {ok: !isTelegram, via:"download", uncertain: isTelegram};
+  }catch(e){ return {ok:false, via:"download"}; }
+}
+/* единая обработка результата сохранения: честный тост / модалка-помощь */
+function handleSaveResult(r, opts={}){
+  if(r.aborted) return;                       // пользователь сам закрыл меню — тишина
+  if(r.ok && r.via==="share"){ hapticOk(); toast("Готово"); return; }
+  if(r.ok && r.via==="picker"){ hapticOk(); toast("Сохранено"); return; }
+  if(r.ok && r.via==="download"){ hapticOk(); toast("Сохранено в «Загрузки»"); return; }
+  // не получилось автоматически (типично для Telegram) — честная помощь, без лжи
+  showSaveHelp(opts);
+}
+function showSaveHelp(opts={}){
+  window.__bt_help = opts;
+  const viewBtn = opts.htmlView ? `<button class="btn" data-action="helpView">📖 Показать отчёт на экране (для скриншота)</button><div style="height:10px"></div>` : "";
+  openModal(`<div class="mhead"><h3>Файл не сохранился автоматически</h3><button class="x" data-action="close">×</button></div>
+    <div class="info" style="opacity:1;transform:none"><div class="it"><span class="d"></span>Это ограничение Telegram, не приложения</div>
+    <p>Telegram на этом устройстве не дал приложению отдать файл в папку напрямую. Обычно при нажатии «Сохранить» должно открываться системное меню <b>«Поделиться»</b> — там выбери <b>«Файлы» / «Сохранить на устройство» / Google Диск / «Избранное Telegram»</b>, и файл ляжет куда ты укажешь.</p>
+    <p>Если меню не появилось — <b>обнови Telegram</b> до последней версии и попробуй снова. На компьютере та же кнопка сохраняет файл как обычно.</p></div>
+    ${viewBtn}
+    <button class="btn primary" data-action="helpRetry">🔁 Попробовать сохранить ещё раз</button>`);
+}
+function openHtmlViewer(html){
+  const m=$("#modal");
+  m.innerHTML=`<div class="viewer" style="cursor:default;background:var(--bg);padding:10px"><button class="x vclose" data-action="close">×</button><iframe srcdoc="${esc(html)}" style="width:100%;height:100%;border:0;background:#fff;border-radius:12px"></iframe></div>`;
+  m.hidden=false; try{TG?.BackButton?.show();}catch{}
+}
+function stripImages(html){ return html.replace(/<img[^>]*>/g,'<span style="color:#888">🧾 чек прикреплён в приложении</span>'); }
+
 /* ---------- визуальные хелперы ---------- */
 function ringSVG(pct){ const r=30, c=2*Math.PI*r, off=c*(1-Math.min(100,Math.max(0,pct))/100);
   return `<svg class="ring" viewBox="0 0 76 76"><circle class="ring-bg" cx="38" cy="38" r="${r}"/><circle class="ring-fg" cx="38" cy="38" r="${r}" transform="rotate(-90 38 38)" stroke-dasharray="${c.toFixed(1)}" style="stroke-dashoffset:${c.toFixed(1)}" data-ring="${off.toFixed(1)}"/><text class="ring-t" x="38" y="39">${Math.round(pct)}%</text></svg>`; }
@@ -174,21 +237,6 @@ function buildZip(files){const parts=[],central=[];let offset=0;const U=0x0800;
 
 function toast(msg){ const t=$("#toast"); t.textContent=msg; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true,1800); }
 
-/* ---------- скачивание: выбор папки где возможно ---------- */
-function extOf(name){ const m=/\.([a-z0-9]+)$/i.exec(name); return m?m[1].toLowerCase():""; }
-async function download(name, textOrBlob, type){
-  const blob = (textOrBlob instanceof Blob) ? textOrBlob : new Blob([textOrBlob],{type});
-  // на десктопе/Chrome — системный диалог «куда сохранить»
-  if(window.showSaveFilePicker){
-    try{
-      const ex=extOf(name)||"bin";
-      const handle=await window.showSaveFilePicker({ suggestedName:name, types:[{ description:"Файл BLVCK TAXI", accept:{ [type||"application/octet-stream"]:["."+ex] } }] });
-      const w=await handle.createWritable(); await w.write(blob); await w.close(); return true;
-    }catch(e){ if(e&&e.name==="AbortError") return false; /* упало — падаем в обычный способ */ }
-  }
-  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); return true;
-}
-
 /* ---------- IndexedDB ---------- */
 const DB_NAME="blvcktaxi", DB_VER=2, STORES=["expenses","maintenance","documents","car","fszn"]; let db;
 function openDB(){ return new Promise((res,rej)=>{ const req=indexedDB.open(DB_NAME,DB_VER);
@@ -227,7 +275,6 @@ function postRender(){
   requestAnimationFrame(()=>{
     document.querySelectorAll("[data-ring]").forEach(c=>{ c.style.strokeDashoffset=c.getAttribute("data-ring"); });
     document.querySelectorAll("[data-bar]").forEach(i=>{ i.style.width=i.getAttribute("data-bar"); });
-    // позиционируем бегунок сегмента
     document.querySelectorAll(".seg").forEach(seg=>{ const on=seg.querySelector("button.on"); const th=seg.querySelector(".thumb"); if(on&&th){ th.style.width=on.offsetWidth+"px"; th.style.transform=`translateX(${on.offsetLeft-4}px)`; } });
   });
   document.querySelectorAll("[data-count]").forEach(el=>{
@@ -261,7 +308,7 @@ function onboardHTML(){
   </div>`;
 }
 
-/* ---------- ГЛАВНАЯ (разгружена) ---------- */
+/* ---------- ГЛАВНАЯ ---------- */
 async function screenDash(){
   const exps=await dbAll("expenses"), car=await dbGet("car",1), docs=await dbAll("documents");
   const monthStart=new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
@@ -312,7 +359,7 @@ async function screenDash(){
   return `
     <div class="topbar">
       <div class="brand"><span class="brand-dot"></span><span class="brand-name">BLVCK</span><span class="brand-sub">TAXI</span></div>
-      <div class="topbar-r">${tgName?`<span class="who">${esc(tgName)}</span>`:""}<button class="iconbtn" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙":"️"}</button></div>
+      <div class="topbar-r">${tgName?`<span class="who">${esc(tgName)}</span>`:""}<button class="iconbtn" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙":"☀️"}</button></div>
     </div>
 
     ${alerts.map(a=>`<div class="alert ${a.bad?"bad":""}"><span>${a.bad?"⚠️":"🔔"}</span><div><div style="font-weight:700">${a.t}</div><div class="small muted">${a.s}</div></div></div>`).join("")}
@@ -380,12 +427,12 @@ function expenseRow(e){ const c=CATS[e.category]||CATS.other;
   if(e.mileage){ mileTxt = (e.category==="repair"||e.category==="parts") ? " · установлено "+num(e.mileage)+" км" : " · "+num(e.mileage)+" км"; }
   return `<div class="item"><div class="ic">${c.ico}</div><div class="meta"><div class="t">${c.t}${e.note?": "+esc(e.note):""}</div><div class="s">${fmtDate(e.date)}${mileTxt}</div></div><div class="amt">−${money(e.amount)}</div>${e.receipt?`<button class="edit" data-action="viewReceipt" data-id="${e.id}" title="чек">🧾</button>`:""}<button class="edit" data-action="editExpense" data-id="${e.id}" title="изменить">✏️</button><button class="del" data-action="delExpense" data-id="${e.id}" title="удалить">🗑</button></div>`; }
 
-/* ---------- ЭКРАН «РАСХОДЫ»: все записи + график по дням/месяцам + фильтр + поиск ---------- */
+/* ---------- ЭКРАН «РАСХОДЫ» ---------- */
 async function screenExpenses(){
   const all=await dbAll("expenses");
   const w=expWindow(state.expRange);
   const q=(state.expQ||"").trim().toLowerCase();
-  const effScale = (state.expScale==="day" && BIG_RANGE(state.expRange)) ? "month" : state.expScale; // на длинном окне «по дням» укрупняется до месяцев
+  const effScale = (state.expScale==="day" && BIG_RANGE(state.expRange)) ? "month" : state.expScale;
 
   let rows=all.filter(e=>(!w.from||e.date>=w.from)&&(!w.to||e.date<=w.to));
   if(state.expCat!=="all") rows=rows.filter(e=>e.category===state.expCat);
@@ -393,7 +440,6 @@ async function screenExpenses(){
   rows.sort((a,b)=>(b.date+b.id).localeCompare(a.date+a.id));
   const sum=rows.reduce((s,e)=>s+Number(e.amount||0),0);
 
-  // агрегация для графика — по выбранному (эффективному) масштабу, без фильтра категории/поиска, чтобы график показывал картину периода
   let chartAll=all.filter(e=>(!w.from||e.date>=w.from)&&(!w.to||e.date<=w.to));
   if(state.expCat!=="all") chartAll=chartAll.filter(e=>e.category===state.expCat);
   let chartData=[];
@@ -547,24 +593,26 @@ async function screenReceipts(){ const pr=periodRange(state.receiptMode,state.re
     ${state.receiptMode!=="all"?`<div class="periodnav"><button class="pbtn" data-action="receiptPrev">‹</button><div class="plabel">${esc(pr.label)}</div><button class="pbtn" data-action="receiptNext">›</button></div>`:`<div class="periodnav"><div class="plabel">${esc(pr.label)}</div></div>`}
     <div class="chips" style="margin:6px 0">${catChips.map(([k,t])=>`<span class="chip ${state.receiptCat===k?"on":""}" data-action="setReceiptCat" data-cat="${k}">${t}</span>`).join("")}</div>
     <div class="glass card"><div class="row between"><b>Чеков со скрином</b><b>${list.length}</b></div><div class="row between"><span class="muted">сумма чеков</span><b>${money(sum)}</b></div>${Object.entries(byCat).map(([k,v])=>`<div class="row between small"><span class="muted">${CATS[k]?.ico||""} ${CATS[k]?.t||k}</span><b>${money(v)}</b></div>`).join("")}<div class="divider"></div><div class="row between small"><span class="muted">все расходы за период</span><b>${money(allSum)}</b></div></div>
-    <div class="h2">выгрузить</div><div class="glass card"><button class="btn primary" data-action="exportReceiptsHtml" ${list.length?"":"disabled"}>📄 Отчёт с чеками (HTML → PDF)</button><div style="height:10px"></div><button class="btn" data-action="exportReceiptsZip" ${list.length?"":"disabled"}>📦 Чеки папкой (ZIP)</button><div style="height:10px"></div><button class="btn" data-action="exportReceiptsCsv" ${list.length?"":"disabled"}>📊 Таблица чеков (CSV)</button><div class="fszn-note">HTML → в браузере «🖨 Сохранить как PDF». ZIP = папка скринов + itogi.csv.</div></div>
+    <div class="h2">выгрузить</div><div class="glass card"><button class="btn primary" data-action="exportReceiptsHtml" ${list.length?"":"disabled"}>📄 Отчёт с чеками (PDF)</button><div style="height:10px"></div><button class="btn" data-action="exportReceiptsZip" ${list.length?"":"disabled"}>📦 Чеки папкой (ZIP)</button><div style="height:10px"></div><button class="btn" data-action="exportReceiptsCsv" ${list.length?"":"disabled"}>📊 Таблица чеков (CSV)</button><div class="fszn-note">Сохранение идёт через системное меню «Поделиться» → выбери «Файлы / Диск / Избранное». Для PDF выбери в меню браузер → там «Сохранить как PDF».</div></div>
     <div class="h2">галерея</div>${list.length?`<div class="list">${list.map(e=>{const c=CATS[e.category]||CATS.other;return `<div class="item"><img class="rthumb" src="${e.receipt}" data-action="viewReceipt" data-id="${e.id}" alt="чек"><div class="meta"><div class="t">${c.ico} ${c.t}${e.note?": "+esc(e.note):""}</div><div class="s">${fmtDate(e.date)}</div></div><div class="amt">−${money(e.amount)}</div></div>`;}).join("")}</div>`:`<div class="glass empty">За этот период чеков нет</div>`}`; }
 function receiptsCsvText(list,pr){ const sum=list.reduce((s,e)=>s+Number(e.amount||0),0); const byCat={}; list.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
   const L=[["BLVCK TAXI — чеки за "+pr.label],["Фильтр",state.receiptCat==="all"?"все":(CATS[state.receiptCat]?.t||state.receiptCat)],["Сформировано",today()],[],["Дата","Категория","Заметка","Сумма "+cur()]];
   list.slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>L.push([e.date,(CATS[e.category]?.t||e.category),e.note||"",e.amount]));
   L.push(["","","ИТОГО",sum.toFixed(2)],[],["ПО КАТЕГОРИЯМ"]); Object.entries(byCat).forEach(([k,v])=>L.push([(CATS[k]?.t||k),v.toFixed(2)]));
   return "\uFEFF"+L.map(r=>r.map(csvCell).join(";")).join("\r\n"); }
-function exportReceiptsCsv(){ getReceiptExpenses().then(list=>{ if(!list.length){toast("Нет чеков за период");return;} const pr=periodRange(state.receiptMode,state.receiptOffset); download(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.csv`,receiptsCsvText(list,pr),"text/csv;charset=utf-8").then(()=>{toast("CSV сохранён");hapticOk();}); }); }
-function exportReceiptsHtml(){ getReceiptExpenses().then(list=>{ if(!list.length){toast("Нет чеков за период");return;} const pr=periodRange(state.receiptMode,state.receiptOffset); const sum=list.reduce((s,e)=>s+Number(e.amount||0),0); const byCat={}; list.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
+function exportReceiptsCsv(){ getReceiptExpenses().then(async list=>{ if(!list.length){toast("Нет чеков за период");return;} const pr=periodRange(state.receiptMode,state.receiptOffset);
+  const r=await saveFile(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.csv`, receiptsCsvText(list,pr), "text/csv;charset=utf-8", {title:"Чеки BLVCK TAXI"}); handleSaveResult(r); }); }
+function exportReceiptsHtml(){ getReceiptExpenses().then(async list=>{ if(!list.length){toast("Нет чеков за период");return;} const pr=periodRange(state.receiptMode,state.receiptOffset); const sum=list.reduce((s,e)=>s+Number(e.amount||0),0); const byCat={}; list.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
   const rows=list.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(e=>{const c=CATS[e.category]||CATS.other;return `<div class="rc"><img src="${e.receipt}" alt="чек"><div class="cap">${fmtDate(e.date)} · ${c.ico} ${esc(c.t)}${e.note?" · "+esc(e.note):""}<br><b>${money(e.amount)}</b></div></div>`;}).join("");
   const tot=Object.entries(byCat).map(([k,v])=>`<tr><td>${CATS[k]?.ico||""} ${esc(CATS[k]?.t||k)}</td><td>${money(v)}</td></tr>`).join("");
   const html=reportShell(`Чеки за ${esc(pr.label)}`,`Категория: ${state.receiptCat==="all"?"все":esc(CATS[state.receiptCat]?.t||state.receiptCat)} · чеков: ${list.length} · ${fmtDate(today())}`,`<table>${tot}<tr class="tot"><td>ИТОГО ЧЕКОВ</td><td>${money(sum)}</td></tr></table>${rows}`);
-  download(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.html`,html,"text/html;charset=utf-8").then(()=>{toast("HTML-отчёт сохранён");hapticOk();}); }); }
-function exportReceiptsZip(){ getReceiptExpenses().then(list=>{ if(!list.length){toast("Нет чеков за период");return;} const pr=periodRange(state.receiptMode,state.receiptOffset); const files=[],used={};
+  const r=await saveFile(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.html`, html, "text/html;charset=utf-8", {title:"Чеки BLVCK TAXI", text:"Открой в браузере → Сохранить как PDF"}); handleSaveResult(r,{htmlView:html}); }); }
+function exportReceiptsZip(){ getReceiptExpenses().then(async list=>{ if(!list.length){toast("Нет чеков за период");return;} const pr=periodRange(state.receiptMode,state.receiptOffset); const files=[],used={};
   list.slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>{let base=`${e.date}_${e.category}_${Number(e.amount).toFixed(2).replace(".","_")}`,name=base+".jpg",i=2;while(used[name]){name=`${base}_${i}.jpg`;i++;}used[name]=1;files.push({name,data:b64ToBytes(e.receipt)});});
-  files.push({name:"itogi.csv",data:strBytes(receiptsCsvText(list,pr))}); const blob=buildZip(files); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.zip`; a.click(); URL.revokeObjectURL(a.href); toast("ZIP сохранён"); hapticOk(); }); }
+  files.push({name:"itogi.csv",data:strBytes(receiptsCsvText(list,pr))}); const blob=buildZip(files);
+  const r=await saveFile(`blvck-taxi-cheki-${pr.label.replace(/[^0-9A-Za-zа-яА-Я]/g,"")}.zip`, blob, "application/zip", {title:"Чеки BLVCK TAXI (папка)"}); handleSaveResult(r); }); }
 
-/* ---------- ПОЛНЫЙ ОТЧЁТ (PDF / HTML) ---------- */
+/* ---------- ПОЛНЫЙ ОТЧЁТ ---------- */
 function reportShell(title, sub, body){
   return `<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>BLVCK TAXI — ${title}</title>
 <style>
@@ -585,7 +633,6 @@ function reportShell(title, sub, body){
  .rc img{width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #eee}
  .noprint{position:sticky;top:0;background:#f3f2ee;padding:6px 0 12px;display:flex;gap:8px}
  .noprint button{background:#ff5a00;color:#fff;border:none;border-radius:10px;padding:11px 16px;font-size:14px;font-weight:700;cursor:pointer}
- .noprint .sec{background:#0a0a0a}
  @media print{.noprint{display:none} body{background:#fff;padding:0} table,.kp{box-shadow:none}}
 </style></head><body>
 <div class="noprint"><button onclick="window.print()">🖨 Сохранить как PDF / распечатать</button></div>
@@ -594,18 +641,15 @@ function reportShell(title, sub, body){
 ${body}
 </body></html>`;
 }
-async function buildFullReport(){
+async function buildFullReport(embedImages=true){
   const exps=(await dbAll("expenses")).slice().sort((a,b)=>a.date.localeCompare(b.date));
   const car=await dbGet("car",1)||{};
   const total=exps.reduce((s,e)=>s+Number(e.amount||0),0);
   const byCat={}; exps.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
-  // выручка по дням
   const rev=dailyRevMap(); const revDays=Object.keys(rev).filter(d=>Number(rev[d])>0).sort();
   const revTotal=revDays.reduce((s,d)=>s+Number(rev[d]),0);
-  // штрафы
   const fines=finesList(); const finesPaid=fines.filter(f=>f.paid);
   const finesSum=finesPaid.reduce((s,f)=>s+Number(f.amount||0),0);
-  // износ
   const wearRows=[]; const curMile=Number(car.currentMileage)||0;
   const recs=exps.filter(e=>(e.category==="repair"||e.category==="parts")&&Number(e.mileage)>0);
   const groups={}; recs.forEach(e=>{const b=(e.note||"").trim();const k=b?(e.category+"|"+b.toLowerCase()):("id|"+e.id);(groups[k]=groups[k]||[]).push(e);});
@@ -613,7 +657,8 @@ async function buildFullReport(){
   wearRows.sort((a,b)=>(b.e.date+b.e.id).localeCompare(a.e.date+a.e.id));
 
   const catRows=Object.entries(byCat).map(([k,v])=>`<tr><td>${CATS[k]?.ico||""} ${esc(CATS[k]?.t||k)}</td><td class="r">${money(v)}</td></tr>`).join("");
-  const expRows=exps.map(e=>{const c=CATS[e.category]||CATS.other;const rc=e.receipt?`<img src="${e.receipt}" alt="">`:"";return `<tr><td>${fmtDate(e.date)}</td><td>${c.ico} ${esc(c.t)}</td><td>${esc(e.note||"")}</td><td class="r">${e.mileage?num(e.mileage):"—"}</td><td>${rc}</td><td class="r">${money(e.amount)}</td></tr>`;}).join("");
+  const cell = (e) => embedImages && e.receipt ? `<img src="${e.receipt}" alt="">` : (e.receipt?`<span style="color:#888">🧾</span>`:"");
+  const expRows=exps.map(e=>{const c=CATS[e.category]||CATS.other;return `<tr><td>${fmtDate(e.date)}</td><td>${c.ico} ${esc(c.t)}</td><td>${esc(e.note||"")}</td><td class="r">${e.mileage?num(e.mileage):"—"}</td><td>${cell(e)}</td><td class="r">${money(e.amount)}</td></tr>`;}).join("");
   const revRows=revDays.map(d=>`<tr><td>${fmtDate(d)}</td><td class="r">${money(rev[d])}</td></tr>`).join("");
   const fineRows=fines.map(f=>`<tr><td>${f.paid?fmtDate(f.paidDate):"—"}</td><td>${esc(f.name)}</td><td>${f.paid?"оплачен":"не оплачен"}</td><td class="r">${money(f.amount)}</td></tr>`).join("");
   const wearTbl=wearRows.map(r=>{const c=CATS[r.e.category]||CATS.other;return `<tr><td>${c.ico} ${esc(r.e.note||c.t)}</td><td class="r">${num(r.ins)}</td><td class="r">${r.sp!=null?num(r.sp)+" км":"—"}</td><td>${r.act?"действует":"заменена"}</td></tr>`;}).join("");
@@ -638,23 +683,14 @@ async function buildFullReport(){
   return reportShell("Полный отчёт", `Сформировано ${fmtDate(today())} · записей: ${exps.length} · валюта ${cur()}`, body);
 }
 async function exportFullPdf(){
-  const html=await buildFullReport();
-  // пытаемся системный диалог «Сохранить как PDF» через скрытый iframe
-  try{
-    const old=$("#__bt_print"); if(old) old.remove();
-    const ifr=document.createElement("iframe"); ifr.id="__bt_print"; ifr.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0";
-    document.body.appendChild(ifr);
-    const doc=ifr.contentDocument||ifr.contentWindow.document; doc.open(); doc.write(html); doc.close();
-    ifr.onload=()=>{ try{ ifr.contentWindow.focus(); ifr.contentWindow.print(); }catch(e){} };
-    // если print не сработает (Telegram WebView) — через 1.2с подскажем запасной путь и скачаем HTML
-    setTimeout(()=>{ if(!window.__bt_printed){ download("blvck-taxi-otchet.html",html,"text/html;charset=utf-8"); toast("В Telegram PDF через диалог может не открыться — скачан HTML: открой его в браузере → ⋮ → Печать → Сохранить как PDF"); } },1400);
-    window.__bt_printed=false;
-    const mark=()=>{ window.__bt_printed=true; };
-    ifr.contentWindow.addEventListener("beforeprint",mark); ifr.contentWindow.addEventListener("afterprint",mark);
-    toast("Открой диалог печати → «Сохранить как PDF»");
-  }catch(e){ download("blvck-taxi-otchet.html",html,"text/html;charset=utf-8").then(()=>toast("Скачан HTML-отчёт → в браузере сохрани как PDF")); }
+  const html=await buildFullReport(true);
+  const name=`blvck-taxi-otchet-${today()}.html`;
+  // отдаём HTML-файл в системное меню: там выбор «браузер» → в браузере кнопка «Сохранить как PDF»
+  const r=await saveFile(name, html, "text/html;charset=utf-8", {title:"Полный отчёт BLVCK TAXI", text:"Открой в браузере → ⋮ → Печать → Сохранить как PDF"});
+  if(r.ok && r.via==="share"){ hapticOk(); toast("Открой файл в браузере → Сохранить как PDF"); return; }
+  handleSaveResult(r,{htmlView:html});
 }
-async function exportFullHtml(){ const html=await buildFullReport(); const ok=await download("blvck-taxi-otchet.html",html,"text/html;charset=utf-8"); if(ok!==false){toast("Отчёт сохранён");hapticOk();} }
+async function exportFullHtml(){ const html=await buildFullReport(true); const r=await saveFile(`blvck-taxi-otchet-${today()}.html`, html, "text/html;charset=utf-8", {title:"Полный отчёт BLVCK TAXI"}); handleSaveResult(r,{htmlView:html}); }
 
 /* ---------- ФСЗН ---------- */
 function fsznSettings(){ return { mzp:parseFloat(localStorage.getItem("blvck_fszn_mzp"))||726, rate:parseFloat(localStorage.getItem("blvck_fszn_rate"))||35 }; }
@@ -687,7 +723,7 @@ async function screenSettings(){ const exps=await dbAll("expenses"); const tgNam
   return `<div class="h1">Настройки</div>
     <div class="glass card"><div class="row between"><span>Тема</span><button class="btn sm" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙 Тёмная":"☀️ Светлая"}</button></div><div class="divider"></div><div class="row between"><span>Валюта</span><div class="chips">${CURS.map(c=>`<span class="chip ${c===cur()?"on":""}" data-action="setCur" data-cur="${c}">${c}</span>`).join("")}</div></div></div>
 
-    <div class="info"><div class="it"><span class="d"></span>Где живут данные</div><p>Все твои цифры хранятся <b>только в этом приложении на этом телефоне</b> — в облако ничего не уходит, серверов нет. Поэтому кнопки «сохранить» на каждом шагу нет: запись пишется сама, как ты нажал «Сохранить» в окне ввода. Чтобы не потерять данные при поломке/смене телефона — делай <b>резервную копию</b> ниже.</p></div>
+    <div class="info"><div class="it"><span class="d"></span>Где живут данные</div><p>Все твои цифры хранятся <b>только в этом приложении на этом телефоне</b> — в облако ничего не уходит, серверов нет. Запись пишется сама, как ты нажал «Сохранить» в окне ввода. Чтобы не потерять данные при поломке/смене телефона — делай <b>резервную копию</b> ниже: сохранение идёт через системное меню «Поделиться», где ты сам выбираешь, куда положить файл (Файлы / Диск / Избранное Telegram).</p></div>
 
     <div class="h2">деньги, штрафы и чеки</div><div class="glass card"><button class="btn primary" data-action="openDailyRev">💵 Выручка за день</button><div style="height:10px"></div><button class="btn" data-action="openExpenses">📋 Все расходы и графики</button><div style="height:10px"></div><button class="btn" data-action="openFines">🚨 Штрафы</button><div style="height:10px"></div><button class="btn" data-action="openReceipts">🧾 Чеки и выгрузка</button></div>
 
@@ -697,13 +733,13 @@ async function screenSettings(){ const exps=await dbAll("expenses"); const tgNam
 
     <div class="h2">резервная копия и отчёты</div>
     <div class="glass card">
-      <p class="muted small" style="margin-top:0">Копия = один файл со всем (расходы, чеки, доход, штрафы, настройки). Отчёт = читаемый документ со всеми таблицами.</p>
+      <p class="muted small" style="margin-top:0">Копия = один файл со всем (расходы, чеки, доход, штрафы, настройки). Отчёт = читаемый документ со всеми таблицами. Сохранение — через системное меню «Поделиться».</p>
       <button class="btn primary" data-action="export">⬇️ Сохранить копию</button>
       <div style="height:10px"></div>
       <button class="btn" data-action="import">⬆️ Восстановить из файла</button>
       <div style="height:10px"></div>
       <button class="btn" data-action="exportFullPdf">📄 Полный отчёт (PDF)</button>
-      <div class="fszn-note">Файл падает в папку <b>«Загрузки / Download»</b> телефона. Выбрать другую папку в момент скачивания из приложения нельзя — это ограничение Android; потом файл можно переместить через «Файлы». На компьютере кнопка сама спросит, куда сохранить.</div>
+      <div class="fszn-note">При нажатии откроется меню «Поделиться» → выбери <b>«Файлы» / «Сохранить на устройство» / Google Диск / «Избранное Telegram»</b>. Для PDF выбери в меню браузер → там «Сохранить как PDF». Если меню не открылось — обнови Telegram.</div>
     </div>
 
     <div class="h2">опасная зона</div><div class="glass card"><button class="btn danger" data-action="wipe">🧹 Удалить все данные</button><p class="muted small" style="margin:8px 2px 0">Записей расходов: ${exps.length}</p></div>
@@ -782,11 +818,12 @@ async function exportCSV(kind){ const year=YEAR(),q=CUR_Q();
   L.push([],["ШТРАФЫ (оплаченные за период)"]); finesList().filter(f=>f.paid&&set.has((f.paidDate||"").slice(0,7))).sort((a,b)=>(a.paidDate||"").localeCompare(b.paidDate||"")).forEach(f=>L.push([f.paidDate,f.name,Number(f.amount).toFixed(2)]));
   if(isIP()){ const s=fsznSettings(); L.push([],["ФСЗН ПО КВАРТАЛАМ"],["Квартал","Доход","Минимум","Уплачено"]); const qs=kind==="quarter"?[q]:[1,2,3,4]; for(const qq of qs){ const rec=await dbGet("fszn",`${year}-Q${qq}`)||{paid:0}; const inc=quarterIncome(qq,year); L.push([`Q${qq}`,inc.toFixed(2),(s.rate/100*s.mzp*3).toFixed(2),(Number(rec.paid)||0).toFixed(2)]); } }
   const csv="\uFEFF"+L.map(r=>r.map(csvCell).join(";")).join("\r\n");
-  const ok=await download(`blvck-taxi-${kind}-${pl.replace(/\s/g,"")}.csv`,csv,"text/csv;charset=utf-8"); if(ok!==false){toast("CSV сохранён");hapticOk();} }
+  const r=await saveFile(`blvck-taxi-${kind}-${pl.replace(/\s/g,"")}.csv`, csv, "text/csv;charset=utf-8", {title:"Сводка BLVCK TAXI"}); handleSaveResult(r); }
 
 /* ---------- бэкап ---------- */
 const LS_KEYS=["blvck_cur","blvck_theme","blvck_is_ip","blvck_income","blvck_km","blvck_hours","blvck_fuel_presets","blvck_tax_reminders","blvck_fszn_mzp","blvck_fszn_rate","blvck_streak_best","blvck_fines","blvck_daily_rev","blvck_daily_target","blvck_tg_name","blvck_onboarded"];
-async function exportBackup(){ const data={_app:"BLVCK TAXI",_v:3,_at:new Date().toISOString()}; for(const s of STORES) data[s]=await dbAll(s); data._ls=Object.fromEntries(LS_KEYS.map(k=>[k,localStorage.getItem(k)]).filter(([,v])=>v!=null)); const ok=await download(`blvck-taxi-backup-${today()}.json`,JSON.stringify(data,null,2),"application/json"); if(ok!==false){toast("Копия сохранена");hapticOk();} }
+async function exportBackup(){ const data={_app:"BLVCK TAXI",_v:3,_at:new Date().toISOString()}; for(const s of STORES) data[s]=await dbAll(s); data._ls=Object.fromEntries(LS_KEYS.map(k=>[k,localStorage.getItem(k)]).filter(([,v])=>v!=null));
+  const r=await saveFile(`blvck-taxi-backup-${today()}.json`, JSON.stringify(data,null,2), "application/json", {title:"Резервная копия BLVCK TAXI", text:"Файл резервной копии — сохрани в Файлы/Диск/Избранное"}); handleSaveResult(r); }
 function importBackup(){ $("#restoreInput").click(); }
 async function handleRestoreFile(file){ if(!file) return; try{ const data=JSON.parse(await file.text()); if(!confirm("Заменить ВСЕ текущие данные данными из файла?")) return; for(const s of STORES){ await dbClear(s); for(const v of (data[s]||[])) await dbPut(s,v); } if(data._ls&&typeof data._ls==="object"){ for(const k of LS_KEYS){ if(data._ls[k]!=null) localStorage.setItem(k,data._ls[k]); else localStorage.removeItem(k); } } applyTheme(); toast("Данные восстановлены полностью"); hapticOk(); renderAsync(); }catch(e){ toast("Ошибка файла"); hapticBad(); } }
 async function wipe(){ if(!confirm("Удалить ВСЕ данные приложения? Это необратимо.")) return; for(const s of STORES) await dbClear(s); LS_KEYS.filter(k=>k!=="blvck_theme"&&k!=="blvck_cur"&&k!=="blvck_onboarded").forEach(k=>localStorage.removeItem(k)); toast("Всё удалено"); hapticOk(); renderAsync(); }
@@ -798,7 +835,7 @@ function setCur(c){ localStorage.setItem("blvck_cur",c); haptic(); renderAsync()
 function setIP(v){ localStorage.setItem("blvck_is_ip",v); haptic(); renderAsync(); }
 function makeParticles(){ const box=$(".bg-particles"); if(!box) return; for(let i=0;i<14;i++){ const s=document.createElement("span"); s.style.left=Math.random()*100+"%"; s.style.animationDuration=(14+Math.random()*18)+"s"; s.style.animationDelay=(-Math.random()*22)+"s"; s.style.transform=`scale(${.5+Math.random()*1.2})`; box.appendChild(s); } }
 
-/* ---------- поиск расходов (debounce) ---------- */
+/* ---------- поиск расходов ---------- */
 let searchT=null;
 document.addEventListener("input",(ev)=>{ const el=ev.target; if(el&&el.id==="exp_search"){ clearTimeout(searchT); searchT=setTimeout(()=>{ state.expQ=el.value; renderAsync(); },160); } });
 
@@ -826,6 +863,8 @@ document.addEventListener("click", async (ev)=>{
     case "setExpCat": state.expCat=el.dataset.cat; renderAsync(); break;
     case "exportFullPdf": exportFullPdf(); break;
     case "exportFullHtml": exportFullHtml(); break;
+    case "helpView": { const h=window.__bt_help; if(h&&h.htmlView){ openHtmlViewer(h.htmlView); } } break;
+    case "helpRetry": { const h=window.__bt_help; if(h){ closeModal(); const r=await saveFile(h.name||"blvck-taxi-file", h.content||"", h.mime||"application/octet-stream", {title:"BLVCK TAXI"}); handleSaveResult(r, h); } } break;
     case "openFines": state.screen="fines"; state._animateScreen=true; renderAsync(); break;
     case "openAddFine": modalFine(); break;
     case "finePreset": { const i=$("#f_name"); if(i&&!i.value) i.value=el.dataset.name; } break;
