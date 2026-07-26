@@ -5,7 +5,7 @@
    ========================================================= */
 
 /* ===== URL СЕРВЕРА — ЗАМЕНИ НА СВОЙ URL С RENDER ===== */
-const RENDER_URL = "https://https://blvck-taxi.onrender.com"; // ← сюда свой URL
+const RENDER_URL = "https://blvck-taxi-api.onrender.com"; // ← сюда свой URL
 
 /* ===== TELEGRAM MINI APP ===== */
 const TG = window.Telegram?.WebApp;
