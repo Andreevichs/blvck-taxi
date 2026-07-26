@@ -3,6 +3,7 @@
    vanilla, без зависимостей. IndexedDB + localStorage. Офлайн.
    + Telegram Mini App + сервер на Render (PDF в чат + облако + автоотчёт)
    + выручка: скролл на весь месяц, суммы над столбиками, сохранение
+   + вкладочные переходы без призрака и без пустых экранов
    ========================================================= */
 
 /* ===== URL СЕРВЕРА — ЗАМЕНИ НА СВОЙ URL С RENDER (без слэша в конце) ===== */
@@ -238,10 +239,10 @@ const dbGet=(s,id)=>reqP(tx(s).get(id));
 const dbAll=(s)=>reqP(tx(s).getAll());
 const dbClear=(s)=>reqP(tx(s,"readwrite").clear());
 
-/* ---------- рендер + post-render ---------- */
+/* ---------- рендер + post-render (без наблюдателя и без перезапуска анимации страницы) ---------- */
 let revealIO=null, revealGen=0;
 async function renderAsync(){
-  const app=$("#app"); app.style.animation="none"; void app.offsetWidth; app.style.animation="";
+  const app=$("#app");
   const html = await ({ dash:screenDash, stats:screenStats, car:screenCar, docs:screenDocs, settings:screenSettings, fszn:screenFszn, fines:screenFines, receipts:screenReceipts, expenses:screenExpenses }[state.screen])();
   const showOnboard = !onboarded();
   app.innerHTML = (showOnboard?onboardHTML():"") + html;
@@ -264,15 +265,11 @@ function postRender(){
     const to=parseFloat(el.getAttribute("data-count"))||0, dec=parseInt(el.getAttribute("data-dec")||"2",10), pre=el.getAttribute("data-prefix")||"", suf=el.getAttribute("data-suffix")||"";
     if(anim) countUp(el,to,dec,pre,suf); else el.textContent=pre+to.toLocaleString("ru-RU",{maximumFractionDigits:dec})+suf;
   });
-  if(!anim){ els.forEach(el=>el.classList.add("revealed")); state._animateScreen=false; return; }
-  let i=0;
-  const io=new IntersectionObserver((entries)=>{
-    if(gen!==revealGen) return;
-    entries.forEach(en=>{ if(en.isIntersecting){ const el=en.target; el.style.transitionDelay=(Math.min(i++,9)*50)+"ms"; el.classList.add("revealed"); io.unobserve(el); } });
-  },{threshold:0.05, rootMargin:"0px 0px -6% 0px"});
-  revealIO=io;
-  requestAnimationFrame(()=>requestAnimationFrame(()=>{ if(gen!==revealGen) return; els.forEach(el=>{ if(!el.classList.contains("revealed")) io.observe(el); }); }));
-  setTimeout(()=>{ if(gen!==revealGen) return; els.forEach(el=>{ if(!el.classList.contains("revealed")){ el.style.transitionDelay="0ms"; el.classList.add("revealed"); } }); if(revealIO){ revealIO.disconnect(); revealIO=null; } },1300);
+  // Проявление мягким каскадом через кадр — БЕЗ наблюдателя, который на
+  // некоторых прошивках не срабатывает и оставляет экран пустым/«призрачным».
+  // Плюс страховка: через 600мс всё принудительно видимо, что бы ни случилось.
+  requestAnimationFrame(()=>{ if(gen!==revealGen) return; els.forEach((el,i)=>{ el.style.transitionDelay=(Math.min(i,8)*35)+"ms"; el.classList.add("revealed"); }); });
+  setTimeout(()=>{ if(gen!==revealGen) return; els.forEach(el=>{ el.style.transitionDelay="0ms"; el.classList.add("revealed"); }); if(revealIO){ revealIO.disconnect(); revealIO=null; } },600);
   state._animateScreen=false;
 }
 function renderTabs(){
@@ -332,7 +329,9 @@ async function screenDash(){
     const f=(x,c,l)=>x.dir==="flat"?`<span class="flat">${l} →</span>`:`<span class="${c}">${l} ${arrow(x.dir)}${x.pct!=null?x.pct+"%":""}</span>`;
     return (spentMonth||spPY||rC||rPY)?`<div class="trendrow">${f(ts,c1,"расходы")} · ${f(tr,c2,"выручка")}</div>`:""; })();
 
-    let carCostBlock="";
+  // блок «доля машины» — самодостаточный: все стили внутри, полоса через data-bar,
+  // цвета захардкожены, чтобы не зависеть от styles.css и не разваливаться в текст.
+  let carCostBlock="";
   { const carCost=exps.filter(e=>CAR_CATS.includes(e.category)&&new Date(e.date)>=monthStart).reduce((s,e)=>s+Number(e.amount||0),0);
     const incM=sumDaysForYM(ymNow()).sum;
     if(carCost>0 && incM>0){ const pct=Math.round(carCost/incM*100); const after=incM-carCost; const warn=pct>=60;
@@ -381,7 +380,7 @@ async function screenDash(){
   return `
     <div class="topbar">
       <div class="brand"><span class="brand-dot"></span><span class="brand-name">BLVCK</span><span class="brand-sub">TAXI</span></div>
-      <div class="topbar-r">${tgName?`<span class="who">${esc(tgName)}</span>`:""}<button class="iconbtn" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙":"️"}</button></div>
+      <div class="topbar-r">${tgName?`<span class="who">${esc(tgName)}</span>`:""}<button class="iconbtn" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙":"☀️"}</button></div>
     </div>
 
     ${alerts.map(a=>`<div class="alert ${a.bad?"bad":""}"><span>${a.bad?"⚠️":"🔔"}</span><div><div style="font-weight:700">${a.t}</div><div class="small muted">${a.s}</div></div></div>`).join("")}
@@ -547,7 +546,7 @@ async function screenStats(){
 function filterByRange(exps,range){ if(range==="all") return exps; const d=new Date(); if(range==="month")d.setMonth(d.getMonth()-1); if(range==="quarter")d.setMonth(d.getMonth()-3); if(range==="year")d.setFullYear(d.getFullYear()-1); const c=d.toISOString().slice(0,10); return exps.filter(e=>e.date>=c); }
 function donut(byCat){ const e=Object.entries(byCat).filter(([,v])=>v>0); const total=e.reduce((s,[,v])=>s+v,0);
   const colors={fuel:"#ff5a00",parts:"#ff7d24",repair:"#f5f4f1",wash:"#80807a",rent:"#b8b8b0",other:"#34342f"}; let a0=-Math.PI/2; const R=60,r=38,cx=80,cy=80;
-  const arc=a1=>{const lg=(a1-a0)>Math.PI?1:0,p=(a,rd)=>[cx+rd*Math.cos(a),cy+rad*Math.sin(a)];const[x0,y0]=p(a0,R),[x1,y1]=p(a1,R),[x2,y2]=p(a1,r),[x3,y3]=p(a0,r);const d=`M${x0} ${y0} A${R} ${R} 0 ${lg} 1 ${x1} ${y1} L${x2} ${y2} A${r} ${r} 0 ${lg} 0 ${x3} ${y3} Z`;a0=a1;return d;};
+  const arc=a1=>{const lg=(a1-a0)>Math.PI?1:0,p=(a,rd)=>[cx+rd*Math.cos(a),cy+rd*Math.sin(a)];const[x0,y0]=p(a0,R),[x1,y1]=p(a1,R),[x2,y2]=p(a1,r),[x3,y3]=p(a0,r);const d=`M${x0} ${y0} A${R} ${R} 0 ${lg} 1 ${x1} ${y1} L${x2} ${y2} A${r} ${r} 0 ${lg} 0 ${x3} ${y3} Z`;a0=a1;return d;};
   const paths=e.map(([k,v])=>`<path d="${arc(a0+(v/total)*Math.PI*2)}" fill="${colors[k]||"#888"}" opacity=".95"/>`).join("");
   const legend=e.map(([k,v])=>`<div class="li"><span class="dot" style="background:${colors[k]||"#888"}"></span>${(CATS[k]?.t||k)} · ${Math.round(v/total*100)}%</div>`).join("");
   return `<div class="row" style="gap:18px;margin-top:10px"><svg class="chart" viewBox="0 0 160 160" width="140" height="140">${paths}<text class="ct" x="80" y="78" text-anchor="middle" font-size="14" font-weight="800">${money(total).split(" ")[0]}</text><text class="cm" x="80" y="94" text-anchor="middle" font-size="9">${cur()}</text></svg><div class="legend col">${legend}</div></div>`; }
@@ -650,7 +649,6 @@ async function modalDailyRev(){
   const def=today();
   const rev=dailyRevOf(def);
   const target=getDailyTarget();
-  // весь текущий месяц со скроллом; новый месяц = новый график автоматически
   const ym=ymNow(); const [yy,mm]=ym.split("-").map(Number);
   const daysInMonth=new Date(yy,mm,0).getDate();
   const days=[]; for(let dd=1; dd<=daysInMonth; dd++) days.push(`${ym}-${String(dd).padStart(2,"0")}`);
