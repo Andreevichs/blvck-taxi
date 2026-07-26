@@ -1,11 +1,12 @@
 /* =========================================================
    BLVCK TAXI — instrument minimalism 2026 (black/white/orange)
    vanilla, без зависимостей. IndexedDB + localStorage. Офлайн.
-   + Telegram Mini App + сервер на Render: отправка PDF в чат бота.
+   + Telegram Mini App + сервер на Render (PDF в чат + облако + автоотчёт)
+   + выручка: скролл на весь месяц, суммы над столбиками, сохранение
    ========================================================= */
 
-/* ===== URL СЕРВЕРА — ЗАМЕНИ НА СВОЙ URL С RENDER ===== */
-const RENDER_URL = "https://blvck-taxi-api.onrender.com"; // ← сюда свой URL
+/* ===== URL СЕРВЕРА — ЗАМЕНИ НА СВОЙ URL С RENDER (без слэша в конце) ===== */
+const RENDER_URL = "https://blvck-taxi-api.onrender.com";
 
 /* ===== TELEGRAM MINI APP ===== */
 const TG = window.Telegram?.WebApp;
@@ -136,7 +137,7 @@ function weekdayAvg(){ const m=dailyRevMap(); const s=[0,0,0,0,0,0,0],c=[0,0,0,0
 function trendPct(c,p){ if(p<=0) return c>0?{dir:"up",pct:null}:{dir:"flat",pct:null}; const pct=Math.round((c-p)/p*100); return {dir:pct>0?"up":pct<0?"down":"flat",pct}; }
 const arrow = d => d==="up"?"↑":d==="down"?"↓":"→";
 
-/* ---------- сохранение файла локально (скриншоты + текст копии) ---------- */
+/* ---------- сохранение файла локально ---------- */
 function makeFile(name, content, mime){
   const blob = (content instanceof Blob) ? content : new Blob([content], {type: mime||"application/octet-stream"});
   try{ return new File([blob], name, {type: mime||blob.type||"application/octet-stream"}); }
@@ -361,7 +362,7 @@ async function screenDash(){
   return `
     <div class="topbar">
       <div class="brand"><span class="brand-dot"></span><span class="brand-name">BLVCK</span><span class="brand-sub">TAXI</span></div>
-      <div class="topbar-r">${tgName?`<span class="who">${esc(tgName)}</span>`:""}<button class="iconbtn" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙":"☀️"}</button></div>
+      <div class="topbar-r">${tgName?`<span class="who">${esc(tgName)}</span>`:""}<button class="iconbtn" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙":"️"}</button></div>
     </div>
 
     ${alerts.map(a=>`<div class="alert ${a.bad?"bad":""}"><span>${a.bad?"⚠️":"🔔"}</span><div><div style="font-weight:700">${a.t}</div><div class="small muted">${a.s}</div></div></div>`).join("")}
@@ -527,7 +528,7 @@ async function screenStats(){
 function filterByRange(exps,range){ if(range==="all") return exps; const d=new Date(); if(range==="month")d.setMonth(d.getMonth()-1); if(range==="quarter")d.setMonth(d.getMonth()-3); if(range==="year")d.setFullYear(d.getFullYear()-1); const c=d.toISOString().slice(0,10); return exps.filter(e=>e.date>=c); }
 function donut(byCat){ const e=Object.entries(byCat).filter(([,v])=>v>0); const total=e.reduce((s,[,v])=>s+v,0);
   const colors={fuel:"#ff5a00",parts:"#ff7d24",repair:"#f5f4f1",wash:"#80807a",rent:"#b8b8b0",other:"#34342f"}; let a0=-Math.PI/2; const R=60,r=38,cx=80,cy=80;
-  const arc=a1=>{const lg=(a1-a0)>Math.PI?1:0,p=(a,rd)=>[cx+rd*Math.cos(a),cy+rd*Math.sin(a)];const[x0,y0]=p(a0,R),[x1,y1]=p(a1,R),[x2,y2]=p(a1,r),[x3,y3]=p(a0,r);const d=`M${x0} ${y0} A${R} ${R} 0 ${lg} 1 ${x1} ${y1} L${x2} ${y2} A${r} ${r} 0 ${lg} 0 ${x3} ${y3} Z`;a0=a1;return d;};
+  const arc=a1=>{const lg=(a1-a0)>Math.PI?1:0,p=(a,rd)=>[cx+rd*Math.cos(a),cy+rad*Math.sin(a)];const[x0,y0]=p(a0,R),[x1,y1]=p(a1,R),[x2,y2]=p(a1,r),[x3,y3]=p(a0,r);const d=`M${x0} ${y0} A${R} ${R} 0 ${lg} 1 ${x1} ${y1} L${x2} ${y2} A${r} ${r} 0 ${lg} 0 ${x3} ${y3} Z`;a0=a1;return d;};
   const paths=e.map(([k,v])=>`<path d="${arc(a0+(v/total)*Math.PI*2)}" fill="${colors[k]||"#888"}" opacity=".95"/>`).join("");
   const legend=e.map(([k,v])=>`<div class="li"><span class="dot" style="background:${colors[k]||"#888"}"></span>${(CATS[k]?.t||k)} · ${Math.round(v/total*100)}%</div>`).join("");
   return `<div class="row" style="gap:18px;margin-top:10px"><svg class="chart" viewBox="0 0 160 160" width="140" height="140">${paths}<text class="ct" x="80" y="78" text-anchor="middle" font-size="14" font-weight="800">${money(total).split(" ")[0]}</text><text class="cm" x="80" y="94" text-anchor="middle" font-size="9">${cur()}</text></svg><div class="legend col">${legend}</div></div>`; }
@@ -623,32 +624,53 @@ async function exportReceiptsCsv(){ const list=await getReceiptExpenses(); if(!l
   const csv=receiptsCsvText(list,pr); const ok=await copyText(csv);
   if(ok){ toast("CSV в буфере — вставь в Excel или чат"); hapticOk(); } else { toast("Не вышло скопировать"); hapticBad(); } }
 
-/* ---------- ОТПРАВКА ОТЧЁТА БОТУ В ЧАТ (через сервер на Render) ---------- */
-async function sendReportToBot(){
-  if(!isTelegram){ toast("Отправка в чат работает только из Telegram"); return; }
-  if(!TG?.initData){ toast("Не вижу Telegram — открой через бота"); return; }
-  toast("Собираю отчёт…"); haptic("light");
-  const exps=await dbAll("expenses"); const car=await dbGet("car",1)||{}; const fines=finesList();
-  const s=fsznSettings(); const y=YEAR(); let paid=0; for(let q=1;q<=4;q++){const r=await dbGet("fszn",`${y}-Q${q}`);paid+=Number(r?.paid)||0;}
-  const curMile=Number(car.currentMileage)||0;
-  const recs=exps.filter(e=>(e.category==="repair"||e.category==="parts")&&Number(e.mileage)>0);
-  const groups={}; recs.forEach(e=>{const b=(e.note||"").trim();const k=b?(e.category+"|"+b.toLowerCase()):("id|"+e.id);(groups[k]=groups[k]||[]).push(e);});
-  const wear=[]; Object.values(groups).forEach(arr=>{arr.sort((a,b)=>Number(a.mileage)-Number(b.mileage));arr.forEach((e,i)=>{const nx=arr[i+1];const ins=Number(e.mileage);let sp=null,act=!nx;if(nx){sp=Math.max(0,Number(nx.mileage)-ins);}else if(curMile>ins){sp=curMile-ins;}wear.push({t:e.note||CATS[e.category]?.t||"",ins,sp,act});});});
-  const rev=dailyRevMap(); const revArr=Object.keys(rev).filter(d=>Number(rev[d])>0).sort().map(d=>({date:d,v:Number(rev[d])}));
-  const payload={
-    cur:cur(), car:{model:car.model||"",plate:car.plate||"",mileage:curMile},
-    expenses: exps.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(e=>({date:e.date,t:CATS[e.category]?.t||e.category,note:e.note||"",amount:Number(e.amount||0),receipt:e.receipt||null})),
-    rev: revArr,
-    fines: fines.map(f=>({name:f.name,amount:Number(f.amount||0),paid:!!f.paid})),
-    wear,
-    fszn:{ paid, goal:s.rate/100*s.mzp*12, rate:s.rate, mzp:s.mzp },
-    ip: isIP()
-  };
-  try{
-    const res=await fetch(RENDER_URL+"/send-report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({initData:TG.initData, payload})});
-    if(!res.ok){ const t=await res.text().catch(()=>""); toast("Ошибка "+res.status+(res.status===502?" — нажми Start у бота":"")); hapticBad(); return; }
-    toast("Отправлено в чат с ботом ✅"); hapticOk();
-  }catch(e){ toast("Не достучался до сервера (первый запуск ~30 сек)"); hapticBad(); }
+/* ---------- ВЫРУЧКА: модалка со скроллом на весь месяц + сохранение ---------- */
+async function modalDailyRev(){
+  const exps=await dbAll("expenses");
+  const miss=missingWorkDays(exps,daysAgo(34),today()).slice(0,14);
+  const def=today();
+  const rev=dailyRevOf(def);
+  const target=getDailyTarget();
+  // весь текущий месяц со скроллом; новый месяц = новый график автоматически
+  const ym=ymNow(); const [yy,mm]=ym.split("-").map(Number);
+  const daysInMonth=new Date(yy,mm,0).getDate();
+  const days=[]; for(let dd=1; dd<=daysInMonth; dd++) days.push(`${ym}-${String(dd).padStart(2,"0")}`);
+  const vals=days.map(d=>dailyRevOf(d));
+  const max=Math.max(1, ...vals);
+  const defV=dailyRevOf(def);
+  const chart=`
+    <style>
+      @keyframes growBar{from{height:0;opacity:.2}to{height:var(--h);opacity:1}}
+      .revbar{animation:growBar .5s cubic-bezier(.22,1,.36,1) both}
+      .revcol:active .revbar{filter:brightness(1.25)}
+    </style>
+    <div class="fszn-note" style="margin:0 0 6px">Выручка по дням · ${monthLabel(ym)} — листай вбок, касайся столбика, чтобы подставить сумму</div>
+    <div id="rev_indicator" style="font-family:var(--mono);font-size:13px;font-weight:700;margin-bottom:8px;min-height:18px"><b style="color:var(--accent)">${new Date(def+'T00:00:00').getDate()} ${monShort(def)}</b> · ${defV>0?money(defV):'нет выручки — внеси выше'}</div>
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px">
+      <div style="display:flex;gap:3px;align-items:flex-end;height:168px;width:max-content;min-width:100%">
+        ${days.map((d,i)=>{ const v=vals[i]; const barH=v>0?Math.max(6,Math.round(v/max*104)):6; const sel=d===def;
+          const top = v>0 ? money(v).replace(' '+cur(),'').trim() : '·';
+          const topCol = v>0 ? 'var(--text)' : 'var(--faint)';
+          return `<div class="revcol" data-action="pickDay" data-date="${d}" style="flex:0 0 42px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;cursor:pointer">
+            <div style="font-family:var(--mono);font-size:9px;font-weight:700;color:${topCol};white-space:nowrap;margin-bottom:4px">${top}</div>
+            <div class="revbar" style="--h:${barH}px;width:74%;border-radius:6px 6px 2px 2px;background:${v>0?'linear-gradient(180deg,#ff8a33,#ff5a00)':'var(--s3)'};${sel?'outline:2px solid #fff;outline-offset:1px;':''};animation-delay:${i*14}ms"></div>
+            <div style="font-family:var(--mono);font-size:9px;margin-top:5px;color:var(--muted)">${i+1}</div>
+          </div>`; }).join("")}
+      </div>
+    </div>`;
+  const chips=miss.length?`<div class="field"><label>Быстро — рабочие дни без выручки</label><div class="chips">${miss.map(d=>`<span class="chip" data-action="pickDay" data-date="${d}">${d.slice(8,10)}.${d.slice(5,7)}</span>`).join("")}</div><div class="fszn-note">тап по дате подставит её и подтянет сумму</div></div>`:"";
+  openModal(`<div class="mhead"><h3>💵 Выручка за день</h3><button class="x" data-action="close">×</button></div><p class="muted small" style="margin-top:0">сегодня или любой прошлый день — доход, тренд и карта дней пересчитаются сами</p><div class="grid2"><div class="field"><label>Дата</label><input id="d_date" class="input" type="date" value="${def}"></div><div class="field"><label>Выручка за день</label><input id="d_rev" class="input" type="number" inputmode="decimal" value="${rev||""}" placeholder="0"></div></div><div class="field" style="margin:6px 0 0">${chart}</div>${chips}<div class="field"><label>План на день (необязательно, общий)</label><input id="d_target" class="input" type="number" inputmode="decimal" value="${target||""}" placeholder="сколько хочу привезти"></div><button class="btn primary" data-action="saveDailyRev">Сохранить</button>`);
+  setTimeout(()=>$("#d_rev")?.focus(),60);
+}
+function highlightRevCol(date){
+  document.querySelectorAll('.revcol').forEach(el=>{
+    const on = el.dataset.date===date;
+    const bar = el.querySelector('.revbar');
+    if(bar){ bar.style.outline = on?'2px solid #fff':'none'; bar.style.outlineOffset='1px'; }
+  });
+  const ind=$('#rev_indicator');
+  if(ind){ const v=dailyRevOf(date); const dd=new Date(date+'T00:00:00');
+    ind.innerHTML = `<b style="color:var(--accent)">${dd.getDate()} ${monShort(date)}</b> · ${v>0?money(v):'нет выручки — внеси выше'}`; }
 }
 
 /* ---------- РЕЖИМ СКРИНШОТА ---------- */
@@ -829,10 +851,12 @@ async function fsznMiniWidget(){ const s=fsznSettings(),year=YEAR(),minYear=s.ra
 
 /* ---------- НАСТРОЙКИ ---------- */
 async function screenSettings(){ const exps=await dbAll("expenses"); const tgName=localStorage.getItem("blvck_tg_name"); const ipOn=isIP();
+  const syncT=Number(localStorage.getItem("blvck_cloud_sync"))||0;
+  const syncTxt=syncT?new Date(syncT).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"ещё не было";
   return `<div class="h1">Настройки</div>
     <div class="glass card"><div class="row between"><span>Тема</span><button class="btn sm" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙 Тёмная":"☀️ Светлая"}</button></div><div class="divider"></div><div class="row between"><span>Валюта</span><div class="chips">${CURS.map(c=>`<span class="chip ${c===cur()?"on":""}" data-action="setCur" data-cur="${c}">${c}</span>`).join("")}</div></div></div>
 
-    <div class="info"><div class="it"><span class="d"></span>Где живут данные</div><p>Все цифры — <b>только в этом телефоне</b>, без облака. Отчёт улетает в чат ботом через сервер‑курьер (он не хранит твои данные, только пересылает PDF). Чеки снимай скриншотами как запасной путь.</p></div>
+    <div class="info"><div class="it"><span class="d"></span>Где живут данные</div><p>Все цифры — <b>только в этом телефоне</b>, без чужого облака. Отчёт улетает в чат ботом через сервер‑курьер (он не хранит твои данные, только пересылает PDF). Чеки снимай скриншотами как запасной путь.</p></div>
 
     <div class="h2">деньги, штрафы и чеки</div><div class="glass card"><button class="btn primary" data-action="openDailyRev">💵 Выручка за день</button><div style="height:10px"></div><button class="btn" data-action="openExpenses">📋 Все расходы и графики</button><div style="height:10px"></div><button class="btn" data-action="openFines">🚨 Штрафы</button><div style="height:10px"></div><button class="btn" data-action="openReceipts">🧾 Чеки</button></div>
 
@@ -850,6 +874,9 @@ async function screenSettings(){ const exps=await dbAll("expenses"); const tgNam
       <button class="btn" data-action="openImportText">⬆️ Восстановить из текста</button>
       <div style="height:10px"></div>
       <button class="btn" data-action="sendReportBot">📤 Отправить отчёт боту в чат</button>
+      <div style="height:10px"></div>
+      <button class="btn" data-action="syncCloud">☁️ Синхронизировать с облаком</button>
+      <div class="fszn-note">Облако нужно, чтобы я сам присылал PDF раз в месяц. Хранится на твоём сервере. Последняя синхронизация: ${syncTxt}</div>
     </div>
 
     <div class="h2">опасная зона</div><div class="glass card"><button class="btn danger" data-action="wipe">🧹 Удалить все данные</button><p class="muted small" style="margin:8px 2px 0">Записей расходов: ${exps.length}</p></div>
@@ -861,12 +888,6 @@ function closeModal(){ $("#modal").hidden=true; $("#modal").innerHTML=""; state.
 function modalFuelQuick(){ const p=fuelPresets(); openModal(`<div class="mhead"><h3>⛽ Быстрая заправка</h3><button class="x" data-action="close">×</button></div><p class="muted small" style="margin-top:0">один тап — расход записан на сегодня, без ввода цифр</p><div class="presets">${p.map(v=>`<button class="preset" data-action="fuelPreset" data-amt="${v}">${v}<span class="cur">${cur()}</span></button>`).join("")}</div><button class="btn" data-action="quick" data-cat="fuel">✍️ Другая сумма</button><div style="height:8px"></div><button class="btn ghost sm" data-action="openFuelPresets" style="width:100%">⚙️ Настроить суммы</button>`); }
 function modalFuelPresets(){ const p=fuelPresets(); openModal(`<div class="mhead"><h3>⚙️ Суммы быстрой заправки</h3><button class="x" data-action="close">×</button></div><div class="grid3"><div class="field"><label>Сумма 1</label><input id="fp0" class="input" type="number" inputmode="decimal" value="${p[0]}"></div><div class="field"><label>Сумма 2</label><input id="fp1" class="input" type="number" inputmode="decimal" value="${p[1]}"></div><div class="field"><label>Сумма 3</label><input id="fp2" class="input" type="number" inputmode="decimal" value="${p[2]}"></div></div><button class="btn primary" data-action="saveFuelPresets">Сохранить</button>`); }
 function openDrive(){ const p=fuelPresets(); const m=$("#modal"); m.innerHTML=`<div class="drive"><div class="dhead"><div class="dtitle">🚦 За рулём</div><button class="x" data-action="close">×</button></div><div class="dpresets">${p.map(v=>`<button class="dbig" data-action="fuelPreset" data-amt="${v}">⛽ ${v}<span class="cur">${cur()}</span></button>`).join("")}</div><div class="drow"><button class="dcat" data-action="driveCat" data-cat="wash">🫧 Мойка</button><button class="dcat" data-action="driveCat" data-cat="repair">🔧 Ремонт</button><button class="dcat" data-action="driveCat" data-cat="other">📦 Другое</button></div><button class="btn danger" data-action="close">✖ Выйти из режима</button></div>`; m.hidden=false; try{TG?.BackButton?.show();}catch{} }
-async function modalDailyRev(){ const exps=await dbAll("expenses"); const miss=missingWorkDays(exps,daysAgo(34),today()).slice(0,14); const def=today(); const rev=dailyRevOf(def); const target=getDailyTarget();
-  const days=[]; for(let i=13;i>=0;i--) days.push(daysAgo(i)); const drm=dailyRevMap(); const max=Math.max(...days.map(d=>dailyRevOf(d)),1); const moShort=d=>new Date(d+"T00:00:00").toLocaleDateString("ru-RU",{month:"short"});
-  const chart=`<div class="fszn-note" style="margin:0 0 2px">Выручка по дням (с копейками). Тап по столбику = выбрать день и подставить сумму.</div><div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin:6px 0 4px"><div style="display:flex;gap:6px;align-items:flex-end;height:168px;min-width:100%;padding:6px 0 0;box-sizing:border-box"><div aria-hidden="true" style="flex:0 0 8px"></div>${days.map((d,i)=>{const has=Object.prototype.hasOwnProperty.call(drm,d);const v=dailyRevOf(d);const barH=v>0?Math.max(6,Math.round(v/max*104)):6;const sel=d===def;const showMo=(i===0)||(moShort(d)!==moShort(days[i-1]));const dd=d.slice(8,10),mo=moShort(d);const valTxt=has?(v>0?Number(v).toLocaleString("ru-RU",{maximumFractionDigits:2}):"0"):"·";return `<div class="revcol" data-action="pickDay" data-date="${d}" style="flex:1 0 46px;min-width:46px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;cursor:pointer;outline:${sel?'2px solid #fff':'none'};outline-offset:2px;border-radius:10px;padding:2px"><div style="font-size:10px;font-weight:800;color:var(--text);opacity:${v>0?1:.35};margin-bottom:3px;white-space:nowrap;letter-spacing:-.3px">${valTxt}</div><div style="width:80%;height:${barH}px;border-radius:6px 6px 3px 3px;background:${v>0?'linear-gradient(180deg,#ff7d24,#ff5a00)':'var(--s2)'};border:1px solid ${v>0?'transparent':'var(--line)'};transition:height .3s"></div><div style="margin-top:4px;text-align:center;line-height:1.05"><div class="revdd" style="font-size:11px;font-weight:${sel?800:600};color:${sel?'#fff':'var(--muted)'}">${dd}</div><div style="font-size:9px;color:var(--muted);visibility:${showMo?'visible':'hidden'}">${mo}</div></div></div>`;}).join("")}<div aria-hidden="true" style="flex:0 0 8px"></div></div></div>`;
-  const chips=miss.length?`<div class="field"><label>Быстро — рабочие дни без выручки</label><div class="chips">${miss.map(d=>`<span class="chip" data-action="pickDay" data-date="${d}">${d.slice(8,10)}.${d.slice(5,7)}</span>`).join("")}</div><div class="fszn-note">тап по дате подставит её и подтянет сумму</div></div>`:"";
-  openModal(`<div class="mhead"><h3>💵 Выручка за день</h3><button class="x" data-action="close">×</button></div><p class="muted small" style="margin-top:0">сегодня или любой прошлый день — доход, тренд и карта дней пересчитаются сами</p><div class="grid2"><div class="field"><label>Дата</label><input id="d_date" class="input" type="date" value="${def}"></div><div class="field"><label>Выручка за день</label><input id="d_rev" class="input" type="number" inputmode="decimal" value="${rev||""}" placeholder="0"></div></div><div class="field" style="margin:6px 0 0">${chart}</div>${chips}<div class="field"><label>План на день (необязательно, общий)</label><input id="d_target" class="input" type="number" inputmode="decimal" value="${target||""}" placeholder="сколько хочу привезти"></div><button class="btn primary" data-action="saveDailyRev">Сохранить</button>`); setTimeout(()=>$("#d_rev")?.focus(),60); }
-function highlightRevCol(date){ document.querySelectorAll(".revcol").forEach(el=>{const on=el.dataset.date===date;el.style.outline=on?"2px solid #fff":"none";const dd=el.querySelector(".revdd");if(dd){dd.style.color=on?"#fff":"var(--muted)";dd.style.fontWeight=on?"800":"600";}}); }
 function modalExpense(cat,edit=null){
   const ecat = edit ? edit.category : cat;
   state.modalCat=ecat; state.modalEditId=edit?edit.id:null; state.modalReceipt=edit?.receipt||null;
@@ -904,6 +925,17 @@ function modalImportText(){ openModal(`<div class="mhead"><h3>⬆️ Восст�
 /* ---------- действия ---------- */
 async function fuelPreset(amt){ await dbPut("expenses",{id:uid(),category:"fuel",amount:amt,date:today(),mileage:null,note:"быстрая заправка"}); closeModal(); toast(`Заправка ${money(amt)}`); hapticOk(); renderAsync(); }
 function saveFuelPresets(){ const a=[0,1,2].map(i=>parseFloat($("#fp"+i).value)||0); if(a.some(v=>v<=0)){toast("Все суммы должны быть > 0");hapticBad();return;} setFuelPresets(a); closeModal(); toast("Суммы сохранены"); hapticOk(); }
+function saveDailyRev(){
+  const dateEl=$("#d_date"); const revEl=$("#d_rev"); const targetEl=$("#d_target");
+  const date=(dateEl&&dateEl.value)?dateEl.value:today();
+  const rev=revEl?parseFloat(revEl.value)||0:0;
+  const target=targetEl?parseFloat(targetEl.value)||0:0;
+  setDailyRev(date,rev);
+  setDailyTarget(target);
+  closeModal();
+  toast(rev>0?`Выручка ${money(rev)} · ${date===today()?"сегодня":fmtDate(date)}`:`Выручка за ${fmtDate(date)} очищена`);
+  hapticOk(); renderAsync();
+}
 async function saveExpense(){ const amount=parseFloat($("#m_amount").value); if(!amount||amount<=0){toast("Введи сумму");hapticBad();return;}
   const mileEl=$("#m_mileage"); const mileage = mileEl ? (parseFloat(mileEl.value)||0) : 0;
   const e={id:state.modalEditId||uid(),category:state.modalCat,amount,date:$("#m_date").value||today(),mileage:mileage>0?mileage:null,note:$("#m_note").value.trim(),receipt:state.modalReceipt||null};
@@ -928,11 +960,53 @@ async function fineDel(id){ if(!confirm("Удалить штраф?")) return; c
 /* ---------- CSV ---------- */
 function csvCell(v){ v=String(v??""); return /[";\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
 
+/* ---------- сбор payload + облако + отправка боту ---------- */
+async function buildPayload(){
+  const exps=await dbAll("expenses"); const car=await dbGet("car",1)||{}; const fines=finesList();
+  const s=fsznSettings(); const y=YEAR(); let paid=0; for(let q=1;q<=4;q++){const r=await dbGet("fszn",`${y}-Q${q}`);paid+=Number(r?.paid)||0;}
+  const curMile=Number(car.currentMileage)||0;
+  const recs=exps.filter(e=>(e.category==="repair"||e.category==="parts")&&Number(e.mileage)>0);
+  const groups={}; recs.forEach(e=>{const b=(e.note||"").trim();const k=b?(e.category+"|"+b.toLowerCase()):("id|"+e.id);(groups[k]=groups[k]||[]).push(e);});
+  const wear=[]; Object.values(groups).forEach(arr=>{arr.sort((a,b)=>Number(a.mileage)-Number(b.mileage));arr.forEach((e,i)=>{const nx=arr[i+1];const ins=Number(e.mileage);let sp=null,act=!nx;if(nx){sp=Math.max(0,Number(nx.mileage)-ins);}else if(curMile>ins){sp=curMile-ins;}wear.push({t:e.note||CATS[e.category]?.t||"",ins,sp,act});});});
+  const rev=dailyRevMap(); const revArr=Object.keys(rev).filter(d=>Number(rev[d])>0).sort().map(d=>({date:d,v:Number(rev[d])}));
+  return {
+    cur:cur(), car:{model:car.model||"",plate:car.plate||"",mileage:curMile},
+    expenses: exps.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(e=>({date:e.date,category:e.category,t:CATS[e.category]?.t||e.category,note:e.note||"",amount:Number(e.amount||0),mileage:e.mileage||null,receipt:e.receipt||null})),
+    rev: revArr,
+    fines: fines.map(f=>({name:f.name,amount:Number(f.amount||0),paid:!!f.paid,date:f.date||null})),
+    wear,
+    fszn:{ paid, goal:s.rate/100*s.mzp*12, rate:s.rate, mzp:s.mzp },
+    ip: isIP()
+  };
+}
+async function syncToCloud(silent){
+  if(!isTelegram || !TG?.initData) return false;
+  try{
+    const payload=await buildPayload();
+    const res=await fetch(RENDER_URL+"/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({initData:TG.initData, payload})});
+    if(res.ok){ localStorage.setItem("blvck_cloud_sync", String(Date.now())); if(!silent){ toast("Синхронизировано с облаком ☁️"); hapticOk(); } return true; }
+    if(!silent) toast("Не удалось синхронизировать ("+res.status+")");
+    return false;
+  }catch(e){ if(!silent) toast("Нет связи с облаком"); return false; }
+}
+async function sendReportToBot(){
+  if(!isTelegram){ toast("Отправка в чат работает только из Telegram"); return; }
+  if(!TG?.initData){ toast("Не вижу Telegram — открой через бота"); return; }
+  toast("Собираю отчёт…"); haptic("light");
+  const payload=await buildPayload();
+  try{
+    const res=await fetch(RENDER_URL+"/send-report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({initData:TG.initData, payload})});
+    if(!res.ok){ toast("Ошибка "+res.status+(res.status===502?" — нажми Start у бота":"")); hapticBad(); return; }
+    localStorage.setItem("blvck_cloud_sync", String(Date.now()));
+    toast("Отправлено в чат с ботом ✅"); hapticOk();
+  }catch(e){ toast("Не достучался до сервера (первый запуск ~30 сек)"); hapticBad(); }
+}
+
 /* ---------- бэкап + ремень безопасности ---------- */
-const LS_KEYS=["blvck_cur","blvck_theme","blvck_is_ip","blvck_income","blvck_km","blvck_hours","blvck_fuel_presets","blvck_tax_reminders","blvck_fszn_mzp","blvck_fszn_rate","blvck_streak_best","blvck_fines","blvck_daily_rev","blvck_daily_target","blvck_tg_name","blvck_onboarded","blvck_last_backup","blvck_backup_ack"];
-async function buildBackupPayload(){ const data={_app:"BLVCK TAXI",_v:3,_at:new Date().toISOString()}; for(const s of STORES) data[s]=await dbAll(s); data._ls=Object.fromEntries(LS_KEYS.map(k=>[k,localStorage.getItem(k)]).filter(([,v])=>v!=null)); return data; }
+const LS_KEYS=["blvck_cur","blvck_theme","blvck_is_ip","blvck_income","blvck_km","blvck_hours","blvck_fuel_presets","blvck_tax_reminders","blvck_fszn_mzp","blvck_fszn_rate","blvck_streak_best","blvck_fines","blvck_daily_rev","blvck_daily_target","blvck_tg_name","blvck_onboarded","blvck_last_backup","blvck_backup_ack","blvck_cloud_sync"];
+async function buildBackupPayloadLocal(){ const data={_app:"BLVCK TAXI",_v:3,_at:new Date().toISOString()}; for(const s of STORES) data[s]=await dbAll(s); data._ls=Object.fromEntries(LS_KEYS.map(k=>[k,localStorage.getItem(k)]).filter(([,v])=>v!=null)); return data; }
 async function exportBackup(){
-  const data=await buildBackupPayload();
+  const data=await buildBackupPayloadLocal();
   const r=await tryFile(`blvck-taxi-backup-${today()}.json`, JSON.stringify(data,null,2), "application/json");
   if(r.ok){ localStorage.setItem("blvck_last_backup", String(Date.now())); toast("Копия сохранена"); hapticOk(); return; }
   if(r.aborted){ return; }
@@ -990,6 +1064,7 @@ document.addEventListener("click", async (ev)=>{
     case "setExpScale": state.expScale=el.dataset.scale; renderAsync(); break;
     case "setExpCat": state.expCat=el.dataset.cat; renderAsync(); break;
     case "sendReportBot": sendReportToBot(); break;
+    case "syncCloud": syncToCloud(false).then(ok=>{ if(ok) renderAsync(); }); break;
     case "exportShotFull": exportShotFull(); break;
     case "exportShotChecks": exportShotChecks(); break;
     case "shotClose": closeShotMode(); break;
@@ -1053,4 +1128,8 @@ $("#restoreInput").addEventListener("change", e=>handleRestoreFile(e.target.file
 (async function init(){ applyTheme(); makeParticles(); setupTelegram(); await openDB(); state._animateScreen=true; await renderAsync();
   const act=new URLSearchParams(location.search).get("act"); if(act){ history.replaceState(null,"",location.pathname+location.hash); if(act==="fuel") modalFuelQuick(); else if(CATS[act]) modalExpense(act); }
   if("serviceWorker" in navigator){ window.addEventListener("load", ()=>navigator.serviceWorker.register("./sw.js").catch(()=>{})); }
+  if(isTelegram){ syncToCloud(true);
+    let lastSync=0;
+    document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="hidden"){ const now=Date.now(); if(now-lastSync>5*60000){ lastSync=now; syncToCloud(true); } } });
+  }
 })();
