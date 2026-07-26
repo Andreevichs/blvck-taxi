@@ -332,16 +332,35 @@ async function screenDash(){
     const f=(x,c,l)=>x.dir==="flat"?`<span class="flat">${l} →</span>`:`<span class="${c}">${l} ${arrow(x.dir)}${x.pct!=null?x.pct+"%":""}</span>`;
     return (spentMonth||spPY||rC||rPY)?`<div class="trendrow">${f(ts,c1,"расходы")} · ${f(tr,c2,"выручка")}</div>`:""; })();
 
-  let carCostBlock="";
+    let carCostBlock="";
   { const carCost=exps.filter(e=>CAR_CATS.includes(e.category)&&new Date(e.date)>=monthStart).reduce((s,e)=>s+Number(e.amount||0),0);
     const incM=sumDaysForYM(ymNow()).sum;
     if(carCost>0 && incM>0){ const pct=Math.round(carCost/incM*100); const after=incM-carCost; const warn=pct>=60;
-      carCostBlock=`<section class="glass ownblock">
-        <div class="ob-top"><div class="ob-pct ${warn?'warn':''}" data-count="${pct}" data-dec="0" data-suffix="%">${pct}%</div><div class="ob-lbl">доля машины<br>в выручке</div></div>
-        <div class="ob-bar"><i class="${warn?'warn':''}" data-w="${Math.min(100,pct)}%"></i></div>
-        <div class="ob-foot"><span>машина съела <b>${money(carCost)}</b></span><span>после авто <b class="${after>=0?'':'neg'}">${after>=0?'+':''}${money(after).replace(cur(),'').trim()} ${cur()}</b></span></div>
+      const pctCol = warn?'#fbbf24':'#ff5a00';
+      const barFill = warn?'linear-gradient(90deg,#fbbf24,#ff5a00)':'linear-gradient(90deg,#ff5a00,#ff8a33)';
+      const afterCol = after>=0?'#34d399':'#fb7185';
+      carCostBlock=`<section style="background:var(--s1);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow),var(--inset);padding:16px 16px 14px;margin:14px 0;position:relative;overflow:hidden">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px">
+          <div style="min-width:0">
+            <div style="font-family:var(--mono);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted)">доля машины в выручке</div>
+            <div style="font-family:var(--mono);font-size:34px;font-weight:800;letter-spacing:-1.5px;line-height:1;margin-top:5px;color:${pctCol}" data-count="${pct}" data-dec="0" data-suffix="%">${pct}%</div>
+          </div>
+          <div style="text-align:right;font-family:var(--mono);font-size:10px;letter-spacing:.6px;color:var(--muted);line-height:1.4;white-space:nowrap">за<br>${monthLabel(ymNow())}</div>
+        </div>
+        <div style="height:9px;border-radius:999px;background:var(--s3);border:1px solid var(--line);overflow:hidden;margin:14px 0 15px"><i data-bar="${Math.min(100,pct)}%" style="display:block;height:100%;width:0;border-radius:999px;background:${barFill};transition:width 1s cubic-bezier(.22,1,.36,1)"></i></div>
+        <div style="display:flex;justify-content:space-between;align-items:stretch;gap:14px">
+          <div style="flex:1;min-width:0">
+            <div style="font-family:var(--mono);font-size:9.5px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)">машина съела</div>
+            <div style="font-family:var(--mono);font-size:16px;font-weight:700;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${money(carCost)}</div>
+          </div>
+          <div style="width:1px;background:var(--line);margin:2px 0"></div>
+          <div style="flex:1;min-width:0;text-align:right">
+            <div style="font-family:var(--mono);font-size:9.5px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)">после авто</div>
+            <div style="font-family:var(--mono);font-size:16px;font-weight:700;margin-top:4px;color:${afterCol};white-space:nowrap">${after>=0?'+':''}${money(after).replace(cur(),'').trim()} ${cur()}</div>
+          </div>
+        </div>
       </section>`; }
-    else if(carCost>0){ carCostBlock=`<section class="glass ownblock"><div class="ob-empty">🚗 На авто за месяц <b>${money(carCost)}</b>. Внеси выручку за день — и я покажу, какую долю она съедает.</div></section>`; }
+    else if(carCost>0){ carCostBlock=`<section style="background:var(--s1);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow),var(--inset);padding:15px 16px;margin:14px 0;display:flex;align-items:center;gap:12px"><div style="font-size:24px;line-height:1">🚗</div><div style="flex:1;font-size:13px;color:var(--muted);line-height:1.45">На авто за месяц <b style="color:var(--text)">${money(carCost)}</b>. Внеси выручку за день — и я покажу, какую долю она съедает.</div></section>`; }
   }
 
   let backupBelt="";
