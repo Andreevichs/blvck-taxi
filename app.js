@@ -4,6 +4,7 @@
    + Telegram Mini App + сервер на Render (PDF в чат + облако + автоотчёт)
    + выручка: скролл на весь месяц, суммы над столбиками, сохранение
    + модульная архитектура: tax.js / rto.js / pro.js через глобальные хуки
+   + РТО: вкладка + виджет на главной + клиентская сторона серверных пингов
    ========================================================= */
 
 /* ===== URL СЕРВЕРА — ЗАМЕНИ НА СВОЙ URL С RENDER (без слэша в конце) ===== */
@@ -44,7 +45,8 @@ const WEAR_CATS = ["fuel","repair","parts"];
 const CURS = ["BYN","₽","$","€","₸"];
 const TABS = [
   { id:"dash", ico:"🏠", t:"Главная" }, { id:"stats", ico:"📊", t:"Графики" },
-  { id:"car", ico:"🚗", t:"Авто" }, { id:"docs", ico:"📄", t:"ТО/Доки" }, { id:"settings", ico:"⚙️", t:"Ещё" },
+  { id:"car", ico:"🚗", t:"Авто" }, { id:"rto", ico:"⏱️", t:"РТО" },
+  { id:"docs", ico:"📄", t:"ТО/Доки" }, { id:"settings", ico:"⚙️", t:"Ещё" },
 ];
 const TAX_PRESETS = ["Единый налог","ФСЗН за квартал","Подоходный (аванс)","Декларация","Налог на проф. доход"];
 const FINE_PRESETS = ["Камера / превышение","Парковка","Ремень / телефон за рулём","Нет оклейки / шашечек","Нет карточки водителя","Просрочен техосмотр / страховка","Тонировка"];
@@ -243,7 +245,7 @@ const dbClear=(s)=>reqP(tx(s,"readwrite").clear());
 let revealIO=null, revealGen=0;
 async function renderAsync(){
   const app=$("#app");
-  const html = await ({ dash:screenDash, stats:screenStats, car:screenCar, docs:screenDocs, settings:screenSettings, fszn:screenFszn, fines:screenFines, receipts:screenReceipts, expenses:screenExpenses }[state.screen])();
+  const html = await ({ dash:screenDash, stats:screenStats, car:screenCar, rto:screenRto, docs:screenDocs, settings:screenSettings, fszn:screenFszn, fines:screenFines, receipts:screenReceipts, expenses:screenExpenses }[state.screen])();
   const showOnboard = !onboarded();
   app.innerHTML = (showOnboard?onboardHTML():"") + html;
   renderTabs();
@@ -379,7 +381,7 @@ async function screenDash(){
   return `
     <div class="topbar">
       <div class="brand"><span class="brand-dot"></span><span class="brand-name">BLVCK</span><span class="brand-sub">TAXI</span></div>
-      <div class="topbar-r">${tgName?`<span class="who">${esc(tgName)}</span>`:""}<button class="iconbtn" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙":"☀️"}</button></div>
+      <div class="topbar-r">${tgName?`<span class="who">${esc(tgName)}</span>`:""}<button class="iconbtn" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙":"️"}</button></div>
     </div>
 
     ${alerts.map(a=>`<div class="alert ${a.bad?"bad":""}"><span>${a.bad?"⚠️":"🔔"}</span><div><div style="font-weight:700">${a.t}</div><div class="small muted">${a.s}</div></div></div>`).join("")}
@@ -394,6 +396,8 @@ async function screenDash(){
     </section>
 
     ${carCostBlock}
+
+    <div id="rto-mount"></div>
 
     ${curStreak>0?`<div class="streak">🔥 ${curStreak} ${ruPlural(curStreak,["день","дня","дней"])} подряд · рекорд ${best}</div>`:(best>0?`<div class="streak" style="border-color:var(--line);background:transparent;color:var(--muted)">рекорд 🔥 ${best} ${ruPlural(best,["день","дня","дней"])}</div>`:"")}
 
@@ -589,6 +593,15 @@ function partsWear(exps, car){
     const sub = `установлена ${num(r.installed)} км · ${fmtDate(r.e.date)}${tail}`;
     return `<div class="part"><div class="ic">${c.ico}</div><div class="meta"><div class="t">${r.e.note?esc(r.e.note):c.t}</div><div class="s">${sub}</div></div><div class="wear">${wearTxt}</div>${pill}</div>`; }).join("");
   return `<div class="list">${items}</div>`;
+}
+
+/* ---------- РТО (рисует модуль rto.js через публичный API) ---------- */
+function screenRto(){
+  if(window.BLVCK_RTO && typeof window.BLVCK_RTO.renderScreen==='function'){
+    return `<div class="row between"><div class="h1" style="margin:0">Режим труда и отдыха</div></div>
+      <p class="muted small">трекер смены по нормам РБ: перерывы, лимиты, междусменный и еженедельный отдых</p>` + window.BLVCK_RTO.renderScreen();
+  }
+  return `<div class="h1">Режим труда и отдыха</div><div class="glass empty">Модуль РТО не подключён.</div>`;
 }
 
 /* ---------- ТО / ДОКИ ---------- */
@@ -844,7 +857,7 @@ function fsznSettings(){ return { mzp:parseFloat(localStorage.getItem("blvck_fsz
 async function screenFszn(){ const s=fsznSettings(); const year=YEAR(),cq=CUR_Q(); const minMonth=s.rate/100*s.mzp,minQ=minMonth*3,minYear=minMonth*12;
   const qs=[]; let paidYTD=0,minYTD=0,paidAll=0,targetAll=0;
   for(let q=1;q<=4;q++){ const rec=await dbGet("fszn",`${year}-Q${q}`)||{income:0,paid:0}; const monthSum=quarterIncome(q,year); const income=monthSum>0?monthSum:(Number(rec.income)||0); const paid=Number(rec.paid)||0; const fromIncome=income>0?s.rate/100*income:0; const target=Math.max(minQ,fromIncome); let status,badge;
-    if(q<cq){status=paid>=target?"good":(paid>0?"warn":"bad");badge=paid>=target?"✅ закрыто":(paid>0?"🟡 частично":" не уплачено");}
+    if(q<cq){status=paid>=target?"good":(paid>0?"warn":"bad");badge=paid>=target?"✅ закрыто":(paid>0?"🟡 частично":"⏰ не уплачено");}
     else if(q===cq){status=paid>=target?"good":(paid>0?"warn":"soon");badge=paid>=target?"✅ закрыто":(paid>0?"🟡 в процессе":"🔵 в процессе");}
     else{status="soon";badge="🔮 предстоит";}
     qs.push({q,monthSum,manual:Number(rec.income)||0,paid,target,status,badge}); if(q<=cq){paidYTD+=paid;minYTD+=minQ;} paidAll+=paid;targetAll+=target; }
