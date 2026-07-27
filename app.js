@@ -3,7 +3,7 @@
    vanilla, без зависимостей. IndexedDB + localStorage. Офлайн.
    + Telegram Mini App + сервер на Render (PDF в чат + облако + автоотчёт)
    + выручка: скролл на весь месяц, суммы над столбиками, сохранение
-   + вкладочные переходы без призрака и без пустых экранов
+   + модульная архитектура: tax.js / rto.js / pro.js через глобальные хуки
    ========================================================= */
 
 /* ===== URL СЕРВЕРА — ЗАМЕНИ НА СВОЙ URL С RENDER (без слэша в конце) ===== */
@@ -239,7 +239,7 @@ const dbGet=(s,id)=>reqP(tx(s).get(id));
 const dbAll=(s)=>reqP(tx(s).getAll());
 const dbClear=(s)=>reqP(tx(s,"readwrite").clear());
 
-/* ---------- рендер + post-render (без наблюдателя и без перезапуска анимации страницы) ---------- */
+/* ---------- рендер + post-render (без наблюдателя; хуки модулей после рендера) ---------- */
 let revealIO=null, revealGen=0;
 async function renderAsync(){
   const app=$("#app");
@@ -265,11 +265,9 @@ function postRender(){
     const to=parseFloat(el.getAttribute("data-count"))||0, dec=parseInt(el.getAttribute("data-dec")||"2",10), pre=el.getAttribute("data-prefix")||"", suf=el.getAttribute("data-suffix")||"";
     if(anim) countUp(el,to,dec,pre,suf); else el.textContent=pre+to.toLocaleString("ru-RU",{maximumFractionDigits:dec})+suf;
   });
-  // Проявление мягким каскадом через кадр — БЕЗ наблюдателя, который на
-  // некоторых прошивках не срабатывает и оставляет экран пустым/«призрачным».
-  // Плюс страховка: через 600мс всё принудительно видимо, что бы ни случилось.
   requestAnimationFrame(()=>{ if(gen!==revealGen) return; els.forEach((el,i)=>{ el.style.transitionDelay=(Math.min(i,8)*35)+"ms"; el.classList.add("revealed"); }); });
   setTimeout(()=>{ if(gen!==revealGen) return; els.forEach(el=>{ el.style.transitionDelay="0ms"; el.classList.add("revealed"); }); if(revealIO){ revealIO.disconnect(); revealIO=null; } },600);
+  try{ (window.BLVCK_HOOKS||[]).forEach(fn=>fn()); }catch(e){}
   state._animateScreen=false;
 }
 function renderTabs(){
@@ -310,6 +308,9 @@ async function screenDash(){
   finesList().filter(f=>!f.paid).forEach(f=>{ const days=f.date?Math.round((now-new Date(f.date+"T00:00:00"))/86400000):null;
     alerts.push({bad:true,t:`🚨 Не оплачен штраф: ${esc(f.name)}`,s:`${money(f.amount)}${f.date?` · выписан ${fmtDate(f.date)}${days!=null?` (${days} дн. назад)`:""}`:""}`}); });
 
+  // баннеры от модулей (tax.js / rto.js) — подтягиваются после штатных
+  try{ (window.BLVCK_ALERT_HOOKS||[]).forEach(fn=>{ (fn()||[]).forEach(a=>alerts.push(a)); }); }catch(e){}
+
   const tgName=localStorage.getItem("blvck_tg_name");
   const dateSet=new Set(exps.map(e=>e.date)); const curStreak=calcStreak(dateSet);
   let best=bestStreak(dateSet); const sb=Number(localStorage.getItem("blvck_streak_best"))||0; if(best>sb) localStorage.setItem("blvck_streak_best",String(best)); best=Math.max(best,sb);
@@ -329,8 +330,6 @@ async function screenDash(){
     const f=(x,c,l)=>x.dir==="flat"?`<span class="flat">${l} →</span>`:`<span class="${c}">${l} ${arrow(x.dir)}${x.pct!=null?x.pct+"%":""}</span>`;
     return (spentMonth||spPY||rC||rPY)?`<div class="trendrow">${f(ts,c1,"расходы")} · ${f(tr,c2,"выручка")}</div>`:""; })();
 
-  // блок «доля машины» — самодостаточный: все стили внутри, полоса через data-bar,
-  // цвета захардкожены, чтобы не зависеть от styles.css и не разваливаться в текст.
   let carCostBlock="";
   { const carCost=exps.filter(e=>CAR_CATS.includes(e.category)&&new Date(e.date)>=monthStart).reduce((s,e)=>s+Number(e.amount||0),0);
     const incM=sumDaysForYM(ymNow()).sum;
@@ -845,7 +844,7 @@ function fsznSettings(){ return { mzp:parseFloat(localStorage.getItem("blvck_fsz
 async function screenFszn(){ const s=fsznSettings(); const year=YEAR(),cq=CUR_Q(); const minMonth=s.rate/100*s.mzp,minQ=minMonth*3,minYear=minMonth*12;
   const qs=[]; let paidYTD=0,minYTD=0,paidAll=0,targetAll=0;
   for(let q=1;q<=4;q++){ const rec=await dbGet("fszn",`${year}-Q${q}`)||{income:0,paid:0}; const monthSum=quarterIncome(q,year); const income=monthSum>0?monthSum:(Number(rec.income)||0); const paid=Number(rec.paid)||0; const fromIncome=income>0?s.rate/100*income:0; const target=Math.max(minQ,fromIncome); let status,badge;
-    if(q<cq){status=paid>=target?"good":(paid>0?"warn":"bad");badge=paid>=target?"✅ закрыто":(paid>0?"🟡 частично":"⏰ не уплачено");}
+    if(q<cq){status=paid>=target?"good":(paid>0?"warn":"bad");badge=paid>=target?"✅ закрыто":(paid>0?"🟡 частично":" не уплачено");}
     else if(q===cq){status=paid>=target?"good":(paid>0?"warn":"soon");badge=paid>=target?"✅ закрыто":(paid>0?"🟡 в процессе":"🔵 в процессе");}
     else{status="soon";badge="🔮 предстоит";}
     qs.push({q,monthSum,manual:Number(rec.income)||0,paid,target,status,badge}); if(q<=cq){paidYTD+=paid;minYTD+=minQ;} paidAll+=paid;targetAll+=target; }
@@ -859,7 +858,8 @@ async function screenFszn(){ const s=fsznSettings(); const year=YEAR(),cq=CUR_Q(
     <div class="h2">сроки и налоги</div><div class="glass card"><button class="btn primary" data-action="openAddTax">➕ Добавить напоминание</button><p class="fszn-note">Заведи свои сроки (название + дата + повтор). Просроченные и близкие — баннером на главной. Даты ставишь ты — я не бухгалтер.</p></div>
     ${taxes.length?`<div class="list">${taxes.map(r=>{const days=r.date?Math.round((new Date(r.date)-new Date())/86400000):null;const rep=r.repeat&&r.repeat!=="none"?` · повтор: ${{month:"мес.",quarter:"квартал",year:"год"}[r.repeat]}`:"";return `<div class="item"><div class="ic">${days!=null&&days<0?"⛔":""}</div><div class="meta"><div class="t">${esc(r.name)}</div><div class="s">${r.date?fmtDate(r.date)+(days!=null?(days<0?" · просрочено":` · ${days} дн.`):""):"без даты"}${rep}</div></div><button class="edit" data-action="taxPaid" data-id="${r.id}" title="уплачено">✅</button><button class="del" data-action="taxDel" data-id="${r.id}">🗑</button></div>`;}).join("")}</div>`:`<div class="glass empty">Пока нет напоминаний</div>`}
     <div class="h2">отчёт</div><div class="glass card"><p class="fszn-note" style="margin-top:0">Полный отчёт со всем — «📤 боту в чат» на экране «Расходы».</p><button class="btn primary" data-action="sendReportBot">📤 Отправить отчёт боту в чат</button><div style="height:10px"></div><button class="btn" data-action="exportShotFull">📸 Отчёт для скриншота</button></div>
-    <div class="glass card"><div class="row between"><b>Параметры ФСЗН</b><button class="btn sm" data-action="saveFsznSettings">💾 Сохранить</button></div><div class="grid2"><div class="field"><label>МЗП за месяц (${year})</label><input id="fszn_mzp" class="input" type="number" inputmode="decimal" value="${s.mzp}"></div><div class="field"><label>Ставка взносов, %</label><input id="fszn_rate" class="input" type="number" inputmode="decimal" value="${s.rate}"></div></div><div class="fszn-note">Мин. взнос за месяц = ставка × МЗП = <b>${money(minMonth)}</b>. Сверяй на portal.ssf.gov.by / в налоговой.</div></div>`; }
+    <div class="glass card"><div class="row between"><b>Параметры ФСЗН</b><button class="btn sm" data-action="saveFsznSettings">💾 Сохранить</button></div><div class="grid2"><div class="field"><label>МЗП за месяц (${year})</label><input id="fszn_mzp" class="input" type="number" inputmode="decimal" value="${s.mzp}"></div><div class="field"><label>Ставка взносов, %</label><input id="fszn_rate" class="input" type="number" inputmode="decimal" value="${s.rate}"></div></div><div class="fszn-note">Мин. взнос за месяц = ставка × МЗП = <b>${money(minMonth)}</b>. Сверяй на portal.ssf.gov.by / в налоговой.</div></div>
+    <div id="tax-mount"></div>`; }
 function fsznBars(qs){ const W=320,H=150,pad=20,max=Math.max(...qs.map(q=>Math.max(q.target,q.paid)),1),gw=(W-pad*2)/qs.length;
   const cols=qs.map((q,i)=>{const x=pad+i*gw,hT=(q.target/max)*(H-pad*2),hP=(q.paid/max)*(H-pad*2),yT=H-pad-hT,yP=H-pad-hP;const pct=q.target>0?Math.min(100,Math.round(q.paid/q.target*100)):0;return `<g><rect class="need" x="${x+gw*0.12}" y="${yT}" width="${gw*0.30}" height="${hT}" rx="4"/><rect x="${x+gw*0.50}" y="${yP}" width="${gw*0.30}" height="${hP}" rx="4" fill="url(#g2)"><animate attributeName="height" from="0" to="${hP}" dur=".5s" fill="freeze"/><animate attributeName="y" from="${H-pad}" to="${yP}" dur=".5s" fill="freeze"/></rect><text class="cm" x="${x+gw*0.5}" y="${H-6}" text-anchor="middle" font-size="9">Q${q.q}</text><text class="ct" x="${x+gw*0.5}" y="${Math.min(yT,yP)-5}" text-anchor="middle" font-size="9" font-weight="700">${pct}%</text></g>`;}).join("");
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" style="margin-top:10px"><defs><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff5a00"/><stop offset="1" stop-color="#ff7d24"/></linearGradient></defs>${cols}</svg><div class="legend" style="margin-top:8px"><div class="li"><span class="dot" style="background:var(--s2);border:1px solid var(--line)"></span>надо (прикидка)</div><div class="li"><span class="dot" style="background:var(--accent)"></span>уплачено</div></div>`; }
@@ -1142,6 +1142,10 @@ $("#modal").addEventListener("click", e=>{ if(e.target.id==="modal") closeModal(
 $("#restoreInput").addEventListener("change", e=>handleRestoreFile(e.target.files[0]));
 
 /* ---------- старт ---------- */
+/* глобальные точки расширения для модулей (tax.js / rto.js / pro.js) */
+window.BLVCK_HOOKS = window.BLVCK_HOOKS || [];
+window.BLVCK_ALERT_HOOKS = window.BLVCK_ALERT_HOOKS || [];
+window.BLVCK_PRO = window.BLVCK_PRO || { unlocked: ()=>true, openScreen: ()=>{} };
 (async function init(){ applyTheme(); makeParticles(); setupTelegram(); await openDB(); state._animateScreen=true; await renderAsync();
   const act=new URLSearchParams(location.search).get("act"); if(act){ history.replaceState(null,"",location.pathname+location.hash); if(act==="fuel") modalFuelQuick(); else if(CATS[act]) modalExpense(act); }
   if("serviceWorker" in navigator){ window.addEventListener("load", ()=>navigator.serviceWorker.register("./sw.js").catch(()=>{})); }
