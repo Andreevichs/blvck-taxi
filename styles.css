@@ -42,12 +42,9 @@ body{font-family:var(--sans);color:var(--text);background:var(--bg);overflow-x:h
 .bg-particles span:nth-child(3n){background:var(--accent);opacity:.26;width:4px;height:4px}
 @keyframes drift{0%{transform:translateY(16vh) scale(.6);opacity:0}12%{opacity:.24}88%{opacity:.24}100%{transform:translateY(-114vh) scale(1);opacity:0}}
 
-/* у .app НЕТ animation появления — массовая transform-анимация блоков при
-   рендере давала артефакт на чипах Mali при переходах. */
 .app{position:relative;display:block;width:100%;max-width:540px;margin:0 auto;min-height:100%;padding:18px 16px calc(var(--tab-h) + 28px);overflow-x:hidden}
 @keyframes screenIn{from{opacity:0}to{opacity:1}}
 
-/* блоки видны СРАЗУ, без каскада opacity+transform */
 .app .glass,.app .item,.app .alert,.app .h1,.app .h2,.app .qcard-f,.app .hero,.app .quickrow,.app .streak,.app .toolgrid,.app .metricrow,.app .today,.app .sparkcard,.app .seg,.app .searchwrap,.app .info,.app .ownblock,.app .backupbelt{opacity:1;transform:none}
 .app .revealed{opacity:1;transform:none}
 
@@ -246,40 +243,29 @@ body{font-family:var(--sans);color:var(--text);background:var(--bg);overflow-x:h
 @media (max-width:360px){.metricrow,.grid2,.grid3,.presets,.eff,.drive .drow,.toolgrid{grid-template-columns:1fr}.toolgrid .span2{grid-column:auto}.tab{font-size:8px;padding:7px 0}.tab .ti{font-size:16px}}
 
 /* =========================================================
-   КАРАНТИН GPU-артефактов (чипы Mali / Honor).
-   Оранжевая поверхность + transform/filter/animation при тапе
-   или перерисовке = эллипс на весь экран. Убираем начисто.
+   ЯДЕРНЫЙ КАРАНТИН GPU-артефактов (чипы Mali / Honor / Telegram WebView).
+   Овал во весь экран = аппаратный баг композитинга: драйвер пересобирает
+   графические слои в момент полной перерисовки и оставляет оранжевый след
+   их формы. Источник — не конкретный элемент, а сам механизм слоёв, который
+   оживает при animation/transition/blend/blur. Поэтому гасим ВСЕ CSS-анимации
+   и transition глобально — это убирает пересоздание слоёв, а значит и артефакт.
+   Накрутка цифр остаётся живой: она делается через JS (textContent), а не CSS.
+   Точечно возвращаем видимость тем элементам, которые без анимации стали бы
+   невидимы (спарклайн, шаги онборда), чтобы не ломать интерфейс.
    ========================================================= */
-.btn.primary{filter:none !important;box-shadow:0 8px 22px -10px rgba(255,90,0,.55) !important}
-.btn.primary:hover{filter:none !important}
-.qcard.qcard-add{box-shadow:0 12px 28px -14px var(--accent) !important;filter:none !important}
-.btn:active,.qcard:active,.qcard.qcard-add:active,.preset:active,
-.iconbtn:active,.pbtn:active,.dcat:active,.dbig:active,.tab:active{transform:none !important}
-.rto-screen .rto-bar i,
-.rto-screen .rto-ring .fg,
-.rto-screen .rto-pill,
-.rto-screen .rto-pill.warn,
-.rto-screen .rto-big,
-.rto-screen .rto-hero,
-.rto-widget,.rto-widget.live{transition:none !important;animation:none !important}
-.rto-screen .rto-pill.warn{background:#fb7185 !important;color:#0a0a0a !important;border-color:transparent !important}
-
-/* =========================================================
-   ФИНАЛ ОВАЛА — источник найден: фиксированный декор-фон.
-   Эллипс = форма маски .bg-particles (radial-gradient) + слой
-   .bg-noise с mix-blend-mode + радиалы .bg-mesh. При каждой
-   полной перерисовке (переход вкладки, «выйти на линию»,
-   «завершить») драйвер Mali пересобирает эти fixed-слои и
-   оставляет оранжевый артефакт их формы. Кнопки и виджет РТО
-   тут ни при чём. Убираем декор-фон начисто + гасим анимации
-   fixed-оверлеев (тост/модалка/вьювер/режим за рулём/онборд).
-   Накрутка цифр и пружины кнопок остаются — они не в этом слое.
-   ========================================================= */
-.bg-mesh,.bg-noise,.bg-particles{display:none !important}
-.bg-particles span{display:none !important}
+*,*::before,*::after{animation:none !important;transition:none !important}
+.bg-mesh,.bg-noise,.bg-particles,.bg-particles span{display:none !important}
 body{background:var(--bg) !important}
 .onboard::before,.onboard::after{display:none !important}
-.toast{animation:none !important;transform:translateX(-50%) !important}
-.modal{animation:none !important}
-.viewer{animation:none !important}
-.drive{animation:none !important}
+.onboard h2::after,.onboard .ob-go .arrow{display:none !important}
+.ob-step{opacity:1 !important;transform:none !important}
+.spark-area{opacity:1 !important}
+.spark-line{opacity:1 !important;stroke-dashoffset:0 !important}
+.spark-dot{opacity:1 !important}
+.btn.primary,.qcard.qcard-add{filter:none !important}
+.btn.primary{box-shadow:0 8px 22px -10px rgba(255,90,0,.55) !important}
+.qcard.qcard-add{box-shadow:0 12px 28px -14px var(--accent) !important}
+.btn:active,.qcard:active,.qcard.qcard-add:active,.preset:active,
+.iconbtn:active,.pbtn:active,.dcat:active,.dbig:active,.tab:active{transform:none !important}
+.modal-root{backdrop-filter:none !important;-webkit-backdrop-filter:none !important}
+.toast{transform:translateX(-50%) !important}
