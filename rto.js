@@ -1,47 +1,57 @@
 /* =========================================================
    rto.js — трекер режима труда и отдыха водителя (модуль)
    Нормы: постановление Минтранса РБ №82 (ред. с 01.04.2025).
-   Слой 1 (локальный): автомат смены + вибрация/тост.
-   Слой 2 (серверный, клиентская сторона): /rto/shift-start|end.
-   FIX GPU-артефакта на чипах Mali: на главной виджет смены
-   НЕ тикает (статичная карточка-статус), живой секундомер и
-   полосы живут только на вкладке РТО; все transition на
-   оранжевых элементах убраны (мгновенный пересчёт), полосы и
-   кольца на вкладке обновляются раз в 10 тиков.
+   FIX овала: на ГЛАВНОЙ виджет смены = плоская нейтральная
+   карточка БЕЗ оранжевого, БЕЗ анимации, БЕЗ ::before, БЕЗ тика.
+   Весь живой секундомер/полосы/кольца — только на вкладке РТО.
+   Карантин оранжевого на главной сделан через !important, чтобы
+   поймать ЛЮБОЙ элемент-триггер овала разом, а не по одному.
    ========================================================= */
 (function(){
   if(!document.getElementById('rto-style')){
     const st=document.createElement('style'); st.id='rto-style'; st.textContent=`
       .rto-widget{background:var(--s1);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow),var(--inset);padding:16px;margin:14px 0;position:relative;overflow:hidden}
-      .rto-widget.live{border-color:var(--accent-line)}
       .rto-top{display:flex;align-items:center;justify-content:space-between;gap:10px;position:relative}
       .rto-k{font-family:var(--mono);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted)}
-      .rto-pill{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.6px;padding:4px 10px;border-radius:999px;border:1px solid var(--line)}
-      .rto-pill.drive{color:var(--on-accent);background:var(--accent);border-color:transparent}
-      .rto-pill.brk{color:var(--accent);border-color:var(--accent-line)}
-      .rto-pill.warn{color:#0a0a0a;background:#fb7185;border-color:transparent;animation:rtoBlink 1s ease-in-out infinite}
-      @keyframes rtoBlink{0%,100%{opacity:1}50%{opacity:.45}}
+      .rto-pill{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.6px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted);background:transparent}
       .rto-timer{font-family:var(--mono);font-size:46px;font-weight:800;letter-spacing:-2px;line-height:1;margin:12px 0 4px;font-variant-numeric:tabular-nums}
       .rto-timer.warn{color:#fb7185}
       .rto-sub{font-family:var(--mono);font-size:11px;color:var(--muted)}
-      .rto-bar{height:8px;border-radius:999px;background:var(--s3);border:1px solid var(--line);overflow:hidden;margin:12px 0 6px}
-      .rto-bar i{display:block;height:100%;border-radius:999px}
-      .rto-bar i.ok{background:linear-gradient(90deg,#ff5a00,#ff8a33)}
-      .rto-bar i.hot{background:linear-gradient(90deg,#fbbf24,#fb7185)}
       .rto-acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
       .rto-acts .btn{flex:1;min-width:120px}
       .rto-inter{font-family:var(--mono);font-size:11px;margin-top:10px;color:var(--muted)}
       .rto-inter.bad{color:#fb7185}
       .rto-part[hidden]{display:none}
 
+      /* КАРАНТИН ГЛАВНОЙ: гасим ВСЁ, что может стать овалом на чипе Mali */
+      #rto-mount .rto-widget,
+      #rto-mount .rto-widget.live{box-shadow:var(--shadow),var(--inset) !important;transform:none !important;animation:none !important;border-color:var(--line) !important;background:var(--s1) !important}
+      #rto-mount .rto-widget::before,
+      #rto-mount .rto-widget::after,
+      #rto-mount .rto-widget.live::before,
+      #rto-mount .rto-widget.live::after{content:none !important;display:none !important;background:none !important}
+      #rto-mount .rto-pill{background:transparent !important;color:var(--muted) !important;border-color:var(--line) !important;animation:none !important}
+      #rto-mount .rto-bar,#rto-mount .rto-bar *{display:none !important}
+      #rto-mount .rto-timer,#rto-mount .rto-timer.warn{color:var(--text) !important;animation:none !important}
+      #rto-mount .btn.primary{filter:none !important}
+
       .rto-screen .rto-hero{background:var(--s1);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow),var(--inset);padding:20px 18px;margin:14px 0;position:relative;overflow:hidden}
       .rto-screen .rto-hero.live{border-color:var(--accent-line)}
+      .rto-screen .rto-hero::before,.rto-screen .rto-hero.live::before{content:none !important;display:none !important}
       .rto-screen .rto-big{font-family:var(--mono);font-size:64px;font-weight:800;letter-spacing:-3px;line-height:.9;font-variant-numeric:tabular-nums;position:relative}
       .rto-screen .rto-big.warn{color:#fb7185}
       .rto-rings{display:flex;gap:14px;margin:18px 0 4px;position:relative}
       .rto-ring{flex:1;text-align:center}
       .rto-ring svg{width:100%;max-width:120px;height:auto}
       .rto-ring .rl{font-family:var(--mono);font-size:9.5px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-top:6px}
+      .rto-screen .rto-pill.drive{color:var(--on-accent);background:var(--accent);border-color:transparent}
+      .rto-screen .rto-pill.brk{color:var(--accent);border-color:var(--accent-line)}
+      .rto-screen .rto-pill.warn{color:#0a0a0a;background:#fb7185;border-color:transparent;animation:rtoBlink 1s ease-in-out infinite}
+      @keyframes rtoBlink{0%,100%{opacity:1}50%{opacity:.45}}
+      .rto-screen .rto-bar{height:8px;border-radius:999px;background:var(--s3);border:1px solid var(--line);overflow:hidden;margin:12px 0 6px}
+      .rto-screen .rto-bar i{display:block;height:100%;border-radius:999px}
+      .rto-screen .rto-bar i.ok{background:linear-gradient(90deg,#ff5a00,#ff8a33)}
+      .rto-screen .rto-bar i.hot{background:linear-gradient(90deg,#fbbf24,#fb7185)}
       .rto-log{margin:14px 0;display:flex;flex-direction:column;gap:6px}
       .rto-log .ev{display:flex;gap:10px;align-items:center;font-family:var(--mono);font-size:12px}
       .rto-log .ev .tm{color:var(--muted);flex:none;width:54px}
@@ -149,7 +159,7 @@
     const t=document.getElementById(id+'t'); if(t) t.textContent=Math.round(pct)+'%';
   }
 
-  /* ---- виджет на ГЛАВНОЙ: в live — СТАТИЧНАЯ карточка, без тика ---- */
+  /* ---- виджет на ГЛАВНОЙ: live = нейтральная карточка, без оранжевого и без тика ---- */
   function widgetHTML(){
     if(!proUnlocked()){
       return `<div id="rto-w-root" class="rto-widget"><div class="rto-top"><span class="rto-k">Режим труда и отдыха</span><span class="rto-pill">PRO</span></div>
@@ -170,9 +180,9 @@
         <div class="rto-acts"><button class="btn primary" data-rto="start">▶ Выйти на линию</button></div>
       </div>
       <div id="rto-w-live" class="rto-part" hidden>
-        <div class="rto-top"><span class="rto-k" id="rto-w-live-k">смена идёт</span><span class="rto-pill" id="rto-w-live-pill">—</span></div>
+        <div class="rto-top"><span class="rto-k">смена идёт</span><span class="rto-pill" id="rto-w-live-pill">—</span></div>
         <div class="rto-timer" id="rto-w-live-timer">—</div>
-        <div class="rto-sub" id="rto-w-live-sub"></div>
+        <div class="rto-sub" id="rto-w-live-sub">открой трекер — там живой секундомер, перерывы и лимиты</div>
         <div class="rto-acts">
           <button class="btn" data-action="nav" data-to="rto">⏱️ Открыть трекер</button>
           <button class="btn danger" data-rto="end" id="rto-w-btn-end">⏹ Завершить</button>
@@ -187,7 +197,7 @@
     if(!idle||!live) return;
     const a=getA();
     if(!a||a.phase==='ended'){
-      root.classList.remove('live'); idle.hidden=false; live.hidden=true;
+      idle.hidden=false; live.hidden=true;
       root.removeAttribute('data-live-painted');
       const le=lastEnd(); const inter=le?(nowMs()-le):null;
       const ie=document.getElementById('rto-w-idle-inter');
@@ -197,13 +207,11 @@
       const we=document.getElementById('rto-w-idle-wk');
       if(we){ const wk=weeklyWarn(); we.textContent=wk?'⚠️ за 6 суток не было отдыха 45 ч — пора на еженедельный отдых':''; we.className='rto-inter'+(wk?' bad':''); }
     } else {
-      root.classList.add('live'); idle.hidden=true; live.hidden=false;
-      if(root.getAttribute('data-live-painted')) return; /* статично: больше не трогаем DOM на главной */
+      idle.hidden=true; live.hidden=false;
+      if(root.getAttribute('data-live-painted')) return; /* статично: на главной больше не трогаем DOM */
       root.setAttribute('data-live-painted','1');
-      const k=document.getElementById('rto-w-live-k'); if(k) k.textContent='смена идёт';
-      const pill=document.getElementById('rto-w-live-pill'); if(pill){ pill.textContent=a.phase==='driving'?'за рулём':'перерыв'; pill.className='rto-pill '+(a.phase==='driving'?'drive':'brk'); }
+      const pill=document.getElementById('rto-w-live-pill'); if(pill){ pill.textContent=a.phase==='driving'?'за рулём':'перерыв'; pill.className='rto-pill'; }
       const tm=document.getElementById('rto-w-live-timer'); if(tm){ tm.textContent='с '+fmtClock(a.startedAt); tm.className='rto-timer'; }
-      const sub=document.getElementById('rto-w-live-sub'); if(sub) sub.textContent='открой трекер — там живой секундомер, перерывы и лимиты';
     }
   }
 
@@ -296,7 +304,6 @@
     if(bs) bs.hidden=true; if(bb) bb.hidden=!driving; if(br) br.hidden=driving; if(be) be.hidden=false;
   }
 
-  /* ---- тик: главная статична, на вкладке полосы/кольца раз в 10 тиков ---- */
   let tickN=0;
   function tick(){
     const a=getA();
@@ -307,7 +314,6 @@
   }
   setInterval(tick, 1000);
 
-  /* ---- регистрация в хуках app.js ---- */
   window.BLVCK_HOOKS = window.BLVCK_HOOKS || [];
   window.BLVCK_ALERT_HOOKS = window.BLVCK_ALERT_HOOKS || [];
   window.BLVCK_HOOKS.push(function(){
