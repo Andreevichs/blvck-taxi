@@ -3,15 +3,17 @@
    Нормы: постановление Минтранса РБ №82 (ред. с 01.04.2025).
    Слой 1 (локальный): автомат смены + вибрация/тост.
    Слой 2 (серверный, клиентская сторона): /rto/shift-start|end.
-   ВАЖНО: виджет НЕ пересобирается в тике (обновление по id),
-   свечение live = box-shadow (не radial-gradient) — чтобы не
-   ловить GPU-артефакт на чипах Mali (оранжевый «призрак»).
+   FIX GPU-артефакта на чипах Mali: на главной виджет смены
+   НЕ тикает (статичная карточка-статус), живой секундомер и
+   полосы живут только на вкладке РТО; все transition на
+   оранжевых элементах убраны (мгновенный пересчёт), полосы и
+   кольца на вкладке обновляются раз в 10 тиков.
    ========================================================= */
 (function(){
   if(!document.getElementById('rto-style')){
     const st=document.createElement('style'); st.id='rto-style'; st.textContent=`
-      .rto-widget{background:var(--s1);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow),var(--inset);padding:16px;margin:14px 0;position:relative;overflow:hidden;transition:box-shadow .4s ease,border-color .4s ease}
-      .rto-widget.live{border-color:var(--accent-line);box-shadow:var(--shadow),var(--inset),0 0 0 1px var(--accent-line),0 18px 50px -22px rgba(255,90,0,.45)}
+      .rto-widget{background:var(--s1);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow),var(--inset);padding:16px;margin:14px 0;position:relative;overflow:hidden}
+      .rto-widget.live{border-color:var(--accent-line)}
       .rto-top{display:flex;align-items:center;justify-content:space-between;gap:10px;position:relative}
       .rto-k{font-family:var(--mono);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted)}
       .rto-pill{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.6px;padding:4px 10px;border-radius:999px;border:1px solid var(--line)}
@@ -19,11 +21,11 @@
       .rto-pill.brk{color:var(--accent);border-color:var(--accent-line)}
       .rto-pill.warn{color:#0a0a0a;background:#fb7185;border-color:transparent;animation:rtoBlink 1s ease-in-out infinite}
       @keyframes rtoBlink{0%,100%{opacity:1}50%{opacity:.45}}
-      .rto-timer{font-family:var(--mono);font-size:46px;font-weight:800;letter-spacing:-2px;line-height:1;margin:12px 0 4px;font-variant-numeric:tabular-nums;transition:color .3s ease}
+      .rto-timer{font-family:var(--mono);font-size:46px;font-weight:800;letter-spacing:-2px;line-height:1;margin:12px 0 4px;font-variant-numeric:tabular-nums}
       .rto-timer.warn{color:#fb7185}
       .rto-sub{font-family:var(--mono);font-size:11px;color:var(--muted)}
       .rto-bar{height:8px;border-radius:999px;background:var(--s3);border:1px solid var(--line);overflow:hidden;margin:12px 0 6px}
-      .rto-bar i{display:block;height:100%;border-radius:999px;transition:width .5s cubic-bezier(.22,1,.36,1),background .3s ease}
+      .rto-bar i{display:block;height:100%;border-radius:999px}
       .rto-bar i.ok{background:linear-gradient(90deg,#ff5a00,#ff8a33)}
       .rto-bar i.hot{background:linear-gradient(90deg,#fbbf24,#fb7185)}
       .rto-acts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
@@ -32,15 +34,14 @@
       .rto-inter.bad{color:#fb7185}
       .rto-part[hidden]{display:none}
 
-      .rto-screen .rto-hero{background:var(--s1);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow),var(--inset);padding:20px 18px;margin:14px 0;position:relative;overflow:hidden;transition:box-shadow .4s ease,border-color .4s ease}
-      .rto-screen .rto-hero.live{border-color:var(--accent-line);box-shadow:var(--shadow),var(--inset),0 0 0 1px var(--accent-line),0 22px 60px -24px rgba(255,90,0,.5)}
-      .rto-screen .rto-big{font-family:var(--mono);font-size:64px;font-weight:800;letter-spacing:-3px;line-height:.9;font-variant-numeric:tabular-nums;position:relative;transition:color .3s ease}
+      .rto-screen .rto-hero{background:var(--s1);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow),var(--inset);padding:20px 18px;margin:14px 0;position:relative;overflow:hidden}
+      .rto-screen .rto-hero.live{border-color:var(--accent-line)}
+      .rto-screen .rto-big{font-family:var(--mono);font-size:64px;font-weight:800;letter-spacing:-3px;line-height:.9;font-variant-numeric:tabular-nums;position:relative}
       .rto-screen .rto-big.warn{color:#fb7185}
       .rto-rings{display:flex;gap:14px;margin:18px 0 4px;position:relative}
       .rto-ring{flex:1;text-align:center}
       .rto-ring svg{width:100%;max-width:120px;height:auto}
       .rto-ring .rl{font-family:var(--mono);font-size:9.5px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-top:6px}
-      .rto-ring .fg{transition:stroke-dashoffset .5s cubic-bezier(.22,1,.36,1),stroke .3s ease}
       .rto-log{margin:14px 0;display:flex;flex-direction:column;gap:6px}
       .rto-log .ev{display:flex;gap:10px;align-items:center;font-family:var(--mono);font-size:12px}
       .rto-log .ev .tm{color:var(--muted);flex:none;width:54px}
@@ -148,7 +149,7 @@
     const t=document.getElementById(id+'t'); if(t) t.textContent=Math.round(pct)+'%';
   }
 
-  /* ---- виджет на главную: структура стабильна, тик обновляет по id ---- */
+  /* ---- виджет на ГЛАВНОЙ: в live — СТАТИЧНАЯ карточка, без тика ---- */
   function widgetHTML(){
     if(!proUnlocked()){
       return `<div id="rto-w-root" class="rto-widget"><div class="rto-top"><span class="rto-k">Режим труда и отдыха</span><span class="rto-pill">PRO</span></div>
@@ -169,16 +170,12 @@
         <div class="rto-acts"><button class="btn primary" data-rto="start">▶ Выйти на линию</button></div>
       </div>
       <div id="rto-w-live" class="rto-part" hidden>
-        <div class="rto-top"><span class="rto-k" id="rto-w-live-k">смена</span><span class="rto-pill" id="rto-w-live-pill">—</span></div>
+        <div class="rto-top"><span class="rto-k" id="rto-w-live-k">смена идёт</span><span class="rto-pill" id="rto-w-live-pill">—</span></div>
         <div class="rto-timer" id="rto-w-live-timer">—</div>
         <div class="rto-sub" id="rto-w-live-sub"></div>
-        <div class="rto-bar"><i id="rto-w-live-bar" class="ok" style="width:0"></i></div>
-        <div class="rto-sub" id="rto-w-live-barlabel"></div>
-        <div class="rto-inter" id="rto-w-live-wk"></div>
         <div class="rto-acts">
-          <button class="btn" data-rto="break" id="rto-w-btn-break" hidden>☕ Перерыв</button>
-          <button class="btn primary" data-rto="resume" id="rto-w-btn-resume" hidden>▶ За руль</button>
-          <button class="btn danger" data-rto="end" id="rto-w-btn-end">⏹ Завершить смену</button>
+          <button class="btn" data-action="nav" data-to="rto">⏱️ Открыть трекер</button>
+          <button class="btn danger" data-rto="end" id="rto-w-btn-end">⏹ Завершить</button>
         </div>
       </div>
     </div>`;
@@ -191,6 +188,7 @@
     const a=getA();
     if(!a||a.phase==='ended'){
       root.classList.remove('live'); idle.hidden=false; live.hidden=true;
+      root.removeAttribute('data-live-painted');
       const le=lastEnd(); const inter=le?(nowMs()-le):null;
       const ie=document.getElementById('rto-w-idle-inter');
       if(ie){ if(inter===null){ ie.textContent='последняя смена не найдена'; ie.className='rto-inter'; }
@@ -200,20 +198,16 @@
       if(we){ const wk=weeklyWarn(); we.textContent=wk?'⚠️ за 6 суток не было отдыха 45 ч — пора на еженедельный отдых':''; we.className='rto-inter'+(wk?' bad':''); }
     } else {
       root.classList.add('live'); idle.hidden=true; live.hidden=false;
-      const c=continuous(a), sl=shiftLen(a), bl=breakLen(a), driving=a.phase==='driving';
-      const k=document.getElementById('rto-w-live-k'); if(k) k.textContent='смена · '+fmtClock(a.startedAt);
-      const pill=document.getElementById('rto-w-live-pill'); if(pill){ pill.textContent=driving?(c>=CONT_LIMIT?'ПЕРЕРЫВ!':'за рулём'):'перерыв'; pill.className='rto-pill '+(driving?(c>=CONT_LIMIT?'warn':'drive'):'brk'); }
-      const tm=document.getElementById('rto-w-live-timer'); if(tm){ tm.textContent=driving?fmtHM(c):fmtMS(bl); tm.className='rto-timer'+(driving&&c>=CONT_LIMIT?' warn':''); }
-      const sub=document.getElementById('rto-w-live-sub'); if(sub) sub.textContent=(driving?'непрерывное вождение':'идёт перерыв')+' · смена '+fmtHM(sl);
-      const bar=document.getElementById('rto-w-live-bar'); if(bar){ bar.style.width=(driving?Math.min(100,c/CONT_LIMIT*100):Math.min(100,bl/BREAK_MIN*100))+'%'; bar.className=((driving&&c>=CONT_WARN)||(!driving&&bl<BREAK_MIN&&c>=CONT_LIMIT))?'hot':'ok'; }
-      const blab=document.getElementById('rto-w-live-barlabel'); if(blab) blab.textContent=driving?('непрерывно '+fmtHM(c)+' / 4ч 30м'):('перерыв '+fmtMS(bl)+' / 45:00');
-      const wk=document.getElementById('rto-w-live-wk'); if(wk){ const w=weeklyWarn(); wk.textContent=w?'⚠️ пора на еженедельный отдых 45 ч':''; wk.className='rto-inter'+(w?' bad':''); }
-      const bb=document.getElementById('rto-w-btn-break'), br=document.getElementById('rto-w-btn-resume'), be=document.getElementById('rto-w-btn-end');
-      if(bb) bb.hidden=!driving; if(br) br.hidden=driving; if(be) be.hidden=false;
+      if(root.getAttribute('data-live-painted')) return; /* статично: больше не трогаем DOM на главной */
+      root.setAttribute('data-live-painted','1');
+      const k=document.getElementById('rto-w-live-k'); if(k) k.textContent='смена идёт';
+      const pill=document.getElementById('rto-w-live-pill'); if(pill){ pill.textContent=a.phase==='driving'?'за рулём':'перерыв'; pill.className='rto-pill '+(a.phase==='driving'?'drive':'brk'); }
+      const tm=document.getElementById('rto-w-live-timer'); if(tm){ tm.textContent='с '+fmtClock(a.startedAt); tm.className='rto-timer'; }
+      const sub=document.getElementById('rto-w-live-sub'); if(sub) sub.textContent='открой трекер — там живой секундомер, перерывы и лимиты';
     }
   }
 
-  /* ---- экран РТО: структура стабильна, тик обновляет по id ---- */
+  /* ---- экран РТО: таймер каждый тик, полосы/кольца раз в 10 тиков ---- */
   function screenBody(){
     if(!proUnlocked()){
       return `<div class="rto-screen"><div class="rto-hero"><div class="rto-top"><span class="rto-k">Режим труда и отдыха</span><span class="rto-pill">PRO</span></div>
@@ -242,8 +236,8 @@
         <div class="rto-big" id="rto-s-big" style="color:var(--muted)">—</div>
         <div class="rto-sub" id="rto-s-sub">не на линии — выйди на линию, чтобы начать</div>
         <div class="rto-rings">
-          <div class="rto-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="${RING_R}" fill="none" stroke="var(--s3)" stroke-width="7"/><circle id="rto-s-ring1" class="fg" cx="40" cy="40" r="${RING_R}" fill="none" stroke="#ff5a00" stroke-width="7" stroke-linecap="round" stroke-dasharray="${RING_C.toFixed(1)}" stroke-dashoffset="${RING_C.toFixed(1)}" transform="rotate(-90 40 40)"/><text id="rto-s-ring1t" x="40" y="40" text-anchor="middle" dominant-baseline="central" fill="var(--text)" font-family="var(--mono)" font-size="13" font-weight="700">0%</text></svg><div class="rl">до перерыва<br>4ч 30м непрерывно</div></div>
-          <div class="rto-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="${RING_R}" fill="none" stroke="var(--s3)" stroke-width="7"/><circle id="rto-s-ring2" class="fg" cx="40" cy="40" r="${RING_R}" fill="none" stroke="#ff5a00" stroke-width="7" stroke-linecap="round" stroke-dasharray="${RING_C.toFixed(1)}" stroke-dashoffset="${RING_C.toFixed(1)}" transform="rotate(-90 40 40)"/><text id="rto-s-ring2t" x="40" y="40" text-anchor="middle" dominant-baseline="central" fill="var(--text)" font-family="var(--mono)" font-size="13" font-weight="700">0%</text></svg><div class="rl">до конца смены<br>лимит 10 ч</div></div>
+          <div class="rto-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="${RING_R}" fill="none" stroke="var(--s3)" stroke-width="7"/><circle id="rto-s-ring1" cx="40" cy="40" r="${RING_R}" fill="none" stroke="#ff5a00" stroke-width="7" stroke-linecap="round" stroke-dasharray="${RING_C.toFixed(1)}" stroke-dashoffset="${RING_C.toFixed(1)}" transform="rotate(-90 40 40)"/><text id="rto-s-ring1t" x="40" y="40" text-anchor="middle" dominant-baseline="central" fill="var(--text)" font-family="var(--mono)" font-size="13" font-weight="700">0%</text></svg><div class="rl">до перерыва<br>4ч 30м непрерывно</div></div>
+          <div class="rto-ring"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="${RING_R}" fill="none" stroke="var(--s3)" stroke-width="7"/><circle id="rto-s-ring2" cx="40" cy="40" r="${RING_R}" fill="none" stroke="#ff5a00" stroke-width="7" stroke-linecap="round" stroke-dasharray="${RING_C.toFixed(1)}" stroke-dashoffset="${RING_C.toFixed(1)}" transform="rotate(-90 40 40)"/><text id="rto-s-ring2t" x="40" y="40" text-anchor="middle" dominant-baseline="central" fill="var(--text)" font-family="var(--mono)" font-size="13" font-weight="700">0%</text></svg><div class="rl">до конца смены<br>лимит 10 ч</div></div>
         </div>
         <div class="rto-acts">
           <button class="btn primary" data-rto="start" id="rto-s-btn-start">▶ Выйти на линию</button>
@@ -277,16 +271,16 @@
       </div>
     </div>`;
   }
-  function paintScreen(){
+  function paintScreen(full){
     const hero=document.getElementById('rto-s-hero'); if(!hero) return;
     const a=getA();
     if(!a||a.phase==='ended'){
       hero.classList.remove('live');
-      const big=document.getElementById('rto-s-big'); if(big){ big.textContent='—'; big.style.color='var(--muted)'; big.className='rto-big'; }
+      const big=document.getElementById('rto-s-big'); if(big){ big.textContent='—'; big.className='rto-big'; }
       const sub=document.getElementById('rto-s-sub'); if(sub) sub.textContent='не на линии — выйди на линию, чтобы начать';
       const k=document.getElementById('rto-s-k'); if(k) k.textContent='трекер смены';
       const pill=document.getElementById('rto-s-pill'); if(pill){ pill.textContent='—'; pill.className='rto-pill'; }
-      setRing('rto-s-ring1',0); setRing('rto-s-ring2',0);
+      if(full){ setRing('rto-s-ring1',0); setRing('rto-s-ring2',0); }
       const bs=document.getElementById('rto-s-btn-start'), bb=document.getElementById('rto-s-btn-break'), br=document.getElementById('rto-s-btn-resume'), be=document.getElementById('rto-s-btn-end');
       if(bs) bs.hidden=false; if(bb) bb.hidden=true; if(br) br.hidden=true; if(be) be.hidden=true;
       return;
@@ -295,20 +289,21 @@
     const c=continuous(a), sl=shiftLen(a), bl=breakLen(a), driving=a.phase==='driving';
     const k=document.getElementById('rto-s-k'); if(k) k.textContent='смена · '+fmtClock(a.startedAt);
     const pill=document.getElementById('rto-s-pill'); if(pill){ pill.textContent=driving?(c>=CONT_LIMIT?'ПЕРЕРЫВ!':'за рулём'):'перерыв'; pill.className='rto-pill '+(driving?(c>=CONT_LIMIT?'warn':'drive'):'brk'); }
-    const big=document.getElementById('rto-s-big'); if(big){ big.textContent=driving?fmtHM(c):fmtMS(bl); big.className='rto-big'+(driving&&c>=CONT_LIMIT?' warn':''); big.style.color=''; }
+    const big=document.getElementById('rto-s-big'); if(big){ big.textContent=driving?fmtHM(c):fmtMS(bl); big.className='rto-big'+(driving&&c>=CONT_LIMIT?' warn':''); }
     const sub=document.getElementById('rto-s-sub'); if(sub) sub.textContent=(driving?'непрерывное вождение':'идёт перерыв')+' · смена '+fmtHM(sl);
-    setRing('rto-s-ring1', Math.min(100,c/CONT_LIMIT*100));
-    setRing('rto-s-ring2', Math.min(100,sl/SHIFT_LIMIT*100));
+    if(full){ setRing('rto-s-ring1', Math.min(100,c/CONT_LIMIT*100)); setRing('rto-s-ring2', Math.min(100,sl/SHIFT_LIMIT*100)); }
     const bs=document.getElementById('rto-s-btn-start'), bb=document.getElementById('rto-s-btn-break'), br=document.getElementById('rto-s-btn-resume'), be=document.getElementById('rto-s-btn-end');
     if(bs) bs.hidden=true; if(bb) bb.hidden=!driving; if(br) br.hidden=driving; if(be) be.hidden=false;
   }
 
-  /* ---- тик: ТОЛЬКО точечное обновление, без пересборки DOM ---- */
+  /* ---- тик: главная статична, на вкладке полосы/кольца раз в 10 тиков ---- */
+  let tickN=0;
   function tick(){
     const a=getA();
     if(a && a.phase!=='ended') evaluate(a);
     paintWidget();
-    paintScreen();
+    paintScreen(tickN%10===0);
+    tickN++;
   }
   setInterval(tick, 1000);
 
@@ -317,7 +312,7 @@
   window.BLVCK_ALERT_HOOKS = window.BLVCK_ALERT_HOOKS || [];
   window.BLVCK_HOOKS.push(function(){
     const m=document.getElementById('rto-mount'); if(m){ m.innerHTML=widgetHTML(); paintWidget(); }
-    const sr=document.getElementById('rto-screen-root'); if(sr){ sr.innerHTML=screenBody(); paintScreen(); }
+    const sr=document.getElementById('rto-screen-root'); if(sr){ sr.innerHTML=screenBody(); paintScreen(true); }
   });
   window.BLVCK_ALERT_HOOKS.push(function(){
     if(!proUnlocked()) return [];
