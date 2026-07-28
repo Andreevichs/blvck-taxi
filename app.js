@@ -607,7 +607,7 @@ function screenRto(){
 /* ---------- ТО / ДОКИ ---------- */
 async function screenDocs(){ const maint=(await dbAll("maintenance")).sort((a,b)=>b.date.localeCompare(a.date)); const docs=(await dbAll("documents")).sort((a,b)=>(a.expiryDate||"9").localeCompare(b.expiryDate||"9"));
   return `<div class="h1">ТО и документы</div><div class="row" style="gap:10px;margin-top:10px"><button class="btn" data-action="openAddMaint">➕ Событие ТО</button><button class="btn" data-action="openAddDoc">📄 Документ</button></div>
-    <div class="h2">документы</div>${docs.length?`<div class="list">${docs.map(d=>{const days=d.expiryDate?Math.round((new Date(d.expiryDate)-new Date())/86400000):null;const w=days!=null&&days<=30;return `<div class="item"><div class="ic">${w?(days<0?"⛔":"⏰"):"📄"}</div><div class="meta"><div class="t">${esc(d.name)}</div><div class="s">${d.expiryDate?("до "+fmtDate(d.expiryDate)+(days!=null?(days<0?" · просрочено":" · "+days+" дн."):"")):"бессрочно"}</div></div><button class="del" data-action="delDoc" data-id="${d.id}">🗑</button></div>`;}).join("")}</div>`:`<div class="glass empty">Нет документов</div>`}
+    <div class="h2">документы</div>${docs.length?`<div class="list">${docs.map(d=>{const days=d.expiryDate?Math.round((new Date(d.expiryDate)-new Date())/86400000):null;const w=days!=null&&days<=30;return `<div class="item"><div class="ic">${w?(days<0?"⛔":""):"📄"}</div><div class="meta"><div class="t">${esc(d.name)}</div><div class="s">${d.expiryDate?("до "+fmtDate(d.expiryDate)+(days!=null?(days<0?" · просрочено":" · "+days+" дн."):"")):"бессрочно"}</div></div><button class="del" data-action="delDoc" data-id="${d.id}">🗑</button></div>`;}).join("")}</div>`:`<div class="glass empty">Нет документов</div>`}
     <div class="h2">журнал ТО</div>${maint.length?`<div class="list">${maint.map(m=>`<div class="item"><div class="ic">🔧</div><div class="meta"><div class="t">${esc(m.title)}</div><div class="s">${fmtDate(m.date)}${m.mileage?" · "+num(m.mileage)+" км":""}${m.note?" · "+esc(m.note):""}</div></div><button class="del" data-action="delMaint" data-id="${m.id}">🗑</button></div>`).join("")}</div>`:`<div class="glass empty">Нет событий</div>`}`; }
 
 /* ---------- ШТРАФЫ ---------- */
@@ -783,7 +783,7 @@ const SHOT_STYLE = `<style>
 #shotmode .chk .cap{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}
 #shotmode .chk .cap .l{font-size:13px;font-weight:700}
 #shotmode .chk .cap .l .s{display:block;font-family:ui-monospace,monospace;font-size:10.5px;color:#6b6b65;font-weight:500;margin-top:2px}
-#shotmode .chk .cap .am{font-family:ui-monospace,monospace;font-weight:800;font-size:16px;flex:none}
+#shotmode .chk .cap .am{font-family:u-monospace,monospace;font-weight:800;font-size:16px;flex:none}
 #shotmode .shot-foot{text-align:center;font-family:ui-monospace,monospace;font-size:10px;color:#9a9a92;letter-spacing:.5px;padding:18px 0 6px;text-transform:uppercase}
 #shotmode .empty{color:#9a9a92;font-size:13px;text-align:center;padding:8px 0}
 </style>`;
@@ -1071,10 +1071,8 @@ function makeParticles(){ const box=$(".bg-particles"); if(!box) return; for(let
 let searchT=null;
 document.addEventListener("input",(ev)=>{ const el=ev.target; if(el&&el.id==="exp_search"){ clearTimeout(searchT); searchT=setTimeout(()=>{ state.expQ=el.value; renderAsync(); },160); } });
 
-/* ---------- события ---------- */
+/* ---------- события (без визуальной вспышки — она ломалась на чипе Honor) ---------- */
 document.addEventListener("click", async (ev)=>{
-  const host=ev.target.closest(".btn,.qcard,.preset,.chip,.tab,.dcat,.dbig,.pbtn,.iconbtn,.seg button,.shot-x");
-  if(host){ const r=document.createElement("span"); r.className="ripple"; const rc=host.getBoundingClientRect(); const sz=Math.max(rc.width,rc.height); r.style.width=r.style.height=sz+"px"; r.style.left=(ev.clientX-rc.left-sz/2)+"px"; r.style.top=(ev.clientY-rc.top-sz/2)+"px"; host.appendChild(r); setTimeout(()=>r.remove(),600); }
   const el=ev.target.closest("[data-action]"); if(!el) return; const a=el.dataset.action; haptic("light");
   switch(a){
     case "nav": state.screen=el.dataset.to; state._animateScreen=true; renderAsync(); break;
