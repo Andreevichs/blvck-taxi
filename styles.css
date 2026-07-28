@@ -1,4 +1,4 @@
-/* ===== BLVCK TAXI 2026 — instrument minimalism: black / white / orange ===== */
+3/* ===== BLVCK TAXI 2026 — instrument minimalism: black / white / orange ===== */
 :root{
   --bg:#0a0a0a; --bg2:#101010; --s1:#141414; --s2:#1b1b1b; --s3:#242424;
   --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.16);
@@ -244,3 +244,23 @@ body{font-family:var(--sans);color:var(--text);background:var(--bg);overflow-x:h
 @keyframes nudge{0%,100%{transform:translateX(0)}50%{transform:translateX(5px)}}
 
 @media (max-width:360px){.metricrow,.grid2,.grid3,.presets,.eff,.drive .drow,.toolgrid{grid-template-columns:1fr}.toolgrid .span2{grid-column:auto}.tab{font-size:8px;padding:7px 0}.tab .ti{font-size:16px}}
+
+/* =========================================================
+   КАРАНТИН GPU-артефактов (чипы Mali / Honor).
+   Оранжевая поверхность + transform/filter/animation при тапе
+   или перерисовке = эллипс на весь экран. Убираем начисто.
+   Живость (частицы, пульс марки, накрутка цифр) не тронута.
+   ========================================================= */
+.btn.primary{filter:none !important;box-shadow:0 8px 22px -10px rgba(255,90,0,.55) !important}
+.btn.primary:hover{filter:none !important}
+.qcard.qcard-add{box-shadow:0 12px 28px -14px var(--accent) !important;filter:none !important}
+.btn:active,.qcard:active,.qcard.qcard-add:active,.preset:active,
+.iconbtn:active,.pbtn:active,.dcat:active,.dbig:active,.tab:active{transform:none !important}
+.rto-screen .rto-bar i,
+.rto-screen .rto-ring .fg,
+.rto-screen .rto-pill,
+.rto-screen .rto-pill.warn,
+.rto-screen .rto-big,
+.rto-screen .rto-hero,
+.rto-widget,.rto-widget.live{transition:none !important;animation:none !important}
+.rto-screen .rto-pill.warn{background:#fb7185 !important;color:#0a0a0a !important;border-color:transparent !important}
