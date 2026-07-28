@@ -1,52 +1,71 @@
-/* Service Worker — код всегда свежий при наличии сети, офлайн из кеша.
-   Стратегия для кода (html/js/css/manifest/svg/json и навигация) = network-first:
-   при наличии сети берётся свежий файл с сервера (и кладётся в кеш),
-   без сети — отдаётся последний закешенный. Остальное (напр. TG SDK) = cache-first.
-   Поэтому после перезаливки app.js на Netlify новое подтянется сразу,
-   а офлайн-режим по-прежнему работает. */
-const CACHE = "blvck-taxi-v2";
-const ASSETS = ["./","./index.html","./styles.css","./app.js","./manifest.webmanifest","./icon.svg"];
+/* =========================================================
+   sw.js — BLVCK TAXI service worker (network-first для кода)
+   Код (html/js/css) всегда свежий с сети; кэш — только офлайн.
+   При активации вычищает ВСЕ старые кэши и перехватывает
+   управление сразу (skipWaiting + clients.claim), чтобы новые
+   версии app.js / rto.js / styles.css доходили без ручного сброса.
+   ========================================================= */
+const CODE_CACHE = 'blvck-code-v9';
 
-self.addEventListener("install", e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(()=>self.skipWaiting()));
+self.addEventListener('install', (e) => {
+  self.skipWaiting();
 });
 
-self.addEventListener("activate", e => {
-  e.waitUntil(
-    caches.keys().then(ks => Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k))))
-      .then(()=>self.clients.claim())
-      .then(()=>self.clients.matchAll({type:"window"}).then(cs=>cs.forEach(c=>{ try{ c.navigate(c.url); }catch(_){} })))
-  );
+self.addEventListener('activate', (e) => {
+  e.waitUntil((async () => {
+    try {
+      const names = await caches.keys();
+      // удаляем ЛЮБОЙ старый кэш, кроме текущего — независимо от версии
+      await Promise.all(names.filter(n => n !== CODE_CACHE).map(n => caches.delete(n)));
+    } catch (e) {}
+    await self.clients.claim();
+  })());
 });
 
-self.addEventListener("fetch", e => {
+self.addEventListener('fetch', (e) => {
   const req = e.request;
-  if(req.method !== "GET") return;
-  let url; try{ url = new URL(req.url); }catch(_){ return; }
-  const sameOrigin = url.origin === self.location.origin;
-  const isAsset = sameOrigin && (req.mode === "navigate" || /\.(js|css|html|webmanifest|svg|json)$/i.test(url.pathname));
+  if (req.method !== 'GET') return;
+  let url;
+  try { url = new URL(req.url); } catch (e) { return; }
+  // чужие домены (api telegram, render) — не трогаем, пусть идут как есть
+  if (url.origin !== self.location.origin) return;
 
-  if(isAsset){
-    // network-first: свежий код при сети, кеш при офлайне
-    e.respondWith(
-      fetch(req).then(res => {
-        const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(req, copy)).catch(()=>{});
-        return res;
-      }).catch(()=> caches.match(req).then(hit => hit || (req.mode === "navigate" ? caches.match("./index.html") : undefined)))
-    );
+  const path = url.pathname.toLowerCase();
+  const isCode = path.endsWith('.html') || path.endsWith('.js') || path.endsWith('.css')
+              || path.endsWith('.json') || path.endsWith('.webmanifest')
+              || path === '/' || path.endsWith('/index.html');
+
+  if (isCode) {
+    // NETWORK-FIRST: свежее с сети, кэш только как офлайн-fallback
+    e.respondWith((async () => {
+      try {
+        const net = await fetch(req);
+        if (net && net.ok) {
+          const cache = await caches.open(CODE_CACHE);
+          cache.put(req, net.clone());
+          return net;
+        }
+        throw 0;
+      } catch (e) {
+        const cache = await caches.open(CODE_CACHE);
+        const cached = await cache.match(req);
+        return cached || new Response('offline', { status: 503 });
+      }
+    })());
     return;
   }
 
-  // cache-first для остального (например telegram-web-app.js)
-  e.respondWith(
-    caches.match(req).then(hit => {
-      if(hit) return hit;
-      return fetch(req).then(res => {
-        const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(req, copy)).catch(()=>{});
-        return res;
-      }).catch(()=> caches.match("./index.html"));
-    })
-  );
+  // прочее (картинки и т.п.) — cache-first
+  e.respondWith((async () => {
+    const cache = await caches.open(CODE_CACHE);
+    const cached = await cache.match(req);
+    if (cached) return cached;
+    try {
+      const net = await fetch(req);
+      if (net && net.ok) cache.put(req, net.clone());
+      return net;
+    } catch (e) {
+      return cached || new Response('offline', { status: 503 });
+    }
+  })());
 });
