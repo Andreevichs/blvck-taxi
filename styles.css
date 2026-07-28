@@ -23,9 +23,7 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 button,input,select,textarea{font:inherit;color:inherit}
 html,body{margin:0;height:100%}
-body{
-  font-family:var(--sans);color:var(--text);background:var(--bg);overflow-x:hidden;-webkit-font-smoothing:antialiased;
-}
+body{font-family:var(--sans);color:var(--text);background:var(--bg);overflow-x:hidden;-webkit-font-smoothing:antialiased}
 
 .bg-mesh,.bg-noise,.bg-particles{position:fixed;inset:0;pointer-events:none;z-index:0}
 .bg-mesh{background:
@@ -44,10 +42,13 @@ body{
 .bg-particles span:nth-child(3n){background:var(--accent);opacity:.26;width:4px;height:4px}
 @keyframes drift{0%{transform:translateY(16vh) scale(.6);opacity:0}12%{opacity:.24}88%{opacity:.24}100%{transform:translateY(-114vh) scale(1);opacity:0}}
 
-.app{position:relative;display:block;width:100%;max-width:540px;margin:0 auto;min-height:100%;padding:18px 16px calc(var(--tab-h) + 28px);overflow-x:hidden;animation:screenIn .5s var(--spring)}
+/* ВАЖНО: у .app НЕТ animation появления — именно массовая transform-анимация
+   блоков при рендере давала артефакт-«овал» на чипах Mali при переходах. */
+.app{position:relative;display:block;width:100%;max-width:540px;margin:0 auto;min-height:100%;padding:18px 16px calc(var(--tab-h) + 28px);overflow-x:hidden}
 @keyframes screenIn{from{opacity:0}to{opacity:1}}
 
-.app .glass,.app .item,.app .alert,.app .h1,.app .h2,.app .qcard-f,.app .hero,.app .quickrow,.app .streak,.app .toolgrid,.app .metricrow,.app .today,.app .sparkcard,.app .seg,.app .searchwrap,.app .info,.app .ownblock,.app .backupbelt{opacity:0;transform:translateY(16px);transition:opacity .62s var(--spring),transform .62s var(--spring)}
+/* блоки видны СРАЗУ, без каскада opacity+transform (убран transition целиком) */
+.app .glass,.app .item,.app .alert,.app .h1,.app .h2,.app .qcard-f,.app .hero,.app .quickrow,.app .streak,.app .toolgrid,.app .metricrow,.app .today,.app .sparkcard,.app .seg,.app .searchwrap,.app .info,.app .ownblock,.app .backupbelt{opacity:1;transform:none}
 .app .revealed{opacity:1;transform:none}
 
 .glass{background:var(--s1);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow),var(--inset);position:relative;transition:border-color .25s}
@@ -147,10 +148,6 @@ body{
 .btn.ghost{background:transparent}
 .btn.danger{color:var(--text);border-color:var(--line2)} .btn.danger:active{background:var(--text);color:var(--bg)}
 .btn.sm{padding:9px 12px;font-size:13px;width:auto}
-
-.ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,.28);transform:scale(0);animation:ripple .6s ease-out;pointer-events:none}
-.btn.primary .ripple{background:rgba(0,0,0,.22)}
-@keyframes ripple{to{transform:scale(2.4);opacity:0}}
 
 .chart{width:100%;height:auto;display:block}
 .chart text.ct{fill:var(--text)} .chart text.cm{fill:var(--muted)} .chart .need{fill:var(--s2);stroke:var(--line);stroke-width:1}
