@@ -5,6 +5,8 @@
    + выручка: скролл на весь месяц, суммы над столбиками, сохранение
    + модульная архитектура: tax.js / rto.js / pro.js через глобальные хуки
    + РТО: вкладка + виджет на главной + клиентская сторона серверных пингов
+   FIX овала: убрана каскадная transform-анимация появления блоков —
+   именно она на чипах Mali давала артефакт-эллипс при перерисовке.
    ========================================================= */
 
 /* ===== URL СЕРВЕРА — ЗАМЕНИ НА СВОЙ URL С RENDER (без слэша в конце) ===== */
@@ -241,7 +243,7 @@ const dbGet=(s,id)=>reqP(tx(s).get(id));
 const dbAll=(s)=>reqP(tx(s).getAll());
 const dbClear=(s)=>reqP(tx(s,"readwrite").clear());
 
-/* ---------- рендер + post-render (без наблюдателя; хуки модулей после рендера) ---------- */
+/* ---------- рендер + post-render (БЕЗ каскадной transform-анимации) ---------- */
 let revealIO=null, revealGen=0;
 async function renderAsync(){
   const app=$("#app");
@@ -255,9 +257,12 @@ async function renderAsync(){
 function postRender(){
   const anim = state._animateScreen;
   if(revealIO){ revealIO.disconnect(); revealIO=null; }
-  const gen = ++revealGen;
+  ++revealGen;
   const SEL=".app .glass,.app .item,.app .alert,.app .h1,.app .h2,.app .qcard-f,.app .hero,.app .quickrow,.app .streak,.app .toolgrid,.app .metricrow,.app .today,.app .sparkcard,.app .seg,.app .searchwrap,.app .info,.app .ownblock,.app .backupbelt";
   const els=[...document.querySelectorAll(SEL)];
+  // Блоки видны СРАЗУ, без каскадной transform-анимации появления —
+  // на чипах Mali именно она рождала артефакт-«овал» при переходах/перерисовке.
+  els.forEach(el=>el.classList.add("revealed"));
   requestAnimationFrame(()=>{
     document.querySelectorAll("[data-ring]").forEach(c=>{ c.style.strokeDashoffset=c.getAttribute("data-ring"); });
     document.querySelectorAll("[data-bar]").forEach(i=>{ i.style.width=i.getAttribute("data-bar"); });
@@ -267,9 +272,6 @@ function postRender(){
     const to=parseFloat(el.getAttribute("data-count"))||0, dec=parseInt(el.getAttribute("data-dec")||"2",10), pre=el.getAttribute("data-prefix")||"", suf=el.getAttribute("data-suffix")||"";
     if(anim) countUp(el,to,dec,pre,suf); else el.textContent=pre+to.toLocaleString("ru-RU",{maximumFractionDigits:dec})+suf;
   });
-  requestAnimationFrame(()=>{ if(gen!==revealGen) return; els.forEach((el,i)=>{ el.style.transitionDelay=(Math.min(i,8)*35)+"ms"; el.classList.add("revealed"); }); });
-  setTimeout(()=>{ if(gen!==revealGen) return; els.forEach(el=>{ el.style.transitionDelay="0ms"; el.classList.add("revealed"); }); if(revealIO){ revealIO.disconnect(); revealIO=null; } },600);
-  try{ (window.BLVCK_HOOKS||[]).forEach(fn=>fn()); }catch(e){}
   state._animateScreen=false;
 }
 function renderTabs(){
@@ -310,7 +312,6 @@ async function screenDash(){
   finesList().filter(f=>!f.paid).forEach(f=>{ const days=f.date?Math.round((now-new Date(f.date+"T00:00:00"))/86400000):null;
     alerts.push({bad:true,t:`🚨 Не оплачен штраф: ${esc(f.name)}`,s:`${money(f.amount)}${f.date?` · выписан ${fmtDate(f.date)}${days!=null?` (${days} дн. назад)`:""}`:""}`}); });
 
-  // баннеры от модулей (tax.js / rto.js) — подтягиваются после штатных
   try{ (window.BLVCK_ALERT_HOOKS||[]).forEach(fn=>{ (fn()||[]).forEach(a=>alerts.push(a)); }); }catch(e){}
 
   const tgName=localStorage.getItem("blvck_tg_name");
@@ -733,42 +734,42 @@ const SHOT_STYLE = `<style>
 #shotmode .kpi .k .v.acc{color:#ff5a00}
 #shotmode .kpi .k .l{font-family:ui-monospace,monospace;font-size:9.5px;color:#6b6b65;text-transform:uppercase;letter-spacing:.8px;margin-top:7px}
 #shotmode .free{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
-#shotmode .free .v{font-family:ui-monospace,monospace;font-size:34px;font-weight:900;letter-spacing:-1.4px;line-height:.95}
+#shotmode .free .v{font-family:u-monospace,monospace;font-size:34px;font-weight:900;letter-spacing:-1.4px;line-height:.95}
 #shotmode .free .v.pos{color:#ff5a00} #shotmode .free .v.neg{color:#9a9a92}
-#shotmode .free .l{font-family:ui-monospace,monospace;font-size:10px;color:#6b6b65;text-transform:uppercase;letter-spacing:.8px;text-align:right}
+#shotmode .free .l{font-family:u-monospace,monospace;font-size:10px;color:#6b6b65;text-transform:uppercase;letter-spacing:.8px;text-align:right}
 #shotmode .catrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px dashed rgba(20,20,20,.10)}
 #shotmode .catrow:last-child{border-bottom:none}
 #shotmode .catrow .ic{font-size:18px;width:30px;text-align:center;flex:none}
 #shotmode .catrow .nm{font-weight:700;font-size:14px;flex:none;min-width:84px}
 #shotmode .catrow .bar{flex:1;height:8px;border-radius:6px;background:#efece5;overflow:hidden}
 #shotmode .catrow .bar i{display:block;height:100%;width:0;border-radius:6px;background:linear-gradient(90deg,#ff5a00,#ff8a33);transition:width .9s cubic-bezier(.22,1,.36,1)}
-#shotmode .catrow .pc{font-family:ui-monospace,monospace;font-size:11px;color:#6b6b65;width:38px;text-align:right;flex:none}
-#shotmode .catrow .sm{font-family:ui-monospace,monospace;font-size:12px;font-weight:700;width:96px;text-align:right;flex:none}
+#shotmode .catrow .pc{font-family:u-monospace,monospace;font-size:11px;color:#6b6b65;width:38px;text-align:right;flex:none}
+#shotmode .catrow .sm{font-family:u-monospace,monospace;font-size:12px;font-weight:700;width:96px;text-align:right;flex:none}
 #shotmode .exp{display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid rgba(20,20,20,.07)}
 #shotmode .exp:last-child{border-bottom:none}
 #shotmode .exp .dt{flex:none;width:42px;text-align:center;background:#141414;color:#fff;border-radius:9px;padding:6px 0;line-height:1.05}
-#shotmode .exp .dt .d{font-family:ui-monospace,monospace;font-size:16px;font-weight:800}
-#shotmode .exp .dt .m{font-family:ui-monospace,monospace;font-size:9px;opacity:.7;text-transform:uppercase}
+#shotmode .exp .dt .d{font-family:u-monospace,monospace;font-size:16px;font-weight:800}
+#shotmode .exp .dt .m{font-family:u-monospace,monospace;font-size:9px;opacity:.7;text-transform:uppercase}
 #shotmode .exp .ic{font-size:18px;flex:none}
 #shotmode .exp .mid{flex:1;min-width:0}
 #shotmode .exp .mid .t{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#shotmode .exp .mid .s{font-family:ui-monospace,monospace;font-size:10.5px;color:#6b6b65;margin-top:2px}
+#shotmode .exp .mid .s{font-family:u-monospace,monospace;font-size:10.5px;color:#6b6b65;margin-top:2px}
 #shotmode .exp .rc{width:40px;height:40px;object-fit:cover;border-radius:8px;border:1px solid rgba(20,20,20,.10);flex:none}
-#shotmode .exp .am{font-family:ui-monospace,monospace;font-weight:800;font-size:15px;flex:none;white-space:nowrap}
+#shotmode .exp .am{font-family:u-monospace,monospace;font-weight:800;font-size:15px;flex:none;white-space:nowrap}
 #shotmode .rev{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px dashed rgba(20,20,20,.10)}
 #shotmode .rev:last-child{border-bottom:none}
-#shotmode .rev .dt{font-family:ui-monospace,monospace;font-size:12px;color:#6b6b65;width:78px;flex:none}
+#shotmode .rev .dt{font-family:u-monospace,monospace;font-size:12px;color:#6b6b65;width:78px;flex:none}
 #shotmode .rev .bar{flex:1;height:9px;border-radius:6px;background:#efece5;overflow:hidden}
 #shotmode .rev .bar i{display:block;height:100%;width:0;border-radius:6px;background:linear-gradient(90deg,#ff5a00,#ff8a33);transition:width .9s cubic-bezier(.22,1,.36,1)}
-#shotmode .rev .sm{font-family:ui-monospace,monospace;font-weight:800;font-size:13px;width:104px;text-align:right;flex:none}
+#shotmode .rev .sm{font-family:u-monospace,monospace;font-weight:800;font-size:13px;width:104px;text-align:right;flex:none}
 #shotmode .wear{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(20,20,20,.07)}
 #shotmode .wear:last-child{border-bottom:none}
 #shotmode .wear .ic{font-size:18px;flex:none}
 #shotmode .wear .mid{flex:1;min-width:0}
 #shotmode .wear .mid .t{font-weight:700;font-size:13.5px}
-#shotmode .wear .mid .s{font-family:ui-monospace,monospace;font-size:10.5px;color:#6b6b65;margin-top:2px}
-#shotmode .wear .km{font-family:ui-monospace,monospace;font-weight:800;font-size:14px;flex:none}
-#shotmode .pill{font-family:ui-monospace,monospace;font-size:9px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding:3px 8px;border-radius:999px;flex:none}
+#shotmode .wear .mid .s{font-family:u-monospace,monospace;font-size:10.5px;color:#6b6b65;margin-top:2px}
+#shotmode .wear .km{font-family:u-monospace,monospace;font-weight:800;font-size:14px;flex:none}
+#shotmode .pill{font-family:u-monospace,monospace;font-size:9px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding:3px 8px;border-radius:999px;flex:none}
 #shotmode .pill.on{color:#ff5a00;border:1px solid rgba(255,90,0,.5);background:rgba(255,90,0,.10)}
 #shotmode .pill.off{color:#6b6b65;border:1px solid rgba(20,20,20,.2)}
 #shotmode .fine{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(20,20,20,.07)}
@@ -776,15 +777,15 @@ const SHOT_STYLE = `<style>
 #shotmode .fine .ic{font-size:16px;flex:none}
 #shotmode .fine .mid{flex:1;min-width:0}
 #shotmode .fine .mid .t{font-weight:700;font-size:13.5px}
-#shotmode .fine .mid .s{font-family:ui-monospace,monospace;font-size:10.5px;color:#6b6b65;margin-top:2px}
-#shotmode .fine .am{font-family:ui-monospace,monospace;font-weight:800;font-size:14px;flex:none}
+#shotmode .fine .mid .s{font-family:u-monospace,monospace;font-size:10.5px;color:#6b6b65;margin-top:2px}
+#shotmode .fine .am{font-family:u-monospace,monospace;font-weight:800;font-size:14px;flex:none}
 #shotmode .chk{background:#faf8f3;border:1px solid rgba(20,20,20,.06);border-radius:14px;padding:12px;margin-bottom:12px}
 #shotmode .chk img{width:100%;border-radius:10px;border:1px solid rgba(20,20,20,.10);display:block}
 #shotmode .chk .cap{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}
 #shotmode .chk .cap .l{font-size:13px;font-weight:700}
-#shotmode .chk .cap .l .s{display:block;font-family:ui-monospace,monospace;font-size:10.5px;color:#6b6b65;font-weight:500;margin-top:2px}
+#shotmode .chk .cap .l .s{display:block;font-family:u-monospace,monospace;font-size:10.5px;color:#6b6b65;font-weight:500;margin-top:2px}
 #shotmode .chk .cap .am{font-family:u-monospace,monospace;font-weight:800;font-size:16px;flex:none}
-#shotmode .shot-foot{text-align:center;font-family:ui-monospace,monospace;font-size:10px;color:#9a9a92;letter-spacing:.5px;padding:18px 0 6px;text-transform:uppercase}
+#shotmode .shot-foot{text-align:center;font-family:u-monospace,monospace;font-size:10px;color:#9a9a92;letter-spacing:.5px;padding:18px 0 6px;text-transform:uppercase}
 #shotmode .empty{color:#9a9a92;font-size:13px;text-align:center;padding:8px 0}
 </style>`;
 function shotCard(title, num, inner){ return `<section class="shot-card"><div class="shot-h"><span class="t">${title}</span><span class="n">${num||""}</span></div>${inner}</section>`; }
@@ -1153,7 +1154,6 @@ $("#modal").addEventListener("click", e=>{ if(e.target.id==="modal") closeModal(
 $("#restoreInput").addEventListener("change", e=>handleRestoreFile(e.target.files[0]));
 
 /* ---------- старт ---------- */
-/* глобальные точки расширения для модулей (tax.js / rto.js / pro.js) */
 window.BLVCK_HOOKS = window.BLVCK_HOOKS || [];
 window.BLVCK_ALERT_HOOKS = window.BLVCK_ALERT_HOOKS || [];
 window.BLVCK_PRO = window.BLVCK_PRO || { unlocked: ()=>true, openScreen: ()=>{} };
