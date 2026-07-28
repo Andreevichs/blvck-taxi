@@ -1,4 +1,4 @@
-3/* ===== BLVCK TAXI 2026 — instrument minimalism: black / white / orange ===== */
+/* ===== BLVCK TAXI 2026 — instrument minimalism: black / white / orange ===== */
 :root{
   --bg:#0a0a0a; --bg2:#101010; --s1:#141414; --s2:#1b1b1b; --s3:#242424;
   --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.16);
@@ -42,12 +42,12 @@ body{font-family:var(--sans);color:var(--text);background:var(--bg);overflow-x:h
 .bg-particles span:nth-child(3n){background:var(--accent);opacity:.26;width:4px;height:4px}
 @keyframes drift{0%{transform:translateY(16vh) scale(.6);opacity:0}12%{opacity:.24}88%{opacity:.24}100%{transform:translateY(-114vh) scale(1);opacity:0}}
 
-/* ВАЖНО: у .app НЕТ animation появления — именно массовая transform-анимация
-   блоков при рендере давала артефакт-«овал» на чипах Mali при переходах. */
+/* у .app НЕТ animation появления — массовая transform-анимация блоков при
+   рендере давала артефакт на чипах Mali при переходах. */
 .app{position:relative;display:block;width:100%;max-width:540px;margin:0 auto;min-height:100%;padding:18px 16px calc(var(--tab-h) + 28px);overflow-x:hidden}
 @keyframes screenIn{from{opacity:0}to{opacity:1}}
 
-/* блоки видны СРАЗУ, без каскада opacity+transform (убран transition целиком) */
+/* блоки видны СРАЗУ, без каскада opacity+transform */
 .app .glass,.app .item,.app .alert,.app .h1,.app .h2,.app .qcard-f,.app .hero,.app .quickrow,.app .streak,.app .toolgrid,.app .metricrow,.app .today,.app .sparkcard,.app .seg,.app .searchwrap,.app .info,.app .ownblock,.app .backupbelt{opacity:1;transform:none}
 .app .revealed{opacity:1;transform:none}
 
@@ -249,7 +249,6 @@ body{font-family:var(--sans);color:var(--text);background:var(--bg);overflow-x:h
    КАРАНТИН GPU-артефактов (чипы Mali / Honor).
    Оранжевая поверхность + transform/filter/animation при тапе
    или перерисовке = эллипс на весь экран. Убираем начисто.
-   Живость (частицы, пульс марки, накрутка цифр) не тронута.
    ========================================================= */
 .btn.primary{filter:none !important;box-shadow:0 8px 22px -10px rgba(255,90,0,.55) !important}
 .btn.primary:hover{filter:none !important}
@@ -264,3 +263,23 @@ body{font-family:var(--sans);color:var(--text);background:var(--bg);overflow-x:h
 .rto-screen .rto-hero,
 .rto-widget,.rto-widget.live{transition:none !important;animation:none !important}
 .rto-screen .rto-pill.warn{background:#fb7185 !important;color:#0a0a0a !important;border-color:transparent !important}
+
+/* =========================================================
+   ФИНАЛ ОВАЛА — источник найден: фиксированный декор-фон.
+   Эллипс = форма маски .bg-particles (radial-gradient) + слой
+   .bg-noise с mix-blend-mode + радиалы .bg-mesh. При каждой
+   полной перерисовке (переход вкладки, «выйти на линию»,
+   «завершить») драйвер Mali пересобирает эти fixed-слои и
+   оставляет оранжевый артефакт их формы. Кнопки и виджет РТО
+   тут ни при чём. Убираем декор-фон начисто + гасим анимации
+   fixed-оверлеев (тост/модалка/вьювер/режим за рулём/онборд).
+   Накрутка цифр и пружины кнопок остаются — они не в этом слое.
+   ========================================================= */
+.bg-mesh,.bg-noise,.bg-particles{display:none !important}
+.bg-particles span{display:none !important}
+body{background:var(--bg) !important}
+.onboard::before,.onboard::after{display:none !important}
+.toast{animation:none !important;transform:translateX(-50%) !important}
+.modal{animation:none !important}
+.viewer{animation:none !important}
+.drive{animation:none !important}
