@@ -244,12 +244,6 @@ body{font-family:var(--sans);color:var(--text);background:var(--bg);overflow-x:h
 
 /* =========================================================
    ЯДЕРНЫЙ КАРАНТИН GPU-артефактов (чипы Mali / Honor / Telegram WebView).
-   Овал во весь экран = аппаратный баг композитинга: драйвер пересобирает
-   слои при полной перерисовке и оставляет оранжевый след их формы.
-   Гасим ВСЕ CSS-анимации и transition глобально — это убирает пересоздание
-   слоёв, а значит и артефакт. Накрутка цифр остаётся живой: она через JS.
-   Точечно возвращаем видимость элементам, которые без анимации стали бы
-   невидимы (спарклайн, шаги онборда, столбики графика выручки).
    ========================================================= */
 *,*::before,*::after{animation:none !important;transition:none !important}
 .bg-mesh,.bg-noise,.bg-particles,.bg-particles span{display:none !important}
@@ -260,7 +254,6 @@ body{background:var(--bg) !important}
 .spark-area{opacity:1 !important}
 .spark-line{opacity:1 !important;stroke-dashoffset:0 !important}
 .spark-dot{opacity:1 !important}
-/* столбики графика выручки: высота берётся напрямую из --h, без анимации */
 .revbar{height:var(--h) !important}
 .btn.primary,.qcard.qcard-add{filter:none !important}
 .btn.primary{box-shadow:0 8px 22px -10px rgba(255,90,0,.55) !important}
@@ -270,18 +263,11 @@ body{background:var(--bg) !important}
 .modal-root{backdrop-filter:none !important;-webkit-backdrop-filter:none !important}
 .toast{transform:translateX(-50%) !important}
 
-/* =========================================================
-   РОВНЫЙ ТАББАР при любом числе вкладок (5, 6, хоть вернёшь РТО).
-   flex с равным распределением вместо захардкоженной сетки на 6 колонок.
-   ========================================================= */
+/* ровный таббар при любом числе вкладок */
 .tabbar .inner{display:flex !important;grid-template-columns:none !important}
 .tabbar .tab{flex:1 1 0 !important;min-width:0}
 
-/* =========================================================
-   СПИСОК ДЕТАЛЕЙ / ИЗНОС (.part) — раньше стилей не было вообще,
-   поэтому иконка/название/пробег/«действует» падали в столбик.
-   Теперь аккуратная строка с разделителем внутри карточки.
-   ========================================================= */
+/* список деталей / износ */
 .part{display:flex;align-items:center;gap:12px;padding:13px 2px;border-bottom:1px solid var(--line)}
 .part:last-child{border-bottom:none}
 .part .ic{font-size:19px;width:34px;height:34px;display:grid;place-items:center;border-radius:9px;background:var(--s2);flex:none}
@@ -293,11 +279,7 @@ body{background:var(--bg) !important}
 .pill.on{color:var(--accent);border:1px solid var(--accent-line);background:var(--accent-soft)}
 .pill.off{color:var(--muted);border:1px solid var(--line)}
 
-/* =========================================================
-   БЛОК «ДОЛЯ МАШИНЫ В ВЫРУЧКЕ» — классы .ownblock/.ob-* для app.js,
-   собранного на классах (без inline-стилей). Без них flex-раскладка
-   схлопывалась и «машина съела…после авто» слипалось в одну строку.
-   ========================================================= */
+/* блок «доля машины в выручке» */
 .ownblock{padding:16px;margin:14px 0}
 .ownblock .ob-top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
 .ownblock .ob-pct{font-family:var(--mono);font-size:34px;font-weight:800;letter-spacing:-1.5px;line-height:1;color:var(--accent)}
@@ -315,12 +297,7 @@ body{background:var(--bg) !important}
 .ownblock .ob-empty{font-size:13px;color:var(--muted);line-height:1.45}
 .ownblock .ob-empty b{color:var(--text)}
 
-/* =========================================================
-   ИНФО-ПЛАШКА «Где живут данные» + ритмика заголовков.
-   Восстанавливает потерянные .info/.it/.d и выравнивает h1/h2
-   в единую колонку с карточками, чтобы заголовки не липли к краю,
-   а длинный текст переносился и не вылезал за правый край.
-   ========================================================= */
+/* инфо-плашка «Где живут данные» + ритмика заголовков */
 .app .h1{margin:6px 2px 2px}
 .app .h2{margin:22px 2px 9px}
 .info{background:var(--s1);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--inset);padding:16px;margin:12px 0}
@@ -328,3 +305,51 @@ body{background:var(--bg) !important}
 .info .it .d{width:8px;height:8px;border-radius:2px;background:var(--accent);transform:rotate(45deg);flex:none;box-shadow:0 0 0 3px var(--accent-soft)}
 .info p{margin:0;font-size:13.5px;line-height:1.6;color:var(--text);opacity:.92;overflow-wrap:anywhere;word-break:break-word}
 .info p b{color:var(--text);font-weight:700;opacity:1}
+
+/* =========================================================
+   PRO — экран подписки, демо-витрина, лесенка тарифов, плашка.
+   Всё статично (без animation/transition) — ради чипов Mali.
+   Лесенка масс: month — тонкая рамка, year — акцентная + бейдж,
+   forever — доминирующая тёмная плита с оранжевым кантом.
+   ========================================================= */
+.pro-status{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--s2);margin-bottom:14px}
+.pro-dot{width:9px;height:9px;border-radius:50%;flex:none}
+.pro-dot.on{background:#34d399;box-shadow:0 0 0 3px rgba(52,211,153,.18)}
+.pro-dot.trial{background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.pro-dot.off{background:var(--faint)}
+.pro-lead{font-size:13.5px;line-height:1.6;color:var(--text);opacity:.9;margin:0 0 16px}
+.pro-demo{border:1px solid var(--line);border-radius:16px;padding:16px;background:linear-gradient(180deg,var(--s2),var(--s1));margin-bottom:18px}
+.pro-demo-h{display:flex;justify-content:space-between;align-items:center}
+.pro-k{font-family:var(--mono);font-size:9.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)}
+.pro-demo-big{font-family:var(--mono);font-size:52px;font-weight:800;letter-spacing:-2px;line-height:.95;color:var(--accent);margin:8px 0 2px}
+.pro-demo-big .u{font-size:24px;font-weight:700;opacity:.7;margin-left:2px}
+.pro-demo-l{font-family:var(--mono);font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted)}
+.pro-demo-l b{color:var(--accent)}
+.pro-demo-bar{height:8px;border-radius:999px;background:var(--s3);border:1px solid var(--line);overflow:hidden;margin:12px 0 12px}
+.pro-demo-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#ff5a00,#ff8a33)}
+.pro-demo-row{display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:12px;padding:5px 0;border-top:1px solid var(--line)}
+.pro-demo-row span{color:var(--muted)}
+.pro-demo-row b{color:var(--text);font-weight:700}
+.pro-tiers-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.pro-tiers{display:flex;flex-direction:column;gap:10px}
+.pro-tier{display:grid;grid-template-columns:1fr auto;grid-template-areas:"l p" "n x";gap:2px 12px;align-items:center;text-align:left;width:100%;cursor:pointer;border:1px solid var(--line);border-radius:14px;background:var(--s2);padding:14px 16px;color:var(--text)}
+.pro-tier-l{grid-area:l;font-weight:800;font-size:16px;letter-spacing:-.3px;display:flex;align-items:center;gap:8px}
+.pro-tier-p{grid-area:p;font-family:var(--mono);font-size:26px;font-weight:800;letter-spacing:-1px;line-height:1}
+.pro-tier-c{font-size:13px;font-weight:700;color:var(--muted);margin-left:3px}
+.pro-tier-x{grid-area:x;font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right}
+.pro-tier-n{grid-area:n;font-family:var(--mono);font-size:10px;letter-spacing:.4px;color:var(--muted)}
+.pro-tier.hot{border-color:var(--accent-line);background:linear-gradient(180deg,rgba(255,90,0,.10),var(--s2))}
+.pro-tier.hot .pro-tier-p{color:var(--accent)}
+.pro-tier.top{border:2px solid var(--accent);background:var(--s1)}
+.pro-tier.top .pro-tier-l{font-size:18px}
+.pro-tier.top .pro-tier-p{font-size:30px;color:var(--accent)}
+.pro-badge{font-family:var(--mono);font-size:8.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--on-accent);background:var(--accent);padding:3px 7px;border-radius:999px}
+.pro-ghostbtn{margin-top:12px;border:1px dashed var(--accent-line);background:transparent;color:var(--accent)}
+.pro-note{margin-top:12px;font-size:12px;line-height:1.5;color:var(--muted);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.pro-fine{margin-top:14px;font-size:10.5px;line-height:1.5;color:var(--faint)}
+
+/* плашка PRO на главной (вшивается pro.js перед .toolgrid) */
+.pro-plaque{display:flex;align-items:center;gap:12px;width:100%;text-align:left;cursor:pointer;border:1px solid var(--accent-line);border-radius:16px;background:linear-gradient(180deg,rgba(255,90,0,.12),var(--s1));padding:14px 16px;margin:0 0 14px;color:var(--text)}
+.pro-plaque-d{width:10px;height:10px;border-radius:3px;background:var(--accent);transform:rotate(45deg);flex:none;box-shadow:0 0 0 3px var(--accent-soft)}
+.pro-plaque-t{flex:1;font-size:13.5px;font-weight:700;line-height:1.35}
+.pro-plaque-a{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent);white-space:nowrap}
