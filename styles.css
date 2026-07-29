@@ -314,3 +314,17 @@ body{background:var(--bg) !important}
 .ownblock .ob-foot .neg{color:#fb7185}
 .ownblock .ob-empty{font-size:13px;color:var(--muted);line-height:1.45}
 .ownblock .ob-empty b{color:var(--text)}
+
+/* =========================================================
+   ИНФО-ПЛАШКА «Где живут данные» + ритмика заголовков.
+   Восстанавливает потерянные .info/.it/.d и выравнивает h1/h2
+   в единую колонку с карточками, чтобы заголовки не липли к краю,
+   а длинный текст переносился и не вылезал за правый край.
+   ========================================================= */
+.app .h1{margin:6px 2px 2px}
+.app .h2{margin:22px 2px 9px}
+.info{background:var(--s1);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--inset);padding:16px;margin:12px 0}
+.info .it{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+.info .it .d{width:8px;height:8px;border-radius:2px;background:var(--accent);transform:rotate(45deg);flex:none;box-shadow:0 0 0 3px var(--accent-soft)}
+.info p{margin:0;font-size:13.5px;line-height:1.6;color:var(--text);opacity:.92;overflow-wrap:anywhere;word-break:break-word}
+.info p b{color:var(--text);font-weight:700;opacity:1}
