@@ -244,6 +244,8 @@ body{font-family:var(--sans);color:var(--text);background:var(--bg);overflow-x:h
 
 /* =========================================================
    ЯДЕРНЫЙ КАРАНТИН GPU-артефактов (чипы Mali / Honor / Telegram WebView).
+   Гасим ВСЕ css-анимации и transition глобально — убирает пересоздание
+   слоёв, а значит и оранжевый «овал». Накрутка цифр живая (через JS).
    ========================================================= */
 *,*::before,*::after{animation:none !important;transition:none !important}
 .bg-mesh,.bg-noise,.bg-particles,.bg-particles span{display:none !important}
@@ -310,7 +312,7 @@ body{background:var(--bg) !important}
    PRO — экран подписки, демо-витрина, лесенка тарифов, плашка.
    Всё статично (без animation/transition) — ради чипов Mali.
    Лесенка масс: month — тонкая рамка, year — акцентная + бейдж,
-   forever — доминирующая тёмная плита с оранжевым кантом.
+   forever — доминирующая плита с оранжевым кантом.
    ========================================================= */
 .pro-status{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--s2);margin-bottom:14px}
 .pro-dot{width:9px;height:9px;border-radius:50%;flex:none}
