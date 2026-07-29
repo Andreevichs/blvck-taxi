@@ -1,13 +1,4 @@
-/* =========================================================
-   BLVCK TAXI — instrument minimalism 2026 (black/white/orange)
-   vanilla, без зависимостей. IndexedDB + localStorage. Офлайн.
-   + Telegram Mini App + сервер на Render (PDF в чат + облако + автоотчёт)
-   + выручка: скролл на весь месяц, суммы над столбиками, сохранение
-   + модульная архитектура: tax.js / rto.js / pro.js через глобальные хуки
-   + РТО: вкладка + виджет на главной + клиентская сторона серверных пингов
-   FIX овала: убрана каскадная transform-анимация появления блоков —
-   именно она на чипах Mali давала артефакт-эллипс при перерисовке.
-   ========================================================= */
+/* модульная архитектура: tax.js / pro.js через глобальные хуки */
 
 /* ===== URL СЕРВЕРА — ЗАМЕНИ НА СВОЙ URL С RENDER (без слэша в конце) ===== */
 const RENDER_URL = "https://blvck-taxi-api.onrender.com";
@@ -47,7 +38,7 @@ const WEAR_CATS = ["fuel","repair","parts"];
 const CURS = ["BYN","₽","$","€","₸"];
 const TABS = [
   { id:"dash", ico:"🏠", t:"Главная" }, { id:"stats", ico:"📊", t:"Графики" },
-  { id:"car", ico:"🚗", t:"Авто" }, { id:"rto", ico:"⏱️", t:"РТО" },
+  { id:"car", ico:"🚗", t:"Авто" },
   { id:"docs", ico:"📄", t:"ТО/Доки" }, { id:"settings", ico:"⚙️", t:"Ещё" },
 ];
 const TAX_PRESETS = ["Единый налог","ФСЗН за квартал","Подоходный (аванс)","Декларация","Налог на проф. доход"];
@@ -57,7 +48,7 @@ const WD = ["Вс","Пн","Вт","Ср","Чт","Пт","Сб"];
 const WD_ORDER = [1,2,3,4,5,6,0];
 
 const state = { screen:"dash", range:"month", modalCat:"fuel", modalEditId:null, modalReceipt:null,
-                receiptMode:"quarter", receiptOffset:0, receiptCat:"all", _animateScreen:true };
+               receiptMode:"quarter", receiptOffset:0, receiptCat:"all", _animateScreen:true };
 
 /* ---------- утилиты ---------- */
 const $  = (s, r=document) => r.querySelector(s);
@@ -87,838 +78,746 @@ function periodRange(mode, offset){
   if(mode==="all") return {from:null, to:null, label:"Всё время"};
   if(mode==="month"){ const b=new Date(now.getFullYear(),now.getMonth()+offset,1); const y=b.getFullYear(),m=b.getMonth();
     return {from:new Date(y,m,1).toISOString().slice(0,10), to:new Date(y,m+1,0).toISOString().slice(0,10), label:monthLabel(new Date(y,m,1).toISOString().slice(0,7))}; }
-  if(mode==="quarter"){ let q=CUR_Q()-1+offset,y=now.getFullYear(); while(q<0){q+=4;y--;} while(q>3){q-=4;y++;} const m0=q*3;
-    return {from:new Date(y,m0,1).toISOString().slice(0,10), to:new Date(y,m0+3,0).toISOString().slice(0,10), label:`${y} · Q${q+1}`}; }
-  const y=now.getFullYear()+offset; return {from:`${y}-01-01`, to:`${y}-12-31`, label:`${y}`};
+  if(mode==="quarter"){ let q=CUR_Q()-1+offset,y=now.getFullYear(); while(q<1){q+=4;y--;} while(q>3){q-=4;y++;} const m0=q*3;
+    return {from:new Date(y,m0,1).toISOString().slice(0,10), to:new Date(y,m0+3,0).toISOString().slice(0,10), label:`${q} кв. ${y}`}; }
+  if(mode==="year"){ const y=now.getFullYear()+offset; return {from:`${y}-01-01`, to:`${y}-12-31`, label:`${y} год`}; }
+  return {from:null, to:null, label:""};
 }
-function expWindow(range){
-  const now=new Date(); const to=today();
-  if(range==="all") return {from:null,to,label:"Всё время"};
-  if(range==="7")  return {from:daysAgo(6),to,label:"7 дней"};
-  if(range==="30") return {from:daysAgo(29),to,label:"30 дней"};
-  if(range==="month"){ const y=now.getFullYear(),m=now.getMonth(); return {from:new Date(y,m,1).toISOString().slice(0,10),to:new Date(y,m+1,0).toISOString().slice(0,10),label:monthLabel(ymNow())}; }
-  if(range==="quarter"){ const pr=periodRange("quarter",0); return {from:pr.from,to:pr.to,label:pr.label}; }
-  if(range==="year"){ const y=now.getFullYear(); return {from:`${y}-01-01`,to:`${y}-12-31`,label:`${y}`}; }
-  return {from:null,to,label:"Всё время"};
-}
-const BIG_RANGE = r => (r==="quarter"||r==="year"||r==="all");
-
-/* ---------- localStorage ---------- */
-const _map  = k => { try{ return JSON.parse(localStorage.getItem(k)||"{}"); }catch{ return {}; } };
-const _set  = (k,ym,v) => { const m=_map(k); if(v>0) m[ym]=v; else delete m[ym]; localStorage.setItem(k, JSON.stringify(m)); };
-const _list = k => { try{ return JSON.parse(localStorage.getItem(k)||"[]"); }catch{ return []; } };
-const _saveList = (k,a) => localStorage.setItem(k, JSON.stringify(a));
-
-const rawIncomeOf = ym => Number(_map("blvck_income")[ym])||0;
-const kmOf = ym => Number(_map("blvck_km")[ym])||0;
-const hoursOf = ym => Number(_map("blvck_hours")[ym])||0;
-const setIncome = (ym,v)=>_set("blvck_income",ym,v);
-const setKm = (ym,v)=>_set("blvck_km",ym,v);
-const setHours = (ym,v)=>_set("blvck_hours",ym,v);
-const dailyRevMap = () => _map("blvck_daily_rev");
-const dailyRevOf = d => Number(dailyRevMap()[d])||0;
-const setDailyRev = (d,v)=>_set("blvck_daily_rev",d,v);
-function sumDaysForYM(ym){ const m=dailyRevMap(); let s=0,n=0; for(const k in m){ if(k.startsWith(ym+"-")&&Number(m[k])>0){s+=Number(m[k]);n++;} } return {sum:s,n}; }
-function incomeSource(ym){ const d=sumDaysForYM(ym); if(d.sum>0) return {src:"days",val:d.sum,n:d.n}; const m=rawIncomeOf(ym); if(m>0) return {src:"manual",val:m,n:0}; return {src:"none",val:0,n:0}; }
-const incomeOf = ym => incomeSource(ym).val;
-function quarterIncome(q,year){ let s=0; for(let mo=(q-1)*3+1; mo<=(q-1)*3+3; mo++) s+=incomeOf(`${year}-${String(mo).padStart(2,"0")}`); return s; }
-function missingWorkDays(exps,from,to){ const e=new Set(exps.filter(x=>x.date>=from&&x.date<=to).map(x=>x.date)); const r=dailyRevMap(); return [...e].filter(d=>!(Number(r[d])>0)).sort().reverse(); }
-const getDailyTarget = () => Number(localStorage.getItem("blvck_daily_target"))||0;
-const setDailyTarget = v => { if(v>0) localStorage.setItem("blvck_daily_target",String(v)); else localStorage.removeItem("blvck_daily_target"); };
-const fuelPresets = () => { try{ const a=JSON.parse(localStorage.getItem("blvck_fuel_presets")); return Array.isArray(a)&&a.length===3?a:[50,80,120]; }catch{ return [50,80,120]; } };
-const setFuelPresets = a => localStorage.setItem("blvck_fuel_presets", JSON.stringify(a));
-const taxList = () => _list("blvck_tax_reminders");
-const saveTaxList = a => _saveList("blvck_tax_reminders", a);
-const finesList = () => _list("blvck_fines");
-const saveFinesList = a => _saveList("blvck_fines", a);
-
-function calcStreak(set){ const d=new Date(); d.setHours(0,0,0,0); const k=t=>t.toISOString().slice(0,10); let c=0;
-  if(!set.has(k(d))){ d.setDate(d.getDate()-1); if(!set.has(k(d))) return 0; } while(set.has(k(d))){c++;d.setDate(d.getDate()-1);} return c; }
-function bestStreak(set){ if(!set.size) return 0; const a=[...set].sort(); let b=1,r=1;
-  for(let i=1;i<a.length;i++){ const df=Math.round((new Date(a[i]+"T00:00:00")-new Date(a[i-1]+"T00:00:00"))/86400000); if(df===1){r++;b=Math.max(b,r);}else r=1; } return b; }
-function weekdayAvg(){ const m=dailyRevMap(); const s=[0,0,0,0,0,0,0],c=[0,0,0,0,0,0,0];
-  for(const k in m){ const v=Number(m[k]); if(v>0){ const d=new Date(k+"T00:00:00").getDay(); s[d]+=v; c[d]++; } }
-  const avg=s.map((x,i)=>c[i]?x/c[i]:0); let b=-1,bi=-1; avg.forEach((x,i)=>{ if(c[i]&&x>b){b=x;bi=i;} }); return {avg,cnt:c,bestIdx:bi}; }
-function trendPct(c,p){ if(p<=0) return c>0?{dir:"up",pct:null}:{dir:"flat",pct:null}; const pct=Math.round((c-p)/p*100); return {dir:pct>0?"up":pct<0?"down":"flat",pct}; }
-const arrow = d => d==="up"?"↑":d==="down"?"↓":"→";
-
-/* ---------- сохранение файла локально ---------- */
-function makeFile(name, content, mime){
-  const blob = (content instanceof Blob) ? content : new Blob([content], {type: mime||"application/octet-stream"});
-  try{ return new File([blob], name, {type: mime||blob.type||"application/octet-stream"}); }
-  catch(e){ return blob; }
-}
-function blobToDataUrl(blob){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(blob); }); }
-function strToDataUrl(content, mime){ return "data:"+(mime||"application/octet-stream")+";base64,"+btoa(unescape(encodeURIComponent(content))); }
-async function dataUrlFor(content, mime){ return (content instanceof Blob) ? await blobToDataUrl(content) : strToDataUrl(content, mime); }
-async function shareFiles(name, content, mime, opts={}){
-  const file = makeFile(name, content, mime);
-  try{
-    if(navigator.canShare && navigator.canShare({files:[file]})){
-      await navigator.share({ files:[file], title: opts.title||"BLVCK TAXI", text: opts.text||name });
-      return {ok:true};
-    }
-  }catch(e){ if(e && e.name==="AbortError") return {aborted:true}; }
-  return {ok:false};
-}
-async function tryFile(name, content, mime){
-  const sr = await shareFiles(name, content, mime, {});
-  if(sr.ok) return {ok:true};
-  if(sr.aborted) return {ok:false, aborted:true};
-  if(window.showSaveFilePicker){
-    try{
-      const ex=(/\.([a-z0-9]+)$/i.exec(name)||[,"bin"])[1];
-      const h=await window.showSaveFilePicker({ suggestedName:name, types:[{ description:"BLVCK TAXI", accept:{[mime||"application/octet-stream"]:["."+ex]} }] });
-      const w=await h.createWritable(); await w.write(makeFile(name,content,mime)); await w.close();
-      return {ok:true};
-    }catch(e){ if(e && e.name==="AbortError") return {ok:false, aborted:true}; }
-  }
-  if(!isTelegram){
-    try{
-      const href = await dataUrlFor(content, mime);
-      const a=document.createElement("a"); a.href=href; a.download=name; a.rel="noopener";
-      document.body.appendChild(a); a.click(); a.remove();
-      return {ok:true};
-    }catch(e){ return {ok:false}; }
-  }
-  return {ok:false};
-}
-async function copyText(t){
-  try{ if(navigator.clipboard && window.isSecureContext){ await navigator.clipboard.writeText(t); return true; } }catch(e){}
-  try{
-    const ta=document.createElement("textarea"); ta.value=t;
-    ta.style.cssText="position:fixed;top:0;left:0;width:1px;height:1px;opacity:0";
-    document.body.appendChild(ta); ta.focus(); ta.select();
-    const ok=document.execCommand("copy"); ta.remove(); return ok;
-  }catch(e){ return false; }
-}
-
-/* ---------- визуальные хелперы ---------- */
-function ringSVG(pct){ const r=30, c=2*Math.PI*r, off=c*(1-Math.min(100,Math.max(0,pct))/100);
-  return `<svg class="ring" viewBox="0 0 76 76"><circle class="ring-bg" cx="38" cy="38" r="${r}"/><circle class="ring-fg" cx="38" cy="38" r="${r}" transform="rotate(-90 38 38)" stroke-dasharray="${c.toFixed(1)}" style="stroke-dashoffset:${c.toFixed(1)}" data-ring="${off.toFixed(1)}"/><text class="ring-t" x="38" y="39">${Math.round(pct)}%</text></svg>`; }
-function sparkSVG(vals){ const w=300,h=62,p=6,n=vals.length; if(n<2) return "";
-  const max=Math.max(...vals,1), min=Math.min(...vals,0), span=Math.max(max-min,1);
-  const X=i=>p+i*((w-2*p)/(n-1)), Y=v=>h-p-((v-min)/span)*(h-2*p);
-  let line=""; vals.forEach((v,i)=>{ line+=(i?"L":"M")+X(i).toFixed(1)+" "+Y(v).toFixed(1)+" "; });
-  const area=line+`L${X(n-1).toFixed(1)} ${h-p} L${X(0).toFixed(1)} ${h-p} Z`;
-  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path class="spark-area" d="${area}"/><path class="spark-line" pathLength="1" d="${line}"/><circle class="spark-dot" cx="${X(n-1).toFixed(1)}" cy="${Y(vals[n-1]).toFixed(1)}" r="3.6"/></svg>`; }
-function countUp(el,to,dec,pre,suf){ const dur=780,t0=performance.now();
-  (function step(t){ const p=Math.min(1,(t-t0)/dur), e=1-Math.pow(1-p,3), v=to*e;
-    el.textContent=pre+v.toLocaleString("ru-RU",{maximumFractionDigits:dec})+suf; if(p<1) requestAnimationFrame(step); })(t0); }
-
-/* ---------- чек / скриншот ---------- */
-function pickImage(){ return new Promise(res=>{ const i=document.createElement("input"); i.type="file"; i.accept="image/*"; i.onchange=()=>res(i.files&&i.files[0]?i.files[0]:null); i.click(); }); }
-function compressImage(file,maxSide,quality){ return new Promise((res,rej)=>{ const fr=new FileReader();
-  fr.onload=()=>{ const img=new Image(); img.onload=()=>{ let w=img.width,h=img.height; const s=Math.min(1,maxSide/Math.max(w,h)); w=Math.max(1,Math.round(w*s)); h=Math.max(1,Math.round(h*s));
-    const c=document.createElement("canvas"); c.width=w; c.height=h; const x=c.getContext("2d"); x.fillStyle="#fff"; x.fillRect(0,0,w,h); x.drawImage(img,0,0,w,h); res(c.toDataURL("image/jpeg",quality)); }; img.onerror=rej; img.src=fr.result; }; fr.onerror=rej; fr.readAsDataURL(file); }); }
-async function addReceiptFromPicker(){ const f=await pickImage(); if(!f) return;
-  try{ state.modalReceipt=await compressImage(f,1400,.75); const b=$("#m_receipt_box"); if(b) b.innerHTML=receiptBoxHTML(); toast("Чек прикреплён"); hapticOk(); }catch(e){ toast("Не удалось прочитать фото"); hapticBad(); } }
-function receiptBoxHTML(){ if(state.modalReceipt){ return `<div class="rcpt"><img src="${state.modalReceipt}" data-action="viewReceiptCurrent" alt="чек"><div class="rcpt-actions"><button class="btn sm" data-action="pickReceipt">🔄 Заменить</button><button class="btn sm danger" data-action="clearReceipt">🗑 Убрать чек</button></div></div>`; }
-  return `<button class="btn" data-action="pickReceipt">🧾 Прикрепить чек / скриншот</button><div class="fszn-note">фото или скрин электронного чека сожмётся и сохранится вместе с расходом — и попадёт в резервную копию</div>`; }
-function openReceiptViewer(src){ const m=$("#modal"); m.innerHTML=`<div class="viewer" data-action="close"><button class="x vclose" data-action="close">×</button><img src="${src}" alt="чек"></div>`; m.hidden=false; try{TG?.BackButton?.show();}catch{} }
-
-/* ---------- ZIP ---------- */
-const CRC_TABLE=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[n]=c>>>0;}return t;})();
-function crc32(b){let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=CRC_TABLE[(c^b[i])&0xFF]^(c>>>8);return(c^0xFFFFFFFF)>>>0;}
-function b64ToBytes(u){const b=u.split(",")[1]||"",bin=atob(b),a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return a;}
-function strBytes(s){return new TextEncoder().encode(s);}
-
-function toast(msg){ const t=$("#toast"); t.textContent=msg; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true,1800); }
 
 /* ---------- IndexedDB ---------- */
-const DB_NAME="blvcktaxi", DB_VER=2, STORES=["expenses","maintenance","documents","car","fszn"]; let db;
-function openDB(){ return new Promise((res,rej)=>{ const req=indexedDB.open(DB_NAME,DB_VER);
-  req.onupgradeneeded=()=>{ const d=req.result;
-    if(!d.objectStoreNames.contains("expenses")){ const s=d.createObjectStore("expenses",{keyPath:"id"}); s.createIndex("date","date"); s.createIndex("category","category"); }
-    if(!d.objectStoreNames.contains("maintenance")) d.createObjectStore("maintenance",{keyPath:"id"}).createIndex("date","date");
-    if(!d.objectStoreNames.contains("documents")) d.createObjectStore("documents",{keyPath:"id"}).createIndex("expiryDate","expiryDate");
-    if(!d.objectStoreNames.contains("car")) d.createObjectStore("car",{keyPath:"id"});
-    if(!d.objectStoreNames.contains("fszn")) d.createObjectStore("fszn",{keyPath:"id"}); };
-  req.onsuccess=()=>{ db=req.result; res(db); }; req.onerror=()=>rej(req.error); }); }
-function tx(s,m="readonly"){ return db.transaction(s,m).objectStore(s); }
-function reqP(r){ return new Promise((res,rej)=>{ r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
-const dbPut=(s,v)=>reqP(tx(s,"readwrite").put(v));
-const dbDel=(s,id)=>reqP(tx(s,"readwrite").delete(id));
-const dbGet=(s,id)=>reqP(tx(s).get(id));
-const dbAll=(s)=>reqP(tx(s).getAll());
-const dbClear=(s)=>reqP(tx(s,"readwrite").clear());
+let db;
+const STORES = ["expenses","maintenance","documents","fszn"];
+function openDB(){
+  return new Promise((res,rej)=>{
+    const r = indexedDB.open("blvck_taxi", 2);
+    r.onupgradeneeded = e => {
+      const d = e.target.result;
+      if(!d.objectStoreNames.contains("expenses")) d.createObjectStore("expenses", {keyPath:"id"});
+      if(!d.objectStoreNames.contains("maintenance")) d.createObjectStore("maintenance", {keyPath:"id"});
+      if(!d.objectStoreNames.contains("documents")) d.createObjectStore("documents", {keyPath:"id"});
+      if(!d.objectStoreNames.contains("fszn")) d.createObjectStore("fszn", {keyPath:"id"});
+    };
+    r.onsuccess = e => { db = e.target.result; res(db); };
+    r.onerror = e => rej(e.target.error);
+  });
+}
+function dbAll(store){ return new Promise((res,rej)=>{ const tx=db.transaction(store,"readonly"); const s=tx.objectStore(store); const r=s.getAll(); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+function dbGet(store,id){ return new Promise((res,rej)=>{ const tx=db.transaction(store,"readonly"); const s=tx.objectStore(store); const r=s.get(id); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+function dbPut(store,val){ return new Promise((res,rej)=>{ const tx=db.transaction(store,"readwrite"); const s=tx.objectStore(store); const r=s.put(val); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+function dbDel(store,id){ return new Promise((res,rej)=>{ const tx=db.transaction(store,"readwrite"); const s=tx.objectStore(store); const r=s.delete(id); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error); }); }
+function dbClear(store){ return new Promise((res,rej)=>{ const tx=db.transaction(store,"readwrite"); const s=tx.objectStore(store); const r=s.clear(); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error); }); }
 
-/* ---------- рендер + post-render (БЕЗ каскадной transform-анимации) ---------- */
-let revealIO=null, revealGen=0;
+/* ---------- LocalStorage обёртки ---------- */
+const getLS = (k,def) => { const v=localStorage.getItem(k); return v!==null?JSON.parse(v):def; };
+const setLS = (k,v) => localStorage.setItem(k, JSON.stringify(v));
+const fuelPresets = () => getLS("blvck_fuel_presets", [100, 150, 200]);
+const setFuelPresets = v => setLS("blvck_fuel_presets", v);
+const dailyRevMap = () => getLS("blvck_daily_rev", {});
+const dailyRevOf = d => dailyRevMap()[d] || 0;
+const setDailyRev = (d,v) => { const m=dailyRevMap(); if(v>0) m[d]=v; else delete m[d]; setLS("blvck_daily_rev",m); };
+const dailyTarget = () => getLS("blvck_daily_target", 0);
+const setDailyTarget = v => setLS("blvck_daily_target", v);
+const incomeMap = () => getLS("blvck_income", {});
+const setIncome = (ym,v) => { const m=incomeMap(); m[ym]=v; setLS("blvck_income",m); };
+const kmMap = () => getLS("blvck_km", {});
+const setKm = (ym,v) => { const m=kmMap(); m[ym]=v; setLS("blvck_km",m); };
+const hoursMap = () => getLS("blvck_hours", {});
+const setHours = (ym,v) => { const m=hoursMap(); m[ym]=v; setLS("blvck_hours",m); };
+const taxList = () => getLS("blvck_tax_reminders", []);
+const saveTaxList = v => setLS("blvck_tax_reminders", v);
+const finesList = () => getLS("blvck_fines", []);
+const saveFinesList = v => setLS("blvck_fines", v);
+const fsznSettings = () => ({ mzp: Number(localStorage.getItem("blvck_fszn_mzp"))||626, rate: Number(localStorage.getItem("blvck_fszn_rate"))||35 });
+
+/* ---------- РТО удалено ---------- */
+
+/* ---------- отрисовка ---------- */
 async function renderAsync(){
-  const app=$("#app");
-  const html = await ({ dash:screenDash, stats:screenStats, car:screenCar, rto:screenRto, docs:screenDocs, settings:screenSettings, fszn:screenFszn, fines:screenFines, receipts:screenReceipts, expenses:screenExpenses }[state.screen])();
-  const showOnboard = !onboarded();
-  app.innerHTML = (showOnboard?onboardHTML():"") + html;
-  renderTabs();
-  const tb=$("#tabbar"); if(tb) tb.style.display = showOnboard ? "none" : "";
-  postRender();
+  const app = $("#app");
+  if(!app) return;
+  if(!onboarded()){ app.innerHTML = onboardHTML(); return; }
+  const html = await ({ dash:screenDash, stats:screenStats, car:screenCar, docs:screenDocs, settings:screenSettings, fszn:screenFszn, fines:screenFines, receipts:screenReceipts, expenses:screenExpenses }[state.screen] || screenDash)();
+  app.innerHTML = html;
+  renderTabbar();
+  if(state._animateScreen){ app.classList.remove("revealed"); void app.offsetWidth; app.classList.add("revealed"); state._animateScreen=false; }
+  for(const hook of (window.BLVCK_HOOKS||[])){ try{ hook(state.screen); }catch{} }
 }
-function postRender(){
-  const anim = state._animateScreen;
-  if(revealIO){ revealIO.disconnect(); revealIO=null; }
-  ++revealGen;
-  const SEL=".app .glass,.app .item,.app .alert,.app .h1,.app .h2,.app .qcard-f,.app .hero,.app .quickrow,.app .streak,.app .toolgrid,.app .metricrow,.app .today,.app .sparkcard,.app .seg,.app .searchwrap,.app .info,.app .ownblock,.app .backupbelt";
-  const els=[...document.querySelectorAll(SEL)];
-  // Блоки видны СРАЗУ, без каскадной transform-анимации появления —
-  // на чипах Mali именно она рождала артефакт-«овал» при переходах/перерисовке.
-  els.forEach(el=>el.classList.add("revealed"));
-  requestAnimationFrame(()=>{
-    document.querySelectorAll("[data-ring]").forEach(c=>{ c.style.strokeDashoffset=c.getAttribute("data-ring"); });
-    document.querySelectorAll("[data-bar]").forEach(i=>{ i.style.width=i.getAttribute("data-bar"); });
-    document.querySelectorAll(".seg").forEach(seg=>{ const on=seg.querySelector("button.on"); const th=seg.querySelector(".thumb"); if(on&&th){ th.style.width=on.offsetWidth+"px"; th.style.transform=`translateX(${on.offsetLeft-4}px)`; } });
-  });
-  document.querySelectorAll("[data-count]").forEach(el=>{
-    const to=parseFloat(el.getAttribute("data-count"))||0, dec=parseInt(el.getAttribute("data-dec")||"2",10), pre=el.getAttribute("data-prefix")||"", suf=el.getAttribute("data-suffix")||"";
-    if(anim) countUp(el,to,dec,pre,suf); else el.textContent=pre+to.toLocaleString("ru-RU",{maximumFractionDigits:dec})+suf;
-  });
-  state._animateScreen=false;
+function renderTabbar(){
+  const tb = $("#tabbar"); if(!tb) return;
+  tb.innerHTML = `<div class="inner">${TABS.map(t=>`<button class="tab ${state.screen===t.id?'on':''}" data-action="nav" data-to="${t.id}"><span class="ti">${t.ico}</span>${t.t}</button>`).join("")}</div>`;
 }
-function renderTabs(){
-  const active = state.screen==="fszn"?"settings":(state.screen==="fines"||state.screen==="receipts"||state.screen==="expenses")?"dash":state.screen;
-  $("#tabbar").innerHTML=`<div class="inner">${TABS.map(t=>`<button class="tab ${active===t.id?"on":""}" data-action="nav" data-to="${t.id}"><span class="ti">${t.ico}</span><span>${t.t}</span></button>`).join("")}</div>`;
-}
+function toast(msg){ const t=$("#toast"); t.textContent=msg; t.hidden=false; setTimeout(()=>t.hidden=true, 2200); }
+
+/* ---------- экраны ---------- */
 function onboardHTML(){
   return `<div class="onboard">
-    <div class="ob-top"><span class="brand-dot"></span><span class="brand-name">BLVCK</span><span class="brand-sub">TAXI</span></div>
-    <h2>Твой счёт<br>за рулём.</h2>
-    <p class="ob-sub">Три шага — и комбайн работает на тебя. Без регистрации и облака.</p>
-    <div class="ob-step"><div class="n">01</div><div><div class="tt">Вноси в один тап</div><div class="ds">Выручку за день и расходы на авто — быстро, даже в перчатках.</div></div></div>
-    <div class="ob-step"><div class="n">02</div><div><div class="tt">Держи всё в одном месте</div><div class="ds">Чеки‑скриншоты, штрафы, ФСЗН и сроки документов — с напоминаниями.</div></div></div>
-    <div class="ob-step"><div class="n">03</div><div><div class="tt">Данные только твои</div><div class="ds">Всё хранится в телефоне и работает офлайн. Отчёт — прямо в чат с ботом.</div></div></div>
-    <button class="btn primary ob-go" data-action="onboardDone">Поехали <span class="arrow">→</span></button>
+    <div class="ob-top"><div class="brand-dot"></div><span class="brand-name">BLVCK</span><span class="brand-sub">TAXI</span></div>
+    <h2>Учёт без<br>лишнего шума</h2>
+    <p class="ob-sub">Твои цифры живут только в этом телефоне. Никаких чужих облаков, подписок и навязчивых уведомлений.</p>
+    <div class="ob-step"><div class="n">01</div><div><div class="tt">Быстрый ввод</div><div class="ds">Тап по сумме — и расход записан. Чеки крепятся скриншотами.</div></div></div>
+    <div class="ob-step"><div class="n">02</div><div><div class="tt">Контроль износа</div><div class="ds">Считаем стоимость километра по запчастям, маслу и топливу.</div></div></div>
+    <div class="ob-step"><div class="n">03</div><div><div class="tt">Полный офлайн</div><div class="ds">Работает без интернета. Резервную копию можно сохранить текстом в «Избранное» Telegram.</div></div></div>
+    <button class="btn primary ob-go" data-action="onboardDone">Начать работу <span class="arrow">→</span></button>
   </div>`;
 }
 
-/* ---------- ГЛАВНАЯ ---------- */
 async function screenDash(){
-  const exps=await dbAll("expenses"), car=await dbGet("car",1), docs=await dbAll("documents");
-  const monthStart=new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
-  const spentMonth=exps.filter(e=>new Date(e.date)>=monthStart).reduce((s,e)=>s+Number(e.amount||0),0);
-  const spentAll=exps.reduce((s,e)=>s+Number(e.amount||0),0);
-  const src=incomeSource(ymNow()), income=src.val, s=fsznSettings(), fszn=isIP()?(s.rate/100*s.mzp):0;
-  const free=income-spentMonth-fszn, cls=free>=0?"pos":"neg", sign=free>=0?"+":"−";
+  const exps = await dbAll("expenses");
+  const pr = periodRange(state.range, 0);
+  const periodExps = exps.filter(e => !pr.from || (e.date >= pr.from && e.date <= pr.to));
+  const total = periodExps.reduce((s,e) => s + Number(e.amount||0), 0);
+  const car = await dbGet("car",1) || {};
+  const curMile = Number(car.currentMileage) || 0;
+  
+  // Выручка за период
+  const revMap = dailyRevMap();
+  let revTotal = 0;
+  for(const d in revMap){ if(d >= pr.from && d <= pr.to) revTotal += Number(revMap[d]); }
+  const free = revTotal - total;
 
-  const alerts=[]; const now=new Date(); now.setHours(0,0,0,0);
-  docs.forEach(d=>{ if(!d.expiryDate) return; const days=Math.round((new Date(d.expiryDate)-now)/86400000);
-    if(days<0) alerts.push({bad:true,t:`Просрочено: ${esc(d.name)}`,s:`истекло ${fmtDate(d.expiryDate)}`});
-    else if(days<=30) alerts.push({bad:false,t:`Скоро истечёт: ${esc(d.name)}`,s:`осталось ${days} дн. (${fmtDate(d.expiryDate)})`}); });
-  if(car&&car.oilInterval&&car.lastOilMileage!=null){ const left=Number(car.oilInterval)-(Number(car.currentMileage||0)-Number(car.lastOilMileage));
-    if(left<=0) alerts.push({bad:true,t:"Пора менять масло",s:`пробег после замены превышен на ${-left} км`});
-    else if(left<=1000) alerts.push({bad:false,t:"Скоро замена масла",s:`осталось ~${left} км`}); }
-  if(isIP()) taxList().forEach(r=>{ if(!r.date) return; const days=Math.round((new Date(r.date)-now)/86400000);
-    if(days<0) alerts.push({bad:true,t:`Просрочено: ${esc(r.name)}`,s:`срок был ${fmtDate(r.date)}`});
-    else if(days<=14) alerts.push({bad:false,t:`Срок: ${esc(r.name)}`,s:`осталось ${days} дн. (${fmtDate(r.date)})`}); });
-  finesList().filter(f=>!f.paid).forEach(f=>{ const days=f.date?Math.round((now-new Date(f.date+"T00:00:00"))/86400000):null;
-    alerts.push({bad:true,t:`🚨 Не оплачен штраф: ${esc(f.name)}`,s:`${money(f.amount)}${f.date?` · выписан ${fmtDate(f.date)}${days!=null?` (${days} дн. назад)`:""}`:""}`}); });
-
-  try{ (window.BLVCK_ALERT_HOOKS||[]).forEach(fn=>{ (fn()||[]).forEach(a=>alerts.push(a)); }); }catch(e){}
-
-  const tgName=localStorage.getItem("blvck_tg_name");
-  const dateSet=new Set(exps.map(e=>e.date)); const curStreak=calcStreak(dateSet);
-  let best=bestStreak(dateSet); const sb=Number(localStorage.getItem("blvck_streak_best"))||0; if(best>sb) localStorage.setItem("blvck_streak_best",String(best)); best=Math.max(best,sb);
-
-  const t=today(), todayRev=dailyRevOf(t), target=getDailyTarget();
-  const planPct = target>0 ? Math.min(100,Math.round(todayRev/target*100)) : 0;
-  const last7=[]; for(let i=6;i>=0;i--) last7.push(dailyRevOf(daysAgo(i)));
-  const hasSpark = last7.some(v=>v>0);
-  const wka=weekdayAvg();
-  const missDays=missingWorkDays(exps, ymNow()+"-01", today());
-  const fsznWidget = isIP()?await fsznMiniWidget():"";
-  const last3=exps.slice().sort((a,b)=>(b.date+b.id).localeCompare(a.date+a.id)).slice(0,3);
-
-  const trend = (()=>{ const pym=prevYM(ymNow()); const spPY=exps.filter(e=>e.date.slice(0,7)===pym).reduce((s,e)=>s+Number(e.amount||0),0);
-    const rC=sumDaysForYM(ymNow()).sum, rPY=sumDaysForYM(pym).sum; const ts=trendPct(spentMonth,spPY), tr=trendPct(rC,rPY);
-    const c1=ts.dir==="up"?"down":ts.dir==="down"?"up":"flat", c2=tr.dir;
-    const f=(x,c,l)=>x.dir==="flat"?`<span class="flat">${l} →</span>`:`<span class="${c}">${l} ${arrow(x.dir)}${x.pct!=null?x.pct+"%":""}</span>`;
-    return (spentMonth||spPY||rC||rPY)?`<div class="trendrow">${f(ts,c1,"расходы")} · ${f(tr,c2,"выручка")}</div>`:""; })();
-
-  let carCostBlock="";
-  { const carCost=exps.filter(e=>CAR_CATS.includes(e.category)&&new Date(e.date)>=monthStart).reduce((s,e)=>s+Number(e.amount||0),0);
-    const incM=sumDaysForYM(ymNow()).sum;
-    if(carCost>0 && incM>0){ const pct=Math.round(carCost/incM*100); const after=incM-carCost; const warn=pct>=60;
-      const pctCol = warn?'#fbbf24':'#ff5a00';
-      const barFill = warn?'linear-gradient(90deg,#fbbf24,#ff5a00)':'linear-gradient(90deg,#ff5a00,#ff8a33)';
-      const afterCol = after>=0?'#34d399':'#fb7185';
-      carCostBlock=`<section style="background:var(--s1);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow),var(--inset);padding:16px 16px 14px;margin:14px 0;position:relative;overflow:hidden">
-        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px">
-          <div style="min-width:0">
-            <div style="font-family:var(--mono);font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted)">доля машины в выручке</div>
-            <div style="font-family:var(--mono);font-size:34px;font-weight:800;letter-spacing:-1.5px;line-height:1;margin-top:5px;color:${pctCol}" data-count="${pct}" data-dec="0" data-suffix="%">${pct}%</div>
-          </div>
-          <div style="text-align:right;font-family:var(--mono);font-size:10px;letter-spacing:.6px;color:var(--muted);line-height:1.4;white-space:nowrap">за<br>${monthLabel(ymNow())}</div>
-        </div>
-        <div style="height:9px;border-radius:999px;background:var(--s3);border:1px solid var(--line);overflow:hidden;margin:14px 0 15px"><i data-bar="${Math.min(100,pct)}%" style="display:block;height:100%;width:0;border-radius:999px;background:${barFill};transition:width 1s cubic-bezier(.22,1,.36,1)"></i></div>
-        <div style="display:flex;justify-content:space-between;align-items:stretch;gap:14px">
-          <div style="flex:1;min-width:0">
-            <div style="font-family:var(--mono);font-size:9.5px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)">машина съела</div>
-            <div style="font-family:var(--mono);font-size:16px;font-weight:700;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${money(carCost)}</div>
-          </div>
-          <div style="width:1px;background:var(--line);margin:2px 0"></div>
-          <div style="flex:1;min-width:0;text-align:right">
-            <div style="font-family:var(--mono);font-size:9.5px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)">после авто</div>
-            <div style="font-family:var(--mono);font-size:16px;font-weight:700;margin-top:4px;color:${afterCol};white-space:nowrap">${after>=0?'+':''}${money(after).replace(cur(),'').trim()} ${cur()}</div>
-          </div>
-        </div>
-      </section>`; }
-    else if(carCost>0){ carCostBlock=`<section style="background:var(--s1);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow),var(--inset);padding:15px 16px;margin:14px 0;display:flex;align-items:center;gap:12px"><div style="font-size:24px;line-height:1">🚗</div><div style="flex:1;font-size:13px;color:var(--muted);line-height:1.45">На авто за месяц <b style="color:var(--text)">${money(carCost)}</b>. Внеси выручку за день — и я покажу, какую долю она съедает.</div></section>`; }
+  // График за последние 7 дней
+  const days = [];
+  for(let i=6; i>=0; i--){
+    const d = daysAgo(i);
+    const dayExp = exps.filter(e=>e.date===d).reduce((s,e)=>s+Number(e.amount||0),0);
+    const dayRev = Number(revMap[d]) || 0;
+    days.push({ date:d, exp:dayExp, rev:dayRev, label:fmtShort(d) });
   }
+  const maxVal = Math.max(1, ...days.map(d=>Math.max(d.exp, d.rev)));
+  const sparkPath = days.map((d,i) => {
+    const x = (i / (days.length-1)) * 100;
+    const y = 100 - (d.exp / maxVal) * 100;
+    return `${i===0?'M':'L'} ${x} ${y}`;
+  }).join(" ");
+  const sparkArea = `M 0 100 ${sparkPath} L 100 100 Z`;
 
-  let backupBelt="";
-  { const hasData = exps.length>0 || Object.keys(dailyRevMap()).some(d=>Number(dailyRevMap()[d])>0) || finesList().length>0;
-    if(hasData){ const lb=Number(localStorage.getItem("blvck_last_backup"))||0; const ak=Number(localStorage.getItem("blvck_backup_ack"))||0; const eff=Math.max(lb,ak); const nowMs=Date.now(); const days=eff?Math.floor((nowMs-eff)/86400000):null;
-      if(eff===0 || days>=14){ const msg = eff===0 ? `Ты ещё ни разу не делал копию — если телефон сломается, всё пропадёт.` : `Прошло <b>${days} ${ruPlural(days,["день","дня","дней"])}</b> с последней копии.`;
-        backupBelt=`<div class="backupbelt"><div class="bb-ic">🛡️</div><div class="bb-txt">${msg} Сделай копию текстом в «Избранное».</div><div class="bb-acts"><button class="btn sm primary" data-action="export">💾 Копию</button><button class="btn sm ghost" data-action="dismissBackup">позже</button></div></div>`; }
-    }
+  // Предупреждения
+  const alerts = [];
+  if(isIP()){
+    const s = fsznSettings();
+    const minMonth = s.rate/100 * s.mzp;
+    const y = YEAR();
+    let paid = 0;
+    for(let q=1; q<=4; q++){ const r = await dbGet("fszn", `${y}-Q${q}`); paid += Number(r?.paid)||0; }
+    const goal = minMonth * 12;
+    const pct = goal>0 ? Math.min(100, Math.round(paid/goal*100)) : 0;
+    if(pct < 100) alerts.push({ type:"warn", text:`ФСЗН ${y}: уплачено ${pct}% (${money(paid)} из ${money(goal)})` });
   }
-
-  const quick = [["fuel",true],["parts",false],["repair",false],["wash",false],["rent",false],["other",false]].map(([k,add])=>{
-    const c=CATS[k];
-    return add
-      ? `<button class="qcard qcard-add" data-action="openFuelQuick"><span class="ico">${c.ico}</span><span class="t">${c.t}</span><span class="s">пресеты · 1 тап</span></button>`
-      : `<button class="qcard" data-action="quick" data-cat="${k}"><span class="ico">${c.ico}</span><span class="t">${c.t}</span><span class="s">${WEAR_CATS.includes(k)?"пробег установки":"+ расход"}</span></button>`;
-  }).join("");
+  const fines = finesList().filter(f=>!f.paid);
+  if(fines.length > 0) alerts.push({ type:"bad", text:`Висит неоплаченных штрафов: ${fines.length} на сумму ${money(fines.reduce((s,f)=>s+Number(f.amount),0))}` });
 
   return `
     <div class="topbar">
-      <div class="brand"><span class="brand-dot"></span><span class="brand-name">BLVCK</span><span class="brand-sub">TAXI</span></div>
-      <div class="topbar-r">${tgName?`<span class="who">${esc(tgName)}</span>`:""}<button class="iconbtn" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙":"️"}</button></div>
-    </div>
-
-    ${alerts.map(a=>`<div class="alert ${a.bad?"bad":""}"><span>${a.bad?"⚠️":"🔔"}</span><div><div style="font-weight:700">${a.t}</div><div class="small muted">${a.s}</div></div></div>`).join("")}
-
-    ${backupBelt}
-
-    <section class="hero">
-      <div class="hero-top"><span class="kicker">свободно · ${monthLabel(ymNow())}</span><span class="badge ${cls}">${free>=0?"в плюсе":"в минусе"}</span></div>
-      <div class="hero-num ${cls}" data-count="${Math.abs(free)}" data-dec="2" data-prefix="${sign}" data-suffix=" ${cur()}">${sign}${money(Math.abs(free)).replace(cur(),"").trim()} ${cur()}</div>
-      <div class="hero-sub"><span>доход <b>${income>0?money(income):"—"}</b></span><span class="dotsep">·</span><span>расходы <b>−${money(spentMonth)}</b></span>${isIP()?`<span class="dotsep">·</span><span>ФСЗН <b>−${money(fszn)}</b></span>`:""}</div>
-      ${trend}
-    </section>
-
-    ${carCostBlock}
-
-    <div id="rto-mount"></div>
-
-    ${curStreak>0?`<div class="streak">🔥 ${curStreak} ${ruPlural(curStreak,["день","дня","дней"])} подряд · рекорд ${best}</div>`:(best>0?`<div class="streak" style="border-color:var(--line);background:transparent;color:var(--muted)">рекорд 🔥 ${best} ${ruPlural(best,["день","дня","дней"])}</div>`:"")}
-
-    <div class="h2">быстрый ввод</div>
-    <div class="quickrow">${quick}</div>
-
-    <section class="today glass">
-      <div class="today-main">
-        <span class="kicker">сегодня · ${fmtDate(t)}</span>
-        <div class="today-num" data-count="${todayRev}" data-dec="2" data-suffix=" ${cur()}">${money(todayRev)}</div>
-        <button class="btn primary sm" data-action="openDailyRev">внести выручку</button>
+      <div class="brand"><div class="brand-dot"></div><span class="brand-name">BLVCK</span><span class="brand-sub">TAXI</span></div>
+      <div class="topbar-r">
+        <span class="who">${pr.label}</span>
+        <button class="iconbtn" data-action="setRange" data-range="${state.range==='month'?'quarter':'month'}">${state.range==='month'?'📅':'🗓️'}</button>
       </div>
-      <div class="today-ring">${target>0?ringSVG(planPct):`<div class="ring" style="display:grid;place-items:center"><span class="kicker" style="text-align:center">план<br>не задан</span></div>`}</div>
-    </section>
-
-    ${hasSpark?`<section class="sparkcard glass"><div class="row between"><span class="kicker">выручка · 7 дней</span>${wka.bestIdx>=0?`<span class="small muted">лучший ${WD[wka.bestIdx]}</span>`:""}</div>${sparkSVG(last7)}</section>`
-      :`<section class="sparkcard glass"><span class="kicker">выручка · 7 дней</span><div class="empty" style="padding:14px 0 4px">внеси выручку за пару дней — здесь появится тренд</div></section>`}
-
-    <div class="metricrow">
-      <div class="metric"><div class="v" data-count="${spentMonth}" data-dec="2" data-suffix=" ${cur()}">${money(spentMonth)}</div><div class="k">расходов за месяц</div></div>
-      <div class="metric"><div class="v" data-count="${spentAll}" data-dec="2" data-suffix=" ${cur()}">${money(spentAll)}</div><div class="k">расходов всего</div></div>
     </div>
 
-    <button class="btn" data-action="openExpenses" style="margin:6px 0 0">📋 Все расходы и графики по дням →</button>
+    <div class="hero glass">
+      <div class="hero-top"><span class="kicker">Свободные деньги за период</span></div>
+      <div class="hero-num ${free>=0?'pos':'neg'}">${money(free)}</div>
+      <div class="hero-sub">
+        <span>Выручка: <b>${money(revTotal)}</b></span>
+        <span class="dotsep">·</span>
+        <span>Расходы: <b>${money(total)}</b></span>
+      </div>
+    </div>
 
-    ${missDays.length?`<div class="glass card"><div class="row between"><div><div style="font-weight:700">💵 Не внесена выручка за ${missDays.length} ${ruPlural(missDays.length,["день","дня","дней"])}</div><div class="small muted">добей прошлые дни — тренд и карта дней пересчитаются</div></div><button class="btn sm primary" data-action="openDailyRev" style="width:auto">Добить</button></div></div>`:""}
+    ${alerts.length ? alerts.map(a=>`<div class="alert ${a.type}"><span>${a.text}</span></div>`).join("") : ""}
 
-    ${fsznWidget}
+    <div class="quickrow">
+      <button class="qcard qcard-add" data-action="openDrive"><span class="ico">🚦</span><span class="t">За рулём</span><span class="s">Быстрый ввод</span></button>
+      ${Object.entries(CATS).map(([k,v])=>`<button class="qcard" data-action="quick" data-cat="${k}"><span class="ico">${v.ico}</span><span class="t">${v.t}</span><span class="s">Добавить</span></button>`).join("")}
+    </div>
 
-    ${freeMoneyWidget()}
+    <div class="today glass">
+      <div class="today-main">
+        <span class="kicker">Сегодня, ${fmtDate(today())}</span>
+        <div class="today-num">${money(dailyRevOf(today()) - exps.filter(e=>e.date===today()).reduce((s,e)=>s+Number(e.amount||0),0))}</div>
+        <button class="btn sm ghost" data-action="openDailyRev">✏️ Изменить выручку дня</button>
+      </div>
+      <svg class="ring" viewBox="0 0 100 100">
+        <circle class="ring-bg" cx="50" cy="50" r="42"/>
+        <circle class="ring-fg" cx="50" cy="50" r="42" stroke-dasharray="264" stroke-dashoffset="${264 - (264 * Math.min(1, (exps.filter(e=>e.date===today()).reduce((s,e)=>s+Number(e.amount||0),0) / (dailyTarget()||1))))}"/>
+        <text class="ring-t" x="50" y="54">${Math.round((exps.filter(e=>e.date===today()).reduce((s,e)=>s+Number(e.amount||0),0) / (dailyTarget()||1)) * 100)}%</text>
+      </svg>
+    </div>
+
+    <div class="sparkcard glass">
+      <span class="kicker">Динамика расходов (7 дней)</span>
+      <svg class="spark" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <path class="spark-area" d="${sparkArea}"/>
+        <path class="spark-line" d="${sparkPath}"/>
+        <circle class="spark-dot" cx="100" cy="${100 - (days[days.length-1].exp / maxVal) * 100}" r="3"/>
+      </svg>
+    </div>
 
     <div class="toolgrid">
-      <button class="btn span2" data-action="openDrive">🚦 Режим за рулём — одной рукой</button>
-      <button class="btn ghost" data-action="openFines">🚨 Штрафы</button>
-      <button class="btn ghost" data-action="openReceipts">🧾 Чеки</button>
+      <button class="btn" data-action="openExpenses">📋 Все расходы</button>
+      <button class="btn" data-action="openFines">🚨 Штрафы</button>
+      <button class="btn" data-action="openReceipts">🧾 Чеки</button>
+      <button class="btn" data-action="openFszn">🧮 Налоги и ФСЗН</button>
     </div>
-
-    <div class="h2">последние записи</div>
-    ${last3.length?`<div class="list">${last3.map(expenseRow).join("")}</div><button class="btn ghost sm" data-action="openExpenses" style="margin-top:8px;width:100%">показать все →</button>`:`<div class="glass empty">Пока пусто. Начни с быстрой заправки  выше</div>`}
   `;
 }
-function freeMoneyWidget(){
-  const src=incomeSource(ymNow());
-  return `<div class="glass card">
-    <div class="row between"><span class="kicker">доход вручную</span><span class="badge soon">${src.src==="days"?"авто по дням":src.src==="manual"?"ручной":"—"}</span></div>
-    <div class="fszn-note" style="margin:6px 0 0">если не вносишь выручку по дням — задай доход месяца здесь</div>
-    <div class="row" style="gap:8px;margin-top:8px">
-      <input id="income_month" class="input" type="number" inputmode="decimal" value="${src.src==="manual"?src.val:""}" placeholder="0">
-      <button class="btn sm primary" data-action="setIncome" style="width:auto">💾</button>
-    </div>
-  </div>`;
-}
-function expenseRow(e){ const c=CATS[e.category]||CATS.other;
-  let mileTxt="";
-  if(e.mileage){ mileTxt = (e.category==="repair"||e.category==="parts") ? " · установлено "+num(e.mileage)+" км" : " · "+num(e.mileage)+" км"; }
-  return `<div class="item"><div class="ic">${c.ico}</div><div class="meta"><div class="t">${c.t}${e.note?": "+esc(e.note):""}</div><div class="s">${fmtDate(e.date)}${mileTxt}</div></div><div class="amt">−${money(e.amount)}</div>${e.receipt?`<button class="edit" data-action="viewReceipt" data-id="${e.id}" title="чек">🧾</button>`:""}<button class="edit" data-action="editExpense" data-id="${e.id}" title="изменить">✏️</button><button class="del" data-action="delExpense" data-id="${e.id}" title="удалить">🗑</button></div>`; }
 
-/* ---------- ЭКРАН «РАСХОДЫ» ---------- */
 async function screenExpenses(){
-  const all=await dbAll("expenses");
-  const w=expWindow(state.expRange);
-  const q=(state.expQ||"").trim().toLowerCase();
-  const effScale = (state.expScale==="day" && BIG_RANGE(state.expRange)) ? "month" : state.expScale;
-
-  let rows=all.filter(e=>(!w.from||e.date>=w.from)&&(!w.to||e.date<=w.to));
-  if(state.expCat!=="all") rows=rows.filter(e=>e.category===state.expCat);
-  if(q) rows=rows.filter(e=>((e.note||"")+" "+(CATS[e.category]?.t||"")).toLowerCase().includes(q));
-  rows.sort((a,b)=>(b.date+b.id).localeCompare(a.date+a.id));
-  const sum=rows.reduce((s,e)=>s+Number(e.amount||0),0);
-
-  let chartAll=all.filter(e=>(!w.from||e.date>=w.from)&&(!w.to||e.date<=w.to));
-  if(state.expCat!=="all") chartAll=chartAll.filter(e=>e.category===state.expCat);
-  let chartData=[];
-  if(effScale==="day"){
-    const from=w.from||daysAgo(29), to=w.to||today();
-    const d=new Date(from+"T00:00:00"); const end=new Date(to+"T00:00:00");
-    while(d<=end){ const ds=d.toISOString().slice(0,10); const v=chartAll.filter(e=>e.date===ds).reduce((s,e)=>s+Number(e.amount||0),0); chartData.push({label:String(d.getDate()),value:v}); d.setDate(d.getDate()+1); }
-  } else {
-    const map={}; chartAll.forEach(e=>{ const m=e.date.slice(0,7); map[m]=(map[m]||0)+Number(e.amount||0); });
-    chartData=Object.keys(map).sort().map(m=>({label:new Date(m+"-01T00:00:00").toLocaleDateString("ru-RU",{month:"short"}),value:map[m]}));
-  }
-  const dayCount = chartData.length;
-  const sparse = dayCount>40 ? 5 : dayCount>16 ? 3 : 1;
-
-  const rangeChips=[["7","7д"],["30","30д"],["month","месяц"],["quarter","квартал"],["year","год"],["all","всё"]];
-  const catChips=[["all","Все"],...Object.entries(CATS).map(([k,c])=>[k,c.ico+" "+c.t])];
+  const exps = await dbAll("expenses");
+  const q = (state.expQ || "").toLowerCase();
+  const filtered = exps.filter(e => {
+    if(state.expCat && state.expCat !== "all" && e.category !== state.expCat) return false;
+    if(q && !((e.note||"").toLowerCase().includes(q) || (CATS[e.category]?.t||"").toLowerCase().includes(q))) return false;
+    return true;
+  }).sort((a,b) => b.date.localeCompare(a.date));
 
   return `
-    <div class="row between">
-      <div class="h1" style="margin:0">Расходы</div>
-      <button class="btn sm ghost" data-action="nav" data-to="dash">← Назад</button>
-    </div>
-    <p class="muted small">все записи, график по дням и месяцам, фильтр и поиск</p>
-
-    <div class="rangebar">${rangeChips.map(([k,t])=>`<button class="chip ${state.expRange===k?"on":""}" data-action="setExpRange" data-range="${k}">${t}</button>`).join("")}</div>
-
-    <div class="seg" id="expSeg">
-      <span class="thumb"></span>
-      <button class="${effScale==="day"?"on":""}" data-action="setExpScale" data-scale="day">по дням</button>
-      <button class="${effScale==="month"?"on":""}" data-action="setExpScale" data-scale="month">по месяцам</button>
-    </div>
-    ${BIG_RANGE(state.expRange)&&state.expScale==="day"?`<div class="fszn-note" style="margin:-2px 2px 6px">на длинном окне «по дням» автоматически укрупнено до месяцев, чтобы не было каши</div>`:""}
-
-    <div class="glass card" style="margin-top:6px">
-      <div class="row between"><span class="kicker">расходы · ${w.label}</span><b>${money(sum)}</b></div>
-      ${chartData.length&&chartData.some(d=>d.value>0)?bars(chartData,{sparse, small: dayCount>20}):`<div class="empty" style="padding:14px 0 4px">нет расходов за период</div>`}
+    <div class="topbar">
+      <button class="iconbtn" data-action="nav" data-to="dash">←</button>
+      <span class="h1">Расходы</span>
+      <button class="iconbtn" data-action="sendReportBot">📤</button>
     </div>
 
-    <div class="chips" style="margin:6px 0">${catChips.map(([k,t])=>`<span class="chip ${state.expCat===k?"on":""}" data-action="setExpCat" data-cat="${k}">${t}</span>`).join("")}</div>
+    <div class="searchwrap glass" style="padding:10px; margin-bottom:12px; display:flex; gap:8px; align-items:center;">
+      <span>🔍</span>
+      <input class="input" id="exp_search" placeholder="Поиск по заметке..." value="${esc(state.expQ||"")}" style="border:none; background:transparent; padding:4px; box-shadow:none;" />
+    </div>
 
-    <div class="searchwrap"><span class="si">🔍</span><input id="exp_search" type="search" placeholder="поиск по детали / заметке" value="${esc(state.expQ)}"></div>
+    <div class="rangebar">
+      <button class="chip ${state.expCat==="all"?"on":""}" data-action="setExpCat" data-cat="all">Все</button>
+      ${Object.entries(CATS).map(([k,v])=>`<button class="chip ${state.expCat===k?"on":""}" data-action="setExpCat" data-cat="${k}">${v.ico} ${v.t}</button>`).join("")}
+    </div>
 
-    <div class="row between" style="margin:4px 2px 8px"><span class="kicker">найдено: ${rows.length}</span><span class="kicker">${money(sum)}</span></div>
-
-    <button class="btn primary" data-action="sendReportBot">📤 Отправить отчёт боту в чат</button>
-    <div style="height:10px"></div>
-    <button class="btn" data-action="exportShotFull">📸 Отчёт для скриншота</button>
-
-    ${rows.length?`<div class="list">${rows.map(expenseRow).join("")}</div>`:`<div class="glass empty">Ничего не найдено. Сбрось фильтр или поиск.</div>`}
+    <div class="list">
+      ${filtered.length ? filtered.map(e => {
+        const c = CATS[e.category] || CATS.other;
+        return `<div class="item">
+          <div class="ic">${c.ico}</div>
+          <div class="meta">
+            <div class="t">${esc(e.note || c.t)}</div>
+            <div class="s">${fmtDate(e.date)}${e.mileage ? ` · ${num(e.mileage)} км` : ""}</div>
+          </div>
+          <div class="amt">${money(e.amount)}</div>
+          ${e.receipt ? `<button class="edit" data-action="viewReceipt" data-id="${e.id}">📸</button>` : ""}
+          <button class="edit" data-action="editExpense" data-id="${e.id}">✏️</button>
+          <button class="del" data-action="delExpense" data-id="${e.id}">🗑</button>
+        </div>`;
+      }).join("") : '<div class="empty">Нет записей</div>'}
+    </div>
   `;
 }
 
-/* ---------- ГРАФИКИ ---------- */
 async function screenStats(){
-  const exps=await dbAll("expenses"); const filtered=filterByRange(exps,state.range);
-  const byCat={}; filtered.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
-  const byMonth={}; filtered.forEach(e=>{const m=e.date.slice(0,7);byMonth[m]=(byMonth[m]||0)+Number(e.amount||0);});
-  const months=Object.keys(byMonth).sort(); const total=Object.values(byCat).reduce((a,b)=>a+b,0);
-  const ym=ymNow(); const ms=new Date(); ms.setDate(1); ms.setHours(0,0,0,0);
-  const spentMonth=exps.filter(e=>new Date(e.date)>=ms).reduce((s,e)=>s+Number(e.amount||0),0);
-  const income=incomeOf(ym),km=kmOf(ym),hours=hoursOf(ym); const s=fsznSettings(); const fszn=isIP()?(s.rate/100*s.mzp):0;
-  const free=income-spentMonth-fszn; const pKr=km>0?income/km:null,pH=hours>0?income/hours:null,pKc=km>0?spentMonth/km:null,mg=income>0?free/income*100:null;
-  const wka=weekdayAvg(); const hasWd=wka.bestIdx>=0;
+  const exps = await dbAll("expenses");
+  const pr = periodRange(state.range, 0);
+  const periodExps = exps.filter(e => !pr.from || (e.date >= pr.from && e.date <= pr.to));
+  
+  const byCat = {};
+  periodExps.forEach(e => { byCat[e.category] = (byCat[e.category]||0) + Number(e.amount||0); });
+  const sorted = Object.entries(byCat).sort((a,b) => b[1] - a[1]);
+  const total = sorted.reduce((s,[,v]) => s+v, 0) || 1;
+
+  const revMap = dailyRevMap();
+  let revTotal = 0;
+  for(const d in revMap){ if(d >= pr.from && d <= pr.to) revTotal += Number(revMap[d]); }
+  const free = revTotal - (total===1 ? 0 : total);
+
+  // График по дням месяца
+  const daysInMonth = new Date(pr.to).getDate();
+  const chartData = [];
+  let maxDayVal = 1;
+  for(let i=1; i<=daysInMonth; i++){
+    const d = `${pr.from.slice(0,8)}${String(i).padStart(2,'0')}`;
+    const exp = periodExps.filter(e=>e.date===d).reduce((s,e)=>s+Number(e.amount||0),0);
+    const rev = Number(revMap[d]) || 0;
+    if(exp > maxDayVal) maxDayVal = exp;
+    if(rev > maxDayVal) maxDayVal = rev;
+    chartData.push({ day:i, exp, rev });
+  }
+
   return `
-    <div class="h1">Аналитика</div><p class="muted small">расходы по категориям и месяцам</p>
-    <div class="rangebar">${[["month","Месяц"],["quarter","Квартал"],["year","Год"],["all","Всё"]].map(([k,t])=>`<button class="chip ${state.range===k?"on":""}" data-action="setRange" data-range="${k}">${t}</button>`).join("")}</div>
-    <div class="glass card"><div class="row between"><b>По категориям</b><span class="muted small">${money(total)}</span></div>${total>0?donut(byCat):`<div class="empty">Нет данных за период</div>`}</div>
-    <div class="glass card"><b>По месяцам</b>${months.length>0?bars(months.map(m=>({label:m.slice(2),value:byMonth[m]}))):`<div class="empty">Нет данных</div>`}</div>
-    <div class="h2">выгодные дни недели</div>
-    <div class="glass card">${hasWd?`${bars(WD_ORDER.map(i=>({label:WD[i],value:wka.avg[i]})))}<div class="fszn-note">🏆 лучший день — <b>${WD[wka.bestIdx]}</b> (в среднем ${rate(wka.avg[wka.bestIdx])}). Чем больше дней внесено, тем точнее карта.</div>`:`<div class="empty">Вноси «💵 Выручка» — здесь появится карта выгодных дней</div>`}</div>
-    <div class="h2">эффективность · ${monthLabel(ym)}</div>
-    <div class="glass card">
-      <div class="grid2"><div class="field" style="margin:0"><label>Пробег за месяц, км</label><input id="eff_km" class="input" type="number" inputmode="numeric" value="${km||""}" placeholder="0"></div><div class="field" style="margin:0"><label>Часов за рулём</label><input id="eff_hours" class="input" type="number" inputmode="decimal" value="${hours||""}" placeholder="0"></div></div>
-      <div style="height:8px"></div><button class="btn sm primary" data-action="setEff" style="width:100%">💾 Сохранить пробег и часы</button>
-      <div class="eff"><div class="e"><div class="v">${pH!=null?rate(pH):"—"}</div><div class="k">за час за рулём</div></div><div class="e"><div class="v">${pKr!=null?rate(pKr):"—"}</div><div class="k">за км выручки</div></div><div class="e"><div class="v">${pKc!=null?rate(pKc):"—"}</div><div class="k">за км затрат</div></div><div class="e"><div class="v">${mg!=null?mg.toFixed(0)+"%":"—"}</div><div class="k">маржа</div></div></div>
-      <div class="fszn-note">💡 Разбивка по часам появится вместе с учётом смен (таймером). Сейчас — по итогу месяца.</div>
-    </div>`;
-}
-function filterByRange(exps,range){ if(range==="all") return exps; const d=new Date(); if(range==="month")d.setMonth(d.getMonth()-1); if(range==="quarter")d.setMonth(d.getMonth()-3); if(range==="year")d.setFullYear(d.getFullYear()-1); const c=d.toISOString().slice(0,10); return exps.filter(e=>e.date>=c); }
-function donut(byCat){ const e=Object.entries(byCat).filter(([,v])=>v>0); const total=e.reduce((s,[,v])=>s+v,0);
-  const colors={fuel:"#ff5a00",parts:"#ff7d24",repair:"#f5f4f1",wash:"#80807a",rent:"#b8b8b0",other:"#34342f"}; let a0=-Math.PI/2; const R=60,r=38,cx=80,cy=80;
-  const arc=a1=>{const lg=(a1-a0)>Math.PI?1:0,p=(a,rd)=>[cx+rd*Math.cos(a),cy+rd*Math.sin(a)];const[x0,y0]=p(a0,R),[x1,y1]=p(a1,R),[x2,y2]=p(a1,r),[x3,y3]=p(a0,r);const d=`M${x0} ${y0} A${R} ${R} 0 ${lg} 1 ${x1} ${y1} L${x2} ${y2} A${r} ${r} 0 ${lg} 0 ${x3} ${y3} Z`;a0=a1;return d;};
-  const paths=e.map(([k,v])=>`<path d="${arc(a0+(v/total)*Math.PI*2)}" fill="${colors[k]||"#888"}" opacity=".95"/>`).join("");
-  const legend=e.map(([k,v])=>`<div class="li"><span class="dot" style="background:${colors[k]||"#888"}"></span>${(CATS[k]?.t||k)} · ${Math.round(v/total*100)}%</div>`).join("");
-  return `<div class="row" style="gap:18px;margin-top:10px"><svg class="chart" viewBox="0 0 160 160" width="140" height="140">${paths}<text class="ct" x="80" y="78" text-anchor="middle" font-size="14" font-weight="800">${money(total).split(" ")[0]}</text><text class="cm" x="80" y="94" text-anchor="middle" font-size="9">${cur()}</text></svg><div class="legend col">${legend}</div></div>`; }
-function bars(data, opts={}){
-  const W=320,H=140,pad=18,max=Math.max(...data.map(d=>d.value),1),bw=(W-pad*2)/data.length;
-  const sparse = opts.sparse||1;
-  const fs = opts.small ? 7 : 9;
-  const cols=data.map((d,i)=>{const h=(d.value/max)*(H-pad*2),x=pad+i*bw+bw*0.15,y=H-pad-h;
-    const show = (i % sparse === 0) || i===data.length-1;
-    return `<g><rect x="${x}" y="${y}" width="${bw*0.7}" height="${h}" rx="4" fill="url(#g1)"><animate attributeName="height" from="0" to="${h}" dur=".5s" fill="freeze"/><animate attributeName="y" from="${H-pad}" to="${y}" dur=".5s" fill="freeze"/></rect><text class="cm" x="${x+bw*0.35}" y="${H-5}" text-anchor="middle" font-size="${fs}" style="visibility:${show?'visible':'hidden'}">${d.label}</text></g>`;}).join("");
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" style="margin-top:10px"><defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff5a00"/><stop offset="1" stop-color="#ff7d24"/></linearGradient></defs>${cols}</svg>`; }
-
-/* ---------- АВТО + износ ---------- */
-async function screenCar(){ const car=await dbGet("car",1)||{}; const exps=await dbAll("expenses");
-  return `<div class="h1">Автомобиль</div><p class="muted small">модель, расход, пробег, замена масла</p>
-    <div class="glass card"><div class="row between"><div><div style="font-size:20px;font-weight:800;letter-spacing:-.4px">${car.model?esc(car.model):"Не задано"}</div><div class="muted small">${car.plate?esc(car.plate):"—"}</div></div><button class="btn sm" data-action="openEditCar">✏️ Изменить</button></div><div class="divider"></div>
-    <div class="metricrow" style="margin:0"><div class="metric"><div class="v">${(car.currentMileage||0).toLocaleString("ru-RU")}</div><div class="k">пробег, км</div></div><div class="metric"><div class="v">${car.fuelPer100||"—"}</div><div class="k">расход л/100</div></div><div class="metric"><div class="v">${(car.lastOilMileage||0).toLocaleString("ru-RU")}</div><div class="k">масло на км</div></div><div class="metric"><div class="v">${car.oilInterval||"—"}</div><div class="k">интервал, км</div></div></div></div>
-    <div class="h2">расход топлива (оценка)</div><div class="glass card">${await fuelEstimate(exps)}</div>
-    <div class="h2">детали и работы · износ</div><div class="glass card">${partsWear(exps,car)}</div>`; }
-async function fuelEstimate(exps){ exps = exps || await dbAll("expenses");
-  const f=exps.filter(e=>e.category==="fuel"&&e.mileage);
-  if(f.length<2) return `<div class="empty">Добавь ≥2 заправки с пробегом — посчитаю стоимость км</div>`;
-  const s=f.slice().sort((a,b)=>a.mileage-b.mileage); const km=s.at(-1).mileage-s[0].mileage; const sum=s.slice(1).reduce((a,e)=>a+Number(e.amount||0),0);
-  if(km<=0) return `<div class="empty">Мало данных</div>`;
-  return `<div class="row between"><span class="muted">Стоимость км</span><b>${money(sum/km)}</b></div><div class="row between"><span class="muted">Замерено на</span><span>${km.toLocaleString("ru-RU")} км</span></div>`; }
-function partsWear(exps, car){
-  const curMile = Number(car?.currentMileage)||0;
-  const recs = exps.filter(e=>(e.category==="repair"||e.category==="parts")&&Number(e.mileage)>0);
-  if(!recs.length) return `<div class="empty">Укажи пробег и название детали при ремонте/запчастях — здесь появится, сколько прошла каждая деталь. Когда поставишь ту же деталь заново — старая автоматически станет «заменена».</div>`;
-  const groups={};
-  recs.forEach(e=>{ const base=(e.note||"").trim(); const key = base ? (e.category+"|"+base.toLowerCase()) : ("id|"+e.id); (groups[key]=groups[key]||[]).push(e); });
-  const rows=[];
-  Object.values(groups).forEach(arr=>{ arr.sort((a,b)=>Number(a.mileage)-Number(b.mileage));
-    arr.forEach((e,i)=>{ const next=arr[i+1]; const installed=Number(e.mileage); let span=null, active=!next, replacedAt=null;
-      if(next){ replacedAt=Number(next.mileage); span=Math.max(0,replacedAt-installed); } else if(curMile>installed){ span=curMile-installed; }
-      rows.push({e,installed,span,active,replacedAt}); }); });
-  rows.sort((a,b)=>(b.e.date+b.e.id).localeCompare(a.e.date+a.e.id));
-  const items = rows.map(r=>{ const c=CATS[r.e.category]||CATS.other; const wearTxt = r.span!=null ? num(r.span)+" км" : "—";
-    const pill = r.active ? `<span class="pill on">действует</span>` : `<span class="pill off">заменена</span>`;
-    const tail = r.active ? (curMile>0?"":" · пробег авто не задан") : ` · заменена на ${num(r.replacedAt)}`;
-    const sub = `установлена ${num(r.installed)} км · ${fmtDate(r.e.date)}${tail}`;
-    return `<div class="part"><div class="ic">${c.ico}</div><div class="meta"><div class="t">${r.e.note?esc(r.e.note):c.t}</div><div class="s">${sub}</div></div><div class="wear">${wearTxt}</div>${pill}</div>`; }).join("");
-  return `<div class="list">${items}</div>`;
-}
-
-/* ---------- РТО (рисует модуль rto.js через публичный API) ---------- */
-function screenRto(){
-  if(window.BLVCK_RTO && typeof window.BLVCK_RTO.renderScreen==='function'){
-    return `<div class="row between"><div class="h1" style="margin:0">Режим труда и отдыха</div></div>
-      <p class="muted small">трекер смены по нормам РБ: перерывы, лимиты, междусменный и еженедельный отдых</p>` + window.BLVCK_RTO.renderScreen();
-  }
-  return `<div class="h1">Режим труда и отдыха</div><div class="glass empty">Модуль РТО не подключён.</div>`;
-}
-
-/* ---------- ТО / ДОКИ ---------- */
-async function screenDocs(){ const maint=(await dbAll("maintenance")).sort((a,b)=>b.date.localeCompare(a.date)); const docs=(await dbAll("documents")).sort((a,b)=>(a.expiryDate||"9").localeCompare(b.expiryDate||"9"));
-  return `<div class="h1">ТО и документы</div><div class="row" style="gap:10px;margin-top:10px"><button class="btn" data-action="openAddMaint">➕ Событие ТО</button><button class="btn" data-action="openAddDoc">📄 Документ</button></div>
-    <div class="h2">документы</div>${docs.length?`<div class="list">${docs.map(d=>{const days=d.expiryDate?Math.round((new Date(d.expiryDate)-new Date())/86400000):null;const w=days!=null&&days<=30;return `<div class="item"><div class="ic">${w?(days<0?"⛔":""):"📄"}</div><div class="meta"><div class="t">${esc(d.name)}</div><div class="s">${d.expiryDate?("до "+fmtDate(d.expiryDate)+(days!=null?(days<0?" · просрочено":" · "+days+" дн."):"")):"бессрочно"}</div></div><button class="del" data-action="delDoc" data-id="${d.id}">🗑</button></div>`;}).join("")}</div>`:`<div class="glass empty">Нет документов</div>`}
-    <div class="h2">журнал ТО</div>${maint.length?`<div class="list">${maint.map(m=>`<div class="item"><div class="ic">🔧</div><div class="meta"><div class="t">${esc(m.title)}</div><div class="s">${fmtDate(m.date)}${m.mileage?" · "+num(m.mileage)+" км":""}${m.note?" · "+esc(m.note):""}</div></div><button class="del" data-action="delMaint" data-id="${m.id}">🗑</button></div>`).join("")}</div>`:`<div class="glass empty">Нет событий</div>`}`; }
-
-/* ---------- ШТРАФЫ ---------- */
-async function screenFines(){ const list=finesList(); const now=new Date(); now.setHours(0,0,0,0);
-  const unpaid=list.filter(f=>!f.paid), unpaidSum=unpaid.reduce((s,f)=>s+Number(f.amount||0),0), y=YEAR();
-  const paidYear=list.filter(f=>f.paid&&(f.paidDate||"").slice(0,4)===String(y)), paidYearSum=paidYear.reduce((s,f)=>s+Number(f.amount||0),0);
-  const sorted=list.slice().sort((a,b)=>{ if(a.paid!==b.paid) return a.paid?1:-1; return (b.paidDate||b.date||"").localeCompare(a.paidDate||a.date||""); });
-  return `<div class="row between"><div class="h1" style="margin:0">🚨 Штрафы</div><button class="btn sm ghost" data-action="nav" data-to="dash">← Назад</button></div>
-    <p class="muted small">долги светятся на главной; при «оплачено» штраф сам уходит в расходы</p>
-    <div class="metricrow"><div class="metric"><div class="v neg">${unpaid.length?money(unpaidSum):money(0)}</div><div class="k">не оплачено (${unpaid.length})</div></div><div class="metric"><div class="v">${money(paidYearSum)}</div><div class="k">оплачено за ${y}</div></div></div>
-    <button class="btn primary" data-action="openAddFine" style="margin-top:12px">➕ Добавить штраф</button><div class="h2">список</div>
-    ${sorted.length?`<div class="list">${sorted.map(f=>{const days=f.date?Math.round((now-new Date(f.date+"T00:00:00"))/86400000):null;
-      if(!f.paid) return `<div class="item"><div class="ic">🚨</div><div class="meta"><div class="t">${esc(f.name)}</div><div class="s">${f.date?`выписан ${fmtDate(f.date)}${days!=null?` · ${days} дн. назад`:""}`:"без даты"}</div></div><div class="amt neg">−${money(f.amount)}</div><button class="edit" data-action="finePaid" data-id="${f.id}" title="оплачено">✅</button><button class="del" data-action="fineDel" data-id="${f.id}">🗑</button></div>`;
-      return `<div class="item"><div class="ic">✅</div><div class="meta"><div class="t">${esc(f.name)}</div><div class="s">оплачен ${fmtDate(f.paidDate)}</div></div><div class="amt">−${money(f.amount)}</div><button class="del" data-action="fineDel" data-id="${f.id}">🗑</button></div>`;}).join("")}</div>`:`<div class="glass empty">Штрафов нет — так держать 👍</div>`}`; }
-
-/* ---------- ЧЕКИ ---------- */
-async function getReceiptExpenses(){ const all=await dbAll("expenses"); const pr=periodRange(state.receiptMode,state.receiptOffset);
-  return all.filter(e=>e.receipt&&(!pr.from||e.date>=pr.from)&&(!pr.to||e.date<=pr.to)&&(state.receiptCat==="all"||e.category===state.receiptCat)).sort((a,b)=>(b.date+b.id).localeCompare(a.date+a.id)); }
-async function screenReceipts(){ const pr=periodRange(state.receiptMode,state.receiptOffset); const list=await getReceiptExpenses();
-  const sum=list.reduce((s,e)=>s+Number(e.amount||0),0); const byCat={}; list.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
-  const all=await dbAll("expenses"); const allIn=all.filter(e=>(!pr.from||e.date>=pr.from)&&(!pr.to||e.date<=pr.to)&&(state.receiptCat==="all"||e.category===state.receiptCat)); const allSum=allIn.reduce((s,e)=>s+Number(e.amount||0),0);
-  const catChips=[["all","Все"],...Object.entries(CATS).map(([k,c])=>[k,c.ico])];
-  return `<div class="row between"><div class="h1" style="margin:0">🧾 Чеки</div><button class="btn sm ghost" data-action="nav" data-to="dash">← Назад</button></div>
-    <p class="muted small">просмотр чеков за период. Отчёт с чеками — прямо в чат боту.</p>
-    <div class="rangebar">${[["month","Месяц"],["quarter","Квартал"],["year","Год"],["all","Всё"]].map(([k,t])=>`<button class="chip ${state.receiptMode===k?"on":""}" data-action="setReceiptMode" data-mode="${k}">${t}</button>`).join("")}</div>
-    ${state.receiptMode!=="all"?`<div class="periodnav"><button class="pbtn" data-action="receiptPrev">‹</button><div class="plabel">${esc(pr.label)}</div><button class="pbtn" data-action="receiptNext">›</button></div>`:`<div class="periodnav"><div class="plabel">${esc(pr.label)}</div></div>`}
-    <div class="chips" style="margin:6px 0">${catChips.map(([k,t])=>`<span class="chip ${state.receiptCat===k?"on":""}" data-action="setReceiptCat" data-cat="${k}">${t}</span>`).join("")}</div>
-    <div class="glass card"><div class="row between"><b>Чеков со скрином</b><b>${list.length}</b></div><div class="row between"><span class="muted">сумма чеков</span><b>${money(sum)}</b></div>${Object.entries(byCat).map(([k,v])=>`<div class="row between small"><span class="muted">${CATS[k]?.ico||""} ${CATS[k]?.t||k}</span><b>${money(v)}</b></div>`).join("")}<div class="divider"></div><div class="row between small"><span class="muted">все расходы за период</span><b>${money(allSum)}</b></div></div>
-    <div class="h2">выгрузить</div><div class="glass card">
-      <button class="btn primary" data-action="sendReportBot">📤 Отправить отчёт с чеками боту</button>
-      <div style="height:10px"></div>
-      <button class="btn" data-action="exportShotChecks" ${list.length?"":"disabled"}>📸 Чеки для скриншота</button>
-      <div style="height:10px"></div>
-      <button class="btn" data-action="exportReceiptsCsv" ${list.length?"":"disabled"}>📋 CSV в буфер (вставить в Excel/чат)</button>
-      <div class="fszn-note">«📤 боту» шлёт PDF с чеками прямо в чат. Скриншоты — запасной путь: снимай белые листы и кидай картинки в любой чат.</div>
+    <div class="topbar">
+      <button class="iconbtn" data-action="nav" data-to="dash">←</button>
+      <span class="h1">Графики</span>
+      <button class="iconbtn" data-action="setRange" data-range="${state.range==='month'?'quarter':'month'}">${state.range==='month'?'📅':'🗓️'}</button>
     </div>
-    <div class="h2">галерея</div>${list.length?`<div class="list">${list.map(e=>{const c=CATS[e.category]||CATS.other;return `<div class="item"><img class="rthumb" src="${e.receipt}" data-action="viewReceipt" data-id="${e.id}" alt="чек"><div class="meta"><div class="t">${c.ico} ${c.t}${e.note?": "+esc(e.note):""}</div><div class="s">${fmtDate(e.date)}</div></div><div class="amt">−${money(e.amount)}</div></div>`;}).join("")}</div>`:`<div class="glass empty">За этот период чеков нет</div>`}`; }
-function receiptsCsvText(list,pr){ const sum=list.reduce((s,e)=>s+Number(e.amount||0),0); const byCat={}; list.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
-  const L=[["BLVCK TAXI — чеки за "+pr.label],["Фильтр",state.receiptCat==="all"?"все":(CATS[state.receiptCat]?.t||state.receiptCat)],["Сформировано",today()],[],["Дата","Категория","Заметка","Сумма "+cur()]];
-  list.slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>L.push([e.date,(CATS[e.category]?.t||e.category),e.note||"",e.amount]));
-  L.push(["","","ИТОГО",sum.toFixed(2)],[],["ПО КАТЕГОРИЯМ"]); Object.entries(byCat).forEach(([k,v])=>L.push([(CATS[k]?.t||k),v.toFixed(2)]));
-  return L.map(r=>r.map(csvCell).join(";")).join("\r\n"); }
-async function exportReceiptsCsv(){ const list=await getReceiptExpenses(); if(!list.length){toast("Нет чеков за период");return;} const pr=periodRange(state.receiptMode,state.receiptOffset);
-  const csv=receiptsCsvText(list,pr); const ok=await copyText(csv);
-  if(ok){ toast("CSV в буфере — вставь в Excel или чат"); hapticOk(); } else { toast("Не вышло скопировать"); hapticBad(); } }
 
-/* ---------- ВЫРУЧКА: модалка со скроллом на весь месяц + сохранение ---------- */
-async function modalDailyRev(){
-  const exps=await dbAll("expenses");
-  const miss=missingWorkDays(exps,daysAgo(34),today()).slice(0,14);
-  const def=today();
-  const rev=dailyRevOf(def);
-  const target=getDailyTarget();
-  const ym=ymNow(); const [yy,mm]=ym.split("-").map(Number);
-  const daysInMonth=new Date(yy,mm,0).getDate();
-  const days=[]; for(let dd=1; dd<=daysInMonth; dd++) days.push(`${ym}-${String(dd).padStart(2,"0")}`);
-  const vals=days.map(d=>dailyRevOf(d));
-  const max=Math.max(1, ...vals);
-  const defV=dailyRevOf(def);
-  const chart=`
-    <style>
-      @keyframes growBar{from{height:0;opacity:.2}to{height:var(--h);opacity:1}}
-      .revbar{animation:growBar .5s cubic-bezier(.22,1,.36,1) both}
-      .revcol:active .revbar{filter:brightness(1.25)}
-    </style>
-    <div class="fszn-note" style="margin:0 0 6px">Выручка по дням · ${monthLabel(ym)} — листай вбок, касайся столбика, чтобы подставить сумму</div>
-    <div id="rev_indicator" style="font-family:var(--mono);font-size:13px;font-weight:700;margin-bottom:8px;min-height:18px"><b style="color:var(--accent)">${new Date(def+'T00:00:00').getDate()} ${monShort(def)}</b> · ${defV>0?money(defV):'нет выручки — внеси выше'}</div>
-    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px">
-      <div style="display:flex;gap:3px;align-items:flex-end;height:168px;width:max-content;min-width:100%">
-        ${days.map((d,i)=>{ const v=vals[i]; const barH=v>0?Math.max(6,Math.round(v/max*104)):6; const sel=d===def;
-          const top = v>0 ? money(v).replace(' '+cur(),'').trim() : '·';
-          const topCol = v>0 ? 'var(--text)' : 'var(--faint)';
-          return `<div class="revcol" data-action="pickDay" data-date="${d}" style="flex:0 0 42px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;cursor:pointer">
-            <div style="font-family:var(--mono);font-size:9px;font-weight:700;color:${topCol};white-space:nowrap;margin-bottom:4px">${top}</div>
-            <div class="revbar" style="--h:${barH}px;width:74%;border-radius:6px 6px 2px 2px;background:${v>0?'linear-gradient(180deg,#ff8a33,#ff5a00)':'var(--s3)'};${sel?'outline:2px solid #fff;outline-offset:1px;':''};animation-delay:${i*14}ms"></div>
-            <div style="font-family:var(--mono);font-size:9px;margin-top:5px;color:var(--muted)">${i+1}</div>
-          </div>`; }).join("")}
+    <div class="metricrow">
+      <div class="metric"><div class="v pos">${money(revTotal)}</div><div class="k">Выручка за период</div></div>
+      <div class="metric"><div class="v neg">${money(total===1?0:total)}</div><div class="k">Расходы за период</div></div>
+      <div class="metric"><div class="v">${money(free)}</div><div class="k">Свободные деньги</div></div>
+      <div class="metric"><div class="v">${periodExps.length}</div><div class="k">Всего операций</div></div>
+    </div>
+
+    <div class="glass card">
+      <span class="kicker">Структура расходов</span>
+      <div class="list" style="margin-top:12px">
+        ${sorted.map(([k,v]) => {
+          const c = CATS[k] || CATS.other;
+          const pct = Math.round((v/total)*100);
+          return `<div class="item">
+            <div class="ic">${c.ico}</div>
+            <div class="meta">
+              <div class="t">${c.t}</div>
+              <div class="progress"><i style="width:${pct}%"></i></div>
+            </div>
+            <div class="amt">${money(v)}<br><span class="small muted">${pct}%</span></div>
+          </div>`;
+        }).join("")}
       </div>
-    </div>`;
-  const chips=miss.length?`<div class="field"><label>Быстро — рабочие дни без выручки</label><div class="chips">${miss.map(d=>`<span class="chip" data-action="pickDay" data-date="${d}">${d.slice(8,10)}.${d.slice(5,7)}</span>`).join("")}</div><div class="fszn-note">тап по дате подставит её и подтянет сумму</div></div>`:"";
-  openModal(`<div class="mhead"><h3>💵 Выручка за день</h3><button class="x" data-action="close">×</button></div><p class="muted small" style="margin-top:0">сегодня или любой прошлый день — доход, тренд и карта дней пересчитаются сами</p><div class="grid2"><div class="field"><label>Дата</label><input id="d_date" class="input" type="date" value="${def}"></div><div class="field"><label>Выручка за день</label><input id="d_rev" class="input" type="number" inputmode="decimal" value="${rev||""}" placeholder="0"></div></div><div class="field" style="margin:6px 0 0">${chart}</div>${chips}<div class="field"><label>План на день (необязательно, общий)</label><input id="d_target" class="input" type="number" inputmode="decimal" value="${target||""}" placeholder="сколько хочу привезти"></div><button class="btn primary" data-action="saveDailyRev">Сохранить</button>`);
-  setTimeout(()=>$("#d_rev")?.focus(),60);
-}
-function highlightRevCol(date){
-  document.querySelectorAll('.revcol').forEach(el=>{
-    const on = el.dataset.date===date;
-    const bar = el.querySelector('.revbar');
-    if(bar){ bar.style.outline = on?'2px solid #fff':'none'; bar.style.outlineOffset='1px'; }
-  });
-  const ind=$('#rev_indicator');
-  if(ind){ const v=dailyRevOf(date); const dd=new Date(date+'T00:00:00');
-    ind.innerHTML = `<b style="color:var(--accent)">${dd.getDate()} ${monShort(date)}</b> · ${v>0?money(v):'нет выручки — внеси выше'}`; }
-}
-
-/* ---------- РЕЖИМ СКРИНШОТА ---------- */
-const SHOT_STYLE = `<style>
-#shotmode{position:fixed;inset:0;z-index:70;display:none;flex-direction:column;background:#f6f4ef;color:#141414;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
-#shotmode *{box-sizing:border-box}
-#shotmode .shot-bar{flex:none;display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(246,244,239,.92);backdrop-filter:blur(8px);border-bottom:1px solid rgba(20,20,20,.10)}
-#shotmode .shot-bar .hint{flex:1;font-size:12px;color:#6b6b65;font-weight:600;line-height:1.3}
-#shotmode .shot-bar .hint b{color:#ff5a00}
-#shotmode .shot-x{flex:none;width:42px;height:42px;border-radius:50%;border:none;background:#141414;color:#fff;font-size:20px;cursor:pointer;display:grid;place-items:center}
-#shotmode .shot-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 0 40px}
-#shotmode .shot-doc{max-width:560px;margin:0 auto;padding:14px 14px 0;position:relative}
-#shotmode .shot-doc::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.5;mix-blend-mode:multiply;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");z-index:0}
-#shotmode .shot-doc > *{position:relative;z-index:1}
-#shotmode .shot-cover{background:#fff;border-radius:20px;padding:22px 20px 20px;margin-bottom:14px;overflow:hidden;box-shadow:0 10px 30px -16px rgba(20,20,20,.25);border:1px solid rgba(20,20,20,.06);position:relative}
-#shotmode .shot-cover::before{content:"";position:absolute;left:0;top:0;right:0;height:6px;background:linear-gradient(90deg,#ff5a00,#ff8a33)}
-#shotmode .shot-cover .mk{display:flex;align-items:center;gap:9px;margin-bottom:14px}
-#shotmode .shot-cover .mk .d{width:11px;height:11px;border-radius:3px;background:#ff5a00}
-#shotmode .shot-cover .mk .nm{font-family:ui-monospace,monospace;font-weight:700;font-size:13px;letter-spacing:2px}
-#shotmode .shot-cover .mk .ac{font-family:ui-monospace,monospace;font-weight:700;font-size:13px;letter-spacing:2px;color:#ff5a00}
-#shotmode .shot-cover h1{margin:0;font-size:30px;font-weight:900;letter-spacing:-1.2px;line-height:1.02}
-#shotmode .shot-cover .meta{margin-top:8px;font-family:ui-monospace,monospace;font-size:11px;color:#6b6b65;letter-spacing:.3px}
-#shotmode .shot-card{background:#fff;border-radius:18px;padding:18px 16px;margin-bottom:14px;box-shadow:0 10px 30px -18px rgba(20,20,20,.22);border:1px solid rgba(20,20,20,.06);opacity:0;transform:translateY(16px);animation:shotIn .5s cubic-bezier(.22,1,.36,1) forwards}
-@keyframes shotIn{to{opacity:1;transform:none}}
-#shotmode .shot-h{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #141414}
-#shotmode .shot-h .t{font-size:15px;font-weight:900;letter-spacing:.2px;text-transform:uppercase}
-#shotmode .shot-h .n{font-family:ui-monospace,monospace;font-size:11px;color:#ff5a00;font-weight:700}
-#shotmode .kpi{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-#shotmode .kpi .k{background:#faf8f3;border:1px solid rgba(20,20,20,.06);border-radius:14px;padding:14px}
-#shotmode .kpi .k .v{font-family:ui-monospace,monospace;font-size:24px;font-weight:800;letter-spacing:-.6px;line-height:1}
-#shotmode .kpi .k .v.acc{color:#ff5a00}
-#shotmode .kpi .k .l{font-family:ui-monospace,monospace;font-size:9.5px;color:#6b6b65;text-transform:uppercase;letter-spacing:.8px;margin-top:7px}
-#shotmode .free{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
-#shotmode .free .v{font-family:u-monospace,monospace;font-size:34px;font-weight:900;letter-spacing:-1.4px;line-height:.95}
-#shotmode .free .v.pos{color:#ff5a00} #shotmode .free .v.neg{color:#9a9a92}
-#shotmode .free .l{font-family:u-monospace,monospace;font-size:10px;color:#6b6b65;text-transform:uppercase;letter-spacing:.8px;text-align:right}
-#shotmode .catrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px dashed rgba(20,20,20,.10)}
-#shotmode .catrow:last-child{border-bottom:none}
-#shotmode .catrow .ic{font-size:18px;width:30px;text-align:center;flex:none}
-#shotmode .catrow .nm{font-weight:700;font-size:14px;flex:none;min-width:84px}
-#shotmode .catrow .bar{flex:1;height:8px;border-radius:6px;background:#efece5;overflow:hidden}
-#shotmode .catrow .bar i{display:block;height:100%;width:0;border-radius:6px;background:linear-gradient(90deg,#ff5a00,#ff8a33);transition:width .9s cubic-bezier(.22,1,.36,1)}
-#shotmode .catrow .pc{font-family:u-monospace,monospace;font-size:11px;color:#6b6b65;width:38px;text-align:right;flex:none}
-#shotmode .catrow .sm{font-family:u-monospace,monospace;font-size:12px;font-weight:700;width:96px;text-align:right;flex:none}
-#shotmode .exp{display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid rgba(20,20,20,.07)}
-#shotmode .exp:last-child{border-bottom:none}
-#shotmode .exp .dt{flex:none;width:42px;text-align:center;background:#141414;color:#fff;border-radius:9px;padding:6px 0;line-height:1.05}
-#shotmode .exp .dt .d{font-family:u-monospace,monospace;font-size:16px;font-weight:800}
-#shotmode .exp .dt .m{font-family:u-monospace,monospace;font-size:9px;opacity:.7;text-transform:uppercase}
-#shotmode .exp .ic{font-size:18px;flex:none}
-#shotmode .exp .mid{flex:1;min-width:0}
-#shotmode .exp .mid .t{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#shotmode .exp .mid .s{font-family:u-monospace,monospace;font-size:10.5px;color:#6b6b65;margin-top:2px}
-#shotmode .exp .rc{width:40px;height:40px;object-fit:cover;border-radius:8px;border:1px solid rgba(20,20,20,.10);flex:none}
-#shotmode .exp .am{font-family:u-monospace,monospace;font-weight:800;font-size:15px;flex:none;white-space:nowrap}
-#shotmode .rev{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px dashed rgba(20,20,20,.10)}
-#shotmode .rev:last-child{border-bottom:none}
-#shotmode .rev .dt{font-family:u-monospace,monospace;font-size:12px;color:#6b6b65;width:78px;flex:none}
-#shotmode .rev .bar{flex:1;height:9px;border-radius:6px;background:#efece5;overflow:hidden}
-#shotmode .rev .bar i{display:block;height:100%;width:0;border-radius:6px;background:linear-gradient(90deg,#ff5a00,#ff8a33);transition:width .9s cubic-bezier(.22,1,.36,1)}
-#shotmode .rev .sm{font-family:u-monospace,monospace;font-weight:800;font-size:13px;width:104px;text-align:right;flex:none}
-#shotmode .wear{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(20,20,20,.07)}
-#shotmode .wear:last-child{border-bottom:none}
-#shotmode .wear .ic{font-size:18px;flex:none}
-#shotmode .wear .mid{flex:1;min-width:0}
-#shotmode .wear .mid .t{font-weight:700;font-size:13.5px}
-#shotmode .wear .mid .s{font-family:u-monospace,monospace;font-size:10.5px;color:#6b6b65;margin-top:2px}
-#shotmode .wear .km{font-family:u-monospace,monospace;font-weight:800;font-size:14px;flex:none}
-#shotmode .pill{font-family:u-monospace,monospace;font-size:9px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding:3px 8px;border-radius:999px;flex:none}
-#shotmode .pill.on{color:#ff5a00;border:1px solid rgba(255,90,0,.5);background:rgba(255,90,0,.10)}
-#shotmode .pill.off{color:#6b6b65;border:1px solid rgba(20,20,20,.2)}
-#shotmode .fine{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(20,20,20,.07)}
-#shotmode .fine:last-child{border-bottom:none}
-#shotmode .fine .ic{font-size:16px;flex:none}
-#shotmode .fine .mid{flex:1;min-width:0}
-#shotmode .fine .mid .t{font-weight:700;font-size:13.5px}
-#shotmode .fine .mid .s{font-family:u-monospace,monospace;font-size:10.5px;color:#6b6b65;margin-top:2px}
-#shotmode .fine .am{font-family:u-monospace,monospace;font-weight:800;font-size:14px;flex:none}
-#shotmode .chk{background:#faf8f3;border:1px solid rgba(20,20,20,.06);border-radius:14px;padding:12px;margin-bottom:12px}
-#shotmode .chk img{width:100%;border-radius:10px;border:1px solid rgba(20,20,20,.10);display:block}
-#shotmode .chk .cap{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}
-#shotmode .chk .cap .l{font-size:13px;font-weight:700}
-#shotmode .chk .cap .l .s{display:block;font-family:u-monospace,monospace;font-size:10.5px;color:#6b6b65;font-weight:500;margin-top:2px}
-#shotmode .chk .cap .am{font-family:u-monospace,monospace;font-weight:800;font-size:16px;flex:none}
-#shotmode .shot-foot{text-align:center;font-family:u-monospace,monospace;font-size:10px;color:#9a9a92;letter-spacing:.5px;padding:18px 0 6px;text-transform:uppercase}
-#shotmode .empty{color:#9a9a92;font-size:13px;text-align:center;padding:8px 0}
-</style>`;
-function shotCard(title, num, inner){ return `<section class="shot-card"><div class="shot-h"><span class="t">${title}</span><span class="n">${num||""}</span></div>${inner}</section>`; }
-async function buildShotDoc(mode){
-  const expsAll = await dbAll("expenses");
-  const car = await dbGet("car",1)||{};
-  const cur_ = cur();
-  let coverTitle = "Полный отчёт", coverNum = "";
-  let sections = "";
-
-  if(mode==="checks"){
-    const pr = periodRange(state.receiptMode, state.receiptOffset);
-    const list = (await getReceiptExpenses());
-    const sum = list.reduce((s,e)=>s+Number(e.amount||0),0);
-    coverTitle = "Чеки"; coverNum = pr.label;
-    const byCat={}; list.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
-    const sumCard = `<div class="kpi"><div class="k"><div class="v acc">${list.length}</div><div class="l">чеков со скрином</div></div><div class="k"><div class="v">${money(sum)}</div><div class="l">сумма чеков</div></div></div>`;
-    const catBlock = Object.keys(byCat).length ? shotCard("Сумма по категориям","", Object.entries(byCat).map(([k,v])=>`<div class="catrow"><span class="ic">${CATS[k]?.ico||""}</span><span class="nm">${CATS[k]?.t||k}</span><span class="sm">${money(v)}</span></div>`).join("")) : "";
-    const checks = list.length ? list.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(e=>{ const c=CATS[e.category]||CATS.other;
-      return `<div class="chk">${e.receipt?`<img src="${e.receipt}" alt="чек">`:`<div class="empty">скрин не прикреплён</div>`}<div class="cap"><span class="l">${c.ico} ${c.t}${e.note?`<span class="s">${esc(e.note)}</span>`:""}<span class="s">${fmtDate(e.date)}${e.mileage?" · "+num(e.mileage)+" км":""}</span></span><span class="am">${money(e.amount)}</span></div></div>`; }).join("") : `<div class="empty">За период ${esc(pr.label)} чеков со скринами нет</div>`;
-    sections = shotCard("Сводка","",sumCard) + catBlock + shotCard("Чеки по одному · листай и снимай","",checks);
-  } else {
-    const exps = expsAll.slice().sort((a,b)=>a.date.localeCompare(b.date));
-    const total = exps.reduce((s,e)=>s+Number(e.amount||0),0);
-    const byCat={}; exps.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
-    const rev=dailyRevMap(); const revDays=Object.keys(rev).filter(d=>Number(rev[d])>0).sort();
-    const revTotal=revDays.reduce((s,d)=>s+Number(rev[d]),0);
-    const fines=finesList(); const finesPaid=fines.filter(f=>f.paid); const finesSum=finesPaid.reduce((s,f)=>s+Number(f.amount||0),0);
-    const curMile=Number(car.currentMileage)||0;
-    const recs=exps.filter(e=>(e.category==="repair"||e.category==="parts")&&Number(e.mileage)>0);
-    const groups={}; recs.forEach(e=>{const b=(e.note||"").trim();const k=b?(e.category+"|"+b.toLowerCase()):("id|"+e.id);(groups[k]=groups[k]||[]).push(e);});
-    const wearRows=[]; Object.values(groups).forEach(arr=>{arr.sort((a,b)=>Number(a.mileage)-Number(b.mileage));arr.forEach((e,i)=>{const nx=arr[i+1];const ins=Number(e.mileage);let sp=null,act=!nx,rep=null;if(nx){rep=Number(nx.mileage);sp=Math.max(0,rep-ins);}else if(curMile>ins){sp=curMile-ins;}wearRows.push({e,ins,sp,act,rep});});});
-    wearRows.sort((a,b)=>(b.e.date+b.e.id).localeCompare(a.e.date+a.e.id));
-
-    const ym=ymNow(); const src=incomeSource(ym); const income=src.val;
-    const ms=new Date(); ms.setDate(1); ms.setHours(0,0,0,0);
-    const spentMonth=exps.filter(e=>new Date(e.date)>=ms).reduce((s,e)=>s+Number(e.amount||0),0);
-    const carCost=exps.filter(e=>CAR_CATS.includes(e.category)&&new Date(e.date)>=ms).reduce((s,e)=>s+Number(e.amount||0),0);
-    const s=fsznSettings(); const fszn=isIP()?(s.rate/100*s.mzp):0; const free=income-spentMonth-fszn;
-
-    const kpi = `<div class="kpi"><div class="k"><div class="v">${money(total)}</div><div class="l">расходов всего</div></div><div class="k"><div class="v acc">${revTotal>0?money(revTotal):"—"}</div><div class="l">выручки внесено</div></div><div class="k"><div class="v">${exps.length}</div><div class="l">записей</div></div><div class="k"><div class="v">${car.currentMileage?num(car.currentMileage):"—"}</div><div class="l">пробег авто, км</div></div></div>`;
-    const ownCard = (carCost>0 && income>0) ? (()=>{ const pct=Math.round(carCost/income*100); const after=income-carCost; const warn=pct>=60;
-      return shotCard("Доля машины в выручке","",`<div class="free"><span class="v ${warn?'':'pos'}" style="${warn?'color:#ff5a00':''}">${pct}%</span><span class="l">машина съела<br>${money(carCost)}</span></div><div style="height:10px"></div><div class="catrow" style="border:none;padding:0"><span class="bar" style="height:10px"><i data-w="${Math.min(100,pct)}%"></i></span></div><div style="height:8px"></div><div class="free" style="align-items:center"><span class="l" style="text-align:left">после машины</span><span class="v ${after>=0?'pos':'neg'}" style="font-size:22px">${after>=0?"+":"−"}${money(Math.abs(after)).replace(cur(),"").trim()} ${cur_}</span></div>`); })() : (carCost>0 ? shotCard("Доля машины в выручке","",`<div class="empty" style="text-align:left;color:#6b6b65">На авто за месяц <b style="color:#141414">${money(carCost)}</b>. Внеси выручку за день — и я покажу долю.</div>`) : "");
-    const freeBlock = (income>0||spentMonth>0) ? shotCard("Свободно за "+monthLabel(ym),"",`<div class="free"><span class="v ${free>=0?"pos":"neg"}">${free>=0?"+":"−"}${money(Math.abs(free))}</span><span class="l">доход ${money(income)}<br>− расходы ${money(spentMonth)}${isIP()?"<br>− ФСЗН "+money(fszn):""}</span></div>`) : "";
-    const catEntries=Object.entries(byCat).sort((a,b)=>b[1]-a[1]); const catMax=Math.max(...catEntries.map(([,v])=>v),1);
-    const catBlock = catEntries.length ? shotCard("Расходы по категориям","", catEntries.map(([k,v])=>`<div class="catrow"><span class="ic">${CATS[k]?.ico||""}</span><span class="nm">${CATS[k]?.t||k}</span><span class="bar"><i data-w="${Math.max(4,Math.round(v/catMax*100))}%"></i></span><span class="pc">${Math.round(v/total*100)}%</span><span class="sm">${money(v)}</span></div>`).join("")) : "";
-    const expBlock = exps.length ? shotCard("Все расходы", exps.length+" · "+money(total), exps.slice().reverse().map(e=>{const c=CATS[e.category]||CATS.other; return `<div class="exp"><div class="dt"><div class="d">${dayNum(e.date)}</div><div class="m">${monShort(e.date)}</div></div><span class="ic">${c.ico}</span><div class="mid"><div class="t">${c.t}${e.note?" · "+esc(e.note):""}</div><div class="s">${fmtDate(e.date)}${e.mileage?" · "+num(e.mileage)+" км":""}</div></div>${e.receipt?`<img class="rc" src="${e.receipt}" alt="">`:""}<span class="am">${money(e.amount)}</span></div>`;}).join("")) : "";
-    const revMax=Math.max(...revDays.map(d=>Number(rev[d])),1);
-    const revBlock = revDays.length ? shotCard("Выручка по дням", revDays.length+" дн. · "+money(revTotal), revDays.slice().reverse().map(d=>`<div class="rev"><span class="dt">${fmtDate(d)}</span><span class="bar"><i data-w="${Math.max(3,Math.round(Number(rev[d])/revMax*100))}%"></i></span><span class="sm">${money(rev[d])}</span></div>`).join("")) : "";
-    const fineBlock = fines.length ? shotCard("Штрафы", finesPaid.length+" оплачено · "+money(finesSum), fines.slice().sort((a,b)=>(b.paidDate||b.date||"").localeCompare(a.paidDate||a.date||"")).map(f=>`<div class="fine"><span class="ic">${f.paid?"✅":"🚨"}</span><div class="mid"><div class="t">${esc(f.name)}</div><div class="s">${f.paid?"оплачен "+fmtDate(f.paidDate):(f.date?"выписан "+fmtDate(f.date):"без даты")}</div></div><span class="am">${money(f.amount)}</span></div>`).join("")) : "";
-    const wearBlock = wearRows.length ? shotCard("Детали и износ","", wearRows.map(r=>{const c=CATS[r.e.category]||CATS.other;return `<div class="wear"><span class="ic">${c.ico}</span><div class="mid"><div class="t">${esc(r.e.note||c.t)}</div><div class="s">установлена ${num(r.ins)} км · ${fmtDate(r.e.date)}</div></div><span class="km">${r.sp!=null?num(r.sp)+" км":"—"}</span><span class="pill ${r.act?"on":"off"}">${r.act?"действует":"заменена"}</span></div>`;}).join("")) : "";
-    let fsznBlock="";
-    if(isIP()){ const s=fsznSettings(); const y=YEAR(); let paid=0; for(let q=1;q<=4;q++){const r=await dbGet("fszn",`${y}-Q${q}`);paid+=Number(r?.paid)||0;} const goal=s.rate/100*s.mzp*12; const pct=goal>0?Math.min(100,Math.round(paid/goal*100)):0;
-      fsznBlock = shotCard("ФСЗН · "+y, pct+"%", `<div class="kpi"><div class="k"><div class="v acc">${money(paid)}</div><div class="l">уплачено</div></div><div class="k"><div class="v">${money(goal)}</div><div class="l">цель за год</div></div></div>`); }
-    sections = shotCard("Сводка","",kpi) + ownCard + freeBlock + catBlock + expBlock + revBlock + fineBlock + wearBlock + fsznBlock;
-  }
-  const cover = `<header class="shot-cover"><div class="mk"><span class="d"></span><span class="nm">BLVCK</span><span class="ac">TAXI</span></div><h1>${coverTitle}</h1><div class="meta">Сформировано ${fmtDate(today())} · валюта ${cur_}${coverNum?" · "+esc(coverNum):""}</div></header>`;
-  const foot = `<div class="shot-foot">BLVCK TAXI · ${esc(coverTitle).toLowerCase()} · конец документа</div>`;
-  return SHOT_STYLE + `<div id="shotmode" style="display:flex"><div class="shot-bar"><span class="hint">Листай вниз и <b>снимай экран за экраном</b> — или отправь PDF боту кнопкой «📤»</span><button class="shot-x" data-action="shotClose">✕</button></div><div class="shot-scroll"><div class="shot-doc">${cover}${sections}${foot}</div></div></div>`;
-}
-function openShotMode(html){ let ov=$("#shotmode"); if(ov) ov.remove(); const wrap=document.createElement("div"); wrap.innerHTML=html; const node=wrap.firstElementChild; document.body.appendChild(node);
-  requestAnimationFrame(()=>requestAnimationFrame(()=>{ node.querySelectorAll("[data-w]").forEach(b=>{ b.style.width=b.getAttribute("data-w"); }); }));
-  try{ TG?.BackButton?.show(); }catch{} }
-function closeShotMode(){ const ov=$("#shotmode"); if(ov) ov.remove(); try{ if($("#modal")&&!$("#modal").hidden){TG?.BackButton?.show();} else {TG?.BackButton?.hide();} }catch{} }
-async function exportShotFull(){ openShotMode(await buildShotDoc("full")); }
-async function exportShotChecks(){ openShotMode(await buildShotDoc("checks")); }
-
-/* ---------- ФСЗН ---------- */
-function fsznSettings(){ return { mzp:parseFloat(localStorage.getItem("blvck_fszn_mzp"))||726, rate:parseFloat(localStorage.getItem("blvck_fszn_rate"))||35 }; }
-async function screenFszn(){ const s=fsznSettings(); const year=YEAR(),cq=CUR_Q(); const minMonth=s.rate/100*s.mzp,minQ=minMonth*3,minYear=minMonth*12;
-  const qs=[]; let paidYTD=0,minYTD=0,paidAll=0,targetAll=0;
-  for(let q=1;q<=4;q++){ const rec=await dbGet("fszn",`${year}-Q${q}`)||{income:0,paid:0}; const monthSum=quarterIncome(q,year); const income=monthSum>0?monthSum:(Number(rec.income)||0); const paid=Number(rec.paid)||0; const fromIncome=income>0?s.rate/100*income:0; const target=Math.max(minQ,fromIncome); let status,badge;
-    if(q<cq){status=paid>=target?"good":(paid>0?"warn":"bad");badge=paid>=target?"✅ закрыто":(paid>0?"🟡 частично":"⏰ не уплачено");}
-    else if(q===cq){status=paid>=target?"good":(paid>0?"warn":"soon");badge=paid>=target?"✅ закрыто":(paid>0?"🟡 в процессе":"🔵 в процессе");}
-    else{status="soon";badge="🔮 предстоит";}
-    qs.push({q,monthSum,manual:Number(rec.income)||0,paid,target,status,badge}); if(q<=cq){paidYTD+=paid;minYTD+=minQ;} paidAll+=paid;targetAll+=target; }
-  const goal=Math.max(minYear,targetAll); const pctYear=goal>0?Math.min(100,Math.round(paidAll/goal*100)):0; const pctYTD=minYTD>0?Math.min(100,Math.round(paidYTD/minYTD*100)):0; const rest=Math.max(0,goal-paidAll);
-  const taxes=taxList().sort((a,b)=>(a.date||"9").localeCompare(b.date||"9"));
-  return `<div class="row between"><div class="h1" style="margin:0">ИП · ${year}</div><button class="btn sm ghost" data-action="nav" data-to="settings">← Назад</button></div>
-    <p class="muted small">взносы, сроки и отчёты · прикидка, НЕ официальный расчёт</p>
-    <div class="glass card"><div class="row between"><b>ФСЗН — цель за год</b><span class="muted small">${money(goal)}</span></div><div class="progress ${pctYear>=100?"good":""}"><i data-bar="${pctYear}%" style="width:0"></i></div><div class="row between small"><span class="muted">уплачено ${money(paidAll)}</span><b>${pctYear}%</b></div><div class="divider"></div><div class="row between small"><span class="muted">С начала года (Q1–Q${cq})</span><b>${money(paidYTD)} / ${money(minYTD)} · ${pctYTD}%</b></div><div class="divider"></div>${rest>0?`<div class="alert bad" style="margin:0"><span>⏰</span><div><div style="font-weight:700">До 31 марта ${year+1}</div><div class="small muted">доплатить ≈ <b>${money(rest)}</b> (сверь в налоговой)</div></div></div>`:`<div class="alert good" style="margin:0"><span>✅</span><div><div style="font-weight:700">Минимум за год закрыт</div></div></div>`}</div>
-    <div class="glass card"><b>По кварталам: надо / уплачено</b>${fsznBars(qs)}</div>
-    <div class="h2">кварталы</div>${qs.map(q=>`<div class="glass qcard-f"><div class="qhead"><div class="qtitle">${q.q}-й квартал</div><span class="badge ${q.status}">${q.badge}</span></div><div class="qmini"><span>минимум за квартал</span><b>${money(minQ)}</b></div><div class="qmini"><span>доход (авто)</span><b>${q.monthSum>0?money(q.monthSum):"—"}</b></div><div class="grid2"><div class="field" style="margin:8px 0 0"><label>Доход вручную</label><input class="input" type="number" inputmode="decimal" data-fszn="income" data-q="${q.q}" value="${q.manual||""}" placeholder="0"></div><div class="field" style="margin:8px 0 0"><label>Уплачено взносов</label><input class="input" type="number" inputmode="decimal" data-fszn="paid" data-q="${q.q}" value="${q.paid||""}" placeholder="0"></div></div><div class="qmini"><span>прикидка «к уплате»</span><b>${money(q.target)}</b></div></div>`).join("")}
-    <div class="h2">сроки и налоги</div><div class="glass card"><button class="btn primary" data-action="openAddTax">➕ Добавить напоминание</button><p class="fszn-note">Заведи свои сроки (название + дата + повтор). Просроченные и близкие — баннером на главной. Даты ставишь ты — я не бухгалтер.</p></div>
-    ${taxes.length?`<div class="list">${taxes.map(r=>{const days=r.date?Math.round((new Date(r.date)-new Date())/86400000):null;const rep=r.repeat&&r.repeat!=="none"?` · повтор: ${{month:"мес.",quarter:"квартал",year:"год"}[r.repeat]}`:"";return `<div class="item"><div class="ic">${days!=null&&days<0?"⛔":""}</div><div class="meta"><div class="t">${esc(r.name)}</div><div class="s">${r.date?fmtDate(r.date)+(days!=null?(days<0?" · просрочено":` · ${days} дн.`):""):"без даты"}${rep}</div></div><button class="edit" data-action="taxPaid" data-id="${r.id}" title="уплачено">✅</button><button class="del" data-action="taxDel" data-id="${r.id}">🗑</button></div>`;}).join("")}</div>`:`<div class="glass empty">Пока нет напоминаний</div>`}
-    <div class="h2">отчёт</div><div class="glass card"><p class="fszn-note" style="margin-top:0">Полный отчёт со всем — «📤 боту в чат» на экране «Расходы».</p><button class="btn primary" data-action="sendReportBot">📤 Отправить отчёт боту в чат</button><div style="height:10px"></div><button class="btn" data-action="exportShotFull">📸 Отчёт для скриншота</button></div>
-    <div class="glass card"><div class="row between"><b>Параметры ФСЗН</b><button class="btn sm" data-action="saveFsznSettings">💾 Сохранить</button></div><div class="grid2"><div class="field"><label>МЗП за месяц (${year})</label><input id="fszn_mzp" class="input" type="number" inputmode="decimal" value="${s.mzp}"></div><div class="field"><label>Ставка взносов, %</label><input id="fszn_rate" class="input" type="number" inputmode="decimal" value="${s.rate}"></div></div><div class="fszn-note">Мин. взнос за месяц = ставка × МЗП = <b>${money(minMonth)}</b>. Сверяй на portal.ssf.gov.by / в налоговой.</div></div>
-    <div id="tax-mount"></div>`; }
-function fsznBars(qs){ const W=320,H=150,pad=20,max=Math.max(...qs.map(q=>Math.max(q.target,q.paid)),1),gw=(W-pad*2)/qs.length;
-  const cols=qs.map((q,i)=>{const x=pad+i*gw,hT=(q.target/max)*(H-pad*2),hP=(q.paid/max)*(H-pad*2),yT=H-pad-hT,yP=H-pad-hP;const pct=q.target>0?Math.min(100,Math.round(q.paid/q.target*100)):0;return `<g><rect class="need" x="${x+gw*0.12}" y="${yT}" width="${gw*0.30}" height="${hT}" rx="4"/><rect x="${x+gw*0.50}" y="${yP}" width="${gw*0.30}" height="${hP}" rx="4" fill="url(#g2)"><animate attributeName="height" from="0" to="${hP}" dur=".5s" fill="freeze"/><animate attributeName="y" from="${H-pad}" to="${yP}" dur=".5s" fill="freeze"/></rect><text class="cm" x="${x+gw*0.5}" y="${H-6}" text-anchor="middle" font-size="9">Q${q.q}</text><text class="ct" x="${x+gw*0.5}" y="${Math.min(yT,yP)-5}" text-anchor="middle" font-size="9" font-weight="700">${pct}%</text></g>`;}).join("");
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" style="margin-top:10px"><defs><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff5a00"/><stop offset="1" stop-color="#ff7d24"/></linearGradient></defs>${cols}</svg><div class="legend" style="margin-top:8px"><div class="li"><span class="dot" style="background:var(--s2);border:1px solid var(--line)"></span>надо (прикидка)</div><div class="li"><span class="dot" style="background:var(--accent)"></span>уплачено</div></div>`; }
-async function fsznMiniWidget(){ const s=fsznSettings(),year=YEAR(),minYear=s.rate/100*s.mzp*12; let paid=0; for(let q=1;q<=4;q++){const r=await dbGet("fszn",`${year}-Q${q}`);paid+=Number(r?.paid)||0;} const pct=minYear>0?Math.min(100,Math.round(paid/minYear*100)):0;
-  return `<div class="glass card" data-action="openFszn" style="cursor:pointer"><div class="row between"><b>🧾 ФСЗН ${year}</b><span class="badge ${pct>=100?"good":(pct>0?"warn":"soon")}">${pct}%</span></div><div class="progress ${pct>=100?"good":""}"><i data-bar="${pct}%" style="width:0"></i></div><div class="row between small"><span class="muted">уплачено ${money(paid)}</span><span class="muted">цель ${money(minYear)}</span></div></div>`; }
-
-/* ---------- НАСТРОЙКИ ---------- */
-async function screenSettings(){ const exps=await dbAll("expenses"); const tgName=localStorage.getItem("blvck_tg_name"); const ipOn=isIP();
-  const syncT=Number(localStorage.getItem("blvck_cloud_sync"))||0;
-  const syncTxt=syncT?new Date(syncT).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"ещё не было";
-  return `<div class="h1">Настройки</div>
-    <div class="glass card"><div class="row between"><span>Тема</span><button class="btn sm" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙 Тёмная":"☀️ Светлая"}</button></div><div class="divider"></div><div class="row between"><span>Валюта</span><div class="chips">${CURS.map(c=>`<span class="chip ${c===cur()?"on":""}" data-action="setCur" data-cur="${c}">${c}</span>`).join("")}</div></div></div>
-
-    <div class="info"><div class="it"><span class="d"></span>Где живут данные</div><p>Все цифры — <b>только в этом телефоне</b>, без чужого облака. Отчёт улетает в чат ботом через сервер‑курьер (он не хранит твои данные, только пересылает PDF). Чеки снимай скриншотами как запасной путь.</p></div>
-
-    <div class="h2">деньги, штрафы и чеки</div><div class="glass card"><button class="btn primary" data-action="openDailyRev">💵 Выручка за день</button><div style="height:10px"></div><button class="btn" data-action="openExpenses">📋 Все расходы и графики</button><div style="height:10px"></div><button class="btn" data-action="openFines">🚨 Штрафы</button><div style="height:10px"></div><button class="btn" data-action="openReceipts">🧾 Чеки</button></div>
-
-    <div class="h2">режим ИП</div><div class="glass card"><div class="row between"><div><div style="font-weight:700">Я индивидуальный предприниматель</div><div class="muted small">включает ФСЗН, налоги и виджет взносов</div></div><div class="switch"><span class="chip ${!ipOn?"on":""}" data-action="setIP" data-v="0">Нет</span><span class="chip ${ipOn?"on":""}" data-action="setIP" data-v="1">Да</span></div></div>${ipOn?`<div style="height:10px"></div><button class="btn primary" data-action="openFszn">🧾 Открыть раздел ИП</button>`:""}</div>
-
-    ${TG?`<div class="h2">telegram</div><div class="glass card"><div class="row between"><span>Ты вошёл как</span><b>${esc(tgName||"—")}</b></div><p class="muted small" style="margin:8px 2px 0">Данные хранятся только в этом Telegram на этом устройстве. Чтобы бот слал файлы — нажми у него Start один раз.</p><div class="divider"></div><button class="btn" data-action="tgClose">✖️ Закрыть приложение</button></div>`:""}
-
-    <div class="h2">резервная копия</div>
-    <div class="glass card">
-      <p class="muted small" style="margin-top:0">Копия цифр — файлом или копируемым текстом в «Избранное». Восстановить — из файла или из вставленного текста.</p>
-      <button class="btn primary" data-action="export">💾 Сохранить копию</button>
-      <div style="height:10px"></div>
-      <button class="btn" data-action="import">⬆️ Восстановить из файла</button>
-      <div style="height:10px"></div>
-      <button class="btn" data-action="openImportText">⬆️ Восстановить из текста</button>
-      <div style="height:10px"></div>
-      <button class="btn" data-action="sendReportBot">📤 Отправить отчёт боту в чат</button>
-      <div style="height:10px"></div>
-      <button class="btn" data-action="syncCloud">☁️ Синхронизировать с облаком</button>
-      <div class="fszn-note">Облако нужно, чтобы я сам присылал PDF раз в месяц. Хранится на твоём сервере. Последняя синхронизация: ${syncTxt}</div>
     </div>
 
-    <div class="h2">опасная зона</div><div class="glass card"><button class="btn danger" data-action="wipe">🧹 Удалить все данные</button><p class="muted small" style="margin:8px 2px 0">Записей расходов: ${exps.length}</p></div>
-    <p class="muted small" style="text-align:center;margin-top:18px;font-family:var(--mono)">BLVCK TAXI · офлайн · без своего облака · бесплатно</p>`; }
+    <div class="glass card">
+      <span class="kicker">Динамика по дням (${pr.label})</span>
+      <svg class="chart" viewBox="0 0 320 150" style="margin-top:12px">
+        ${chartData.map((d,i) => {
+          const x = 20 + (i / (daysInMonth-1 || 1)) * 280;
+          const hExp = (d.exp / maxDayVal) * 100;
+          const hRev = (d.rev / maxDayVal) * 100;
+          return `<rect x="${x-2}" y="${130-hExp}" width="4" height="${hExp}" fill="#ff5a00" opacity="0.8"/>
+                  <rect x="${x+2}" y="${130-hRev}" width="4" height="${hRev}" fill="#f3f3f8" opacity="0.6"/>`;
+        }).join("")}
+        <line x1="20" y1="130" x2="300" y2="130" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+      </svg>
+      <div class="legend">
+        <div class="li"><div class="dot" style="background:#ff5a00"></div>Расходы</div>
+        <div class="li"><div class="dot" style="background:#f3f3f8"></div>Выручка</div>
+      </div>
+    </div>
+  `;
+}
+
+async function screenCar(){
+  const car = await dbGet("car",1) || {};
+  const exps = await dbAll("expenses");
+  const wearExps = exps.filter(e => WEAR_CATS.includes(e.category) && Number(e.mileage) > 0).sort((a,b) => Number(a.mileage) - Number(b.mileage));
+  
+  // Группировка по деталям/работам
+  const groups = {};
+  wearExps.forEach(e => {
+    const base = (e.note || "").trim().toLowerCase();
+    const key = base ? (e.category + "|" + base) : ("id|" + e.id);
+    if(!groups[key]) groups[key] = [];
+    groups[key].push(e);
+  });
+
+  const wearStats = [];
+  const curMile = Number(car.currentMileage) || 0;
+  Object.values(groups).forEach(arr => {
+    arr.sort((a,b) => Number(a.mileage) - Number(b.mileage));
+    arr.forEach((e, i) => {
+      const next = arr[i+1];
+      const installMile = Number(e.mileage);
+      let span = null;
+      let active = !next;
+      if(next) {
+        span = Math.max(0, Number(next.mileage) - installMile);
+      } else if(curMile > installMile) {
+        span = curMile - installMile;
+        active = true;
+      }
+      wearStats.push({
+        title: e.note || CATS[e.category]?.t || "",
+        installMile,
+        span,
+        active,
+        cost: Number(e.amount) || 0,
+        category: e.category
+      });
+    });
+  });
+
+  // Расход на км
+  let totalWearCost = 0;
+  let totalWearKm = 0;
+  wearStats.filter(w => w.active && w.span > 0).forEach(w => {
+    totalWearCost += w.cost;
+    totalWearKm += w.span;
+  });
+  const costPerKm = totalWearKm > 0 ? (totalWearCost / totalWearKm) : 0;
+
+  return `
+    <div class="topbar">
+      <button class="iconbtn" data-action="nav" data-to="dash">←</button>
+      <span class="h1">Автомобиль</span>
+      <button class="iconbtn" data-action="openEditCar">✏️</button>
+    </div>
+
+    <div class="glass card">
+      <div class="row between">
+        <div>
+          <div class="h1" style="font-size:24px; margin:0">${esc(car.model || "Не указан")}</div>
+          <div class="muted small">${esc(car.plate || "Номер не указан")} · ${num(curMile)} км</div>
+        </div>
+        <div style="text-align:right">
+          <div class="kicker">Износ на км</div>
+          <div class="h1" style="font-size:24px; margin:0; color:var(--accent)">${rate(costPerKm)}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="h2">История замен и ремонтов</div>
+    <button class="btn sm" style="margin-bottom:12px" data-action="openAddMaint">+ Добавить событие ТО</button>
+    
+    <div class="list">
+      ${wearStats.length ? wearStats.filter(w => w.active).sort((a,b) => b.installMile - a.installMile).map(w => {
+        const c = CATS[w.category] || CATS.other;
+        return `<div class="item">
+          <div class="ic">${c.ico}</div>
+          <div class="meta">
+            <div class="t">${esc(w.title)}</div>
+            <div class="s">Установлено: ${num(w.installMile)} км · Пройдено: ${w.span ? num(w.span) + " км" : "—"}</div>
+          </div>
+          <div class="amt">${money(w.cost)}</div>
+        </div>`;
+      }).join("") : '<div class="empty">Пока нет записей с пробегом. Добавляй пробег при вводе расходов на запчасти и ремонт.</div>'}
+    </div>
+
+    <div class="h2">Документы</div>
+    <button class="btn sm" style="margin-bottom:12px" data-action="openAddDoc">+ Добавить документ</button>
+    <div class="list" id="docs-list">
+      ${await renderDocsList()}
+    </div>
+  `;
+}
+
+async function renderDocsList(){
+  const docs = (await dbAll("documents")).sort((a,b) => (a.expiryDate||"9999").localeCompare(b.expiryDate||"9999"));
+  if(!docs.length) return '<div class="empty">Нет документов</div>';
+  const todayStr = today();
+  return docs.map(d => {
+    let days = null;
+    let badge = "";
+    if(d.expiryDate) {
+      days = Math.ceil((new Date(d.expiryDate) - new Date()) / (1000*60*60*24));
+      if(days < 0) badge = `<span class="badge bad">Просрочено</span>`;
+      else if(days <= 30) badge = `<span class="badge warn">Осталось ${days} дн.</span>`;
+      else badge = `<span class="badge good">${days} дн.</span>`;
+    }
+    return `<div class="item">
+      <div class="ic">📄</div>
+      <div class="meta">
+        <div class="t">${esc(d.name)}</div>
+        <div class="s">${d.expiryDate ? fmtDate(d.expiryDate) : "Без срока"} ${badge}</div>
+      </div>
+      <button class="edit" data-action="delDoc" data-id="${d.id}">🗑</button>
+    </div>`;
+  }).join("");
+}
+
+async function screenDocs(){
+  return await screenCar(); // Перенаправляем на экран Авто, где есть документы
+}
+
+async function screenFszn(){
+  const s = fsznSettings();
+  const y = YEAR();
+  const minMonth = s.rate/100 * s.mzp;
+  const minYear = minMonth * 12;
+  
+  let paid = 0;
+  const quarters = [];
+  for(let q=1; q<=4; q++){
+    const r = await dbGet("fszn", `${y}-Q${q}`) || { id:`${y}-Q${q}`, year:y, quarter:q, income:0, paid:0 };
+    paid += Number(r.paid) || 0;
+    quarters.push(r);
+  }
+  const pct = minYear > 0 ? Math.min(100, Math.round(paid/minYear*100)) : 0;
+
+  const taxReminders = taxList().sort((a,b) => (a.date||"9999").localeCompare(b.date||"9999"));
+
+  return `
+    <div class="topbar">
+      <button class="iconbtn" data-action="nav" data-to="dash">←</button>
+      <span class="h1">Налоги и ФСЗН</span>
+    </div>
+
+    <div class="glass card">
+      <div class="row between">
+        <div>
+          <span class="kicker">ФСЗН ${y} год</span>
+          <div class="h1" style="font-size:28px; margin:6px 0">${money(paid)}</div>
+          <div class="muted small">из ${money(minYear)} (мин. взнос)</div>
+        </div>
+        <div class="ring" style="width:70px; height:70px">
+          <svg viewBox="0 0 100 100">
+            <circle class="ring-bg" cx="50" cy="50" r="42"/>
+            <circle class="ring-fg" cx="50" cy="50" r="42" stroke-dasharray="264" stroke-dashoffset="${264 - (264 * pct/100)}"/>
+            <text class="ring-t" x="50" y="54" style="font-size:18px">${pct}%</text>
+          </svg>
+        </div>
+      </div>
+      <div class="progress" style="margin-top:16px"><i style="width:${pct}%"></i></div>
+    </div>
+
+    <div class="h2">Поквартально</div>
+    <div class="list">
+      ${quarters.map(q => `
+        <div class="item">
+          <div class="meta">
+            <div class="t">${q.quarter} квартал ${q.year}</div>
+            <div class="grid2" style="margin-top:8px; gap:8px">
+              <div class="field" style="margin:0">
+                <label>Доход</label>
+                <input class="input" data-fszn="${q.quarter}" data-fszn-field="income" value="${q.income||""}" placeholder="0" type="number" step="0.01" />
+              </div>
+              <div class="field" style="margin:0">
+                <label>Уплачено</label>
+                <input class="input" data-fszn="${q.quarter}" data-fszn-field="paid" value="${q.paid||""}" placeholder="0" type="number" step="0.01" />
+              </div>
+            </div>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+
+    <div class="h2">Параметры расчёта</div>
+    <div class="glass card">
+      <div class="grid2">
+        <div class="field">
+          <label>МЗП за месяц (${y})</label>
+          <input class="input" id="fszn_mzp" value="${s.mzp}" type="number" step="0.01" />
+        </div>
+        <div class="field">
+          <label>Ставка взносов, %</label>
+          <input class="input" id="fszn_rate" value="${s.rate}" type="number" step="0.1" />
+        </div>
+      </div>
+      <button class="btn primary" style="margin-top:12px" data-action="saveFsznSettings">💾 Сохранить параметры</button>
+      <div class="fszn-note">Мин. взнос за месяц = ставка × МЗП = <b>${money(minMonth)}</b>. Сверяй на portal.ssf.gov.by или в налоговой.</div>
+    </div>
+
+    <div class="h2">Напоминания по срокам</div>
+    <button class="btn sm" style="margin-bottom:12px" data-action="openAddTax">+ Добавить срок</button>
+    <div class="list">
+      ${taxReminders.length ? taxReminders.map(t => {
+        let days = null;
+        let badge = "";
+        if(t.date) {
+          days = Math.ceil((new Date(t.date) - new Date()) / (1000*60*60*24));
+          if(days < 0) badge = `<span class="badge bad">Просрочено</span>`;
+          else if(days <= 14) badge = `<span class="badge warn">${days} дн.</span>`;
+          else badge = `<span class="badge soon">${days} дн.</span>`;
+        }
+        return `<div class="item">
+          <div class="ic">🗓️</div>
+          <div class="meta">
+            <div class="t">${esc(t.name)}</div>
+            <div class="s">${t.date ? fmtDate(t.date) : "Без даты"} ${badge}</div>
+          </div>
+          <button class="edit" data-action="taxPaid" data-id="${t.id}">✅</button>
+          <button class="del" data-action="taxDel" data-id="${t.id}">🗑</button>
+        </div>`;
+      }).join("") : '<div class="empty">Пока нет напоминаний</div>'}
+    </div>
+  `;
+}
+
+async function screenFines(){
+  const fines = finesList().sort((a,b) => (a.paid ? 1 : 0) - (b.paid ? 1 : 0) || a.date.localeCompare(b.date));
+  const unpaid = fines.filter(f => !f.paid);
+  const totalUnpaid = unpaid.reduce((s,f) => s + Number(f.amount), 0);
+
+  return `
+    <div class="topbar">
+      <button class="iconbtn" data-action="nav" data-to="dash">←</button>
+      <span class="h1">Штрафы</span>
+      <button class="iconbtn" data-action="openAddFine">+</button>
+    </div>
+
+    ${unpaid.length ? `
+    <div class="alert bad">
+      <span>Неоплачено: <b>${money(totalUnpaid)}</b> (${unpaid.length} шт.)</span>
+    </div>` : '<div class="alert good"><span>Штрафов нет 🎉</span></div>'}
+
+    <div class="list" style="margin-top:12px">
+      ${fines.length ? fines.map(f => `
+        <div class="item" style="${f.paid ? 'opacity:0.6' : ''}">
+          <div class="ic">${f.paid ? '✅' : '🚨'}</div>
+          <div class="meta">
+            <div class="t">${esc(f.name)}</div>
+            <div class="s">${fmtDate(f.date)}${f.paid ? ` · оплачен ${fmtDate(f.paidDate)}` : ''}</div>
+          </div>
+          <div class="amt">${money(f.amount)}</div>
+          ${!f.paid ? `<button class="edit" data-action="finePaid" data-id="${f.id}">💳</button>` : ''}
+          <button class="del" data-action="fineDel" data-id="${f.id}">🗑</button>
+        </div>
+      `).join("") : '<div class="empty">Список пуст</div>'}
+    </div>
+  `;
+}
+
+async function screenReceipts(){
+  const allExps = await dbAll("expenses");
+  const withReceipts = allExps.filter(e => e.receipt).sort((a,b) => b.date.localeCompare(a.date));
+  
+  // Фильтрация по периоду и категории
+  const pr = periodRange(state.receiptMode, state.receiptOffset);
+  let filtered = withReceipts;
+  if(pr.from) filtered = filtered.filter(e => e.date >= pr.from && e.date <= pr.to);
+  if(state.receiptCat !== "all") filtered = filtered.filter(e => e.category === state.receiptCat);
+
+  return `
+    <div class="topbar">
+      <button class="iconbtn" data-action="nav" data-to="dash">←</button>
+      <span class="h1">Чеки</span>
+      <button class="iconbtn" data-action="exportReceiptsCsv">📊</button>
+    </div>
+
+    <div class="periodnav">
+      <button class="pbtn" data-action="receiptPrev">‹</button>
+      <span class="plabel">${pr.label}</span>
+      <button class="pbtn" data-action="receiptNext">›</button>
+    </div>
+
+    <div class="rangebar" style="margin-bottom:16px">
+      <button class="chip ${state.receiptCat==="all"?"on":""}" data-action="setReceiptCat" data-cat="all">Все</button>
+      ${CAR_CATS.map(k => `<button class="chip ${state.receiptCat===k?"on":""}" data-action="setReceiptCat" data-cat="${k}">${CATS[k].ico} ${CATS[k].t}</button>`).join("")}
+    </div>
+
+    <div class="list">
+      ${filtered.length ? filtered.map(e => {
+        const c = CATS[e.category] || CATS.other;
+        return `<div class="item">
+          <img class="rthumb" src="${e.receipt}" data-action="viewReceipt" data-id="${e.id}" />
+          <div class="meta">
+            <div class="t">${esc(e.note || c.t)}</div>
+            <div class="s">${fmtDate(e.date)} · ${money(e.amount)}</div>
+          </div>
+        </div>`;
+      }).join("") : '<div class="empty">Чеков за этот период не найдено</div>'}
+    </div>
+  `;
+}
+
+async function screenSettings(){
+  const exps = await dbAll("expenses");
+  const tgName = localStorage.getItem("blvck_tg_name");
+  const ipOn = isIP();
+  const syncT = Number(localStorage.getItem("blvck_cloud_sync")) || 0;
+  const syncTxt = syncT ? new Date(syncT).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "ещё не было";
+
+  return `
+    <div class="topbar">
+      <button class="iconbtn" data-action="nav" data-to="dash">←</button>
+      <span class="h1">Настройки</span>
+    </div>
+
+    <div class="glass card">
+      <div class="row between">
+        <span>Тема</span>
+        <button class="btn sm" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark" ? "🌙 Тёмная" : "☀️ Светлая"}</button>
+      </div>
+      <div class="divider"></div>
+      <div class="row between">
+        <span>Валюта</span>
+        <div class="chips">
+          ${CURS.map(c => `<button class="chip ${cur()===c?'on':''}" data-action="setCur" data-cur="${c}">${c}</button>`).join("")}
+        </div>
+      </div>
+    </div>
+
+    <div class="h2">Где живут данные</div>
+    <div class="glass card">
+      <p class="small muted">Все цифры — <b>только в этом телефоне</b>, без чужого облака. Отчёт улетает в чат ботом через сервер‑курьер (он не хранит твои данные, только пересылает PDF). Чеки снимай скриншотами как запасной путь.</p>
+    </div>
+
+    <div class="h2">Режим ИП</div>
+    <div class="glass card">
+      <div class="row between">
+        <span>Я индивидуальный предприниматель</span>
+        <div class="switch">
+          <button class="chip ${!ipOn?'on':''}" data-action="setIP" data-v="0">Нет</button>
+          <button class="chip ${ipOn?'on':''}" data-action="setIP" data-v="1">Да</button>
+        </div>
+      </div>
+      ${ipOn ? `<button class="btn sm ghost" style="margin-top:12px" data-action="nav" data-to="fszn">🧾 Открыть раздел ИП</button>` : ""}
+    </div>
+
+    ${TG ? `
+    <div class="h2">Telegram</div>
+    <div class="glass card">
+      <p class="small muted">Ты вошёл как <b>${esc(tgName || "—")}</b></p>
+      <p class="small muted">Данные хранятся только в этом Telegram на этом устройстве. Чтобы бот слал файлы — нажми у него Start один раз.</p>
+      <button class="btn sm danger" style="margin-top:12px" data-action="tgClose">✖️ Закрыть приложение</button>
+    </div>` : ""}
+
+    <div class="h2">Резервная копия</div>
+    <div class="glass card">
+      <p class="small muted">Копия цифр — файлом или копируемым текстом в «Избранное». Восстановить — из файла или из вставленного текста.</p>
+      <div class="toolgrid" style="margin-top:12px">
+        <button class="btn" data-action="export">💾 Сохранить копию</button>
+        <button class="btn" data-action="import">⬆️ Из файла</button>
+        <button class="btn span2" data-action="openImportText">⬆️ Из текста</button>
+        <button class="btn span2" data-action="sendReportBot">📤 Отправить отчёт боту в чат</button>
+        <button class="btn span2" data-action="syncCloud">☁️ Синхронизировать с облаком (${syncTxt})</button>
+      </div>
+    </div>
+
+    <div class="h2" style="color:var(--text)">Опасная зона</div>
+    <button class="btn danger" data-action="wipe">🧹 Удалить все данные</button>
+    
+    <div style="text-align:center; margin-top:32px; color:var(--faint); font-size:12px">
+      BLVCK TAXI · офлайн · без своего облака · бесплатно<br>
+      Записей расходов: ${exps.length}
+    </div>
+  `;
+}
 
 /* ---------- модалки ---------- */
-function openModal(html){ const m=$("#modal"); m.innerHTML=`<div class="modal">${html}</div>`; m.hidden=false; try{TG?.BackButton?.show();}catch{} }
-function closeModal(){ $("#modal").hidden=true; $("#modal").innerHTML=""; state.modalEditId=null; state.modalReceipt=null; try{TG?.BackButton?.hide();}catch{} }
-function modalFuelQuick(){ const p=fuelPresets(); openModal(`<div class="mhead"><h3>⛽ Быстрая заправка</h3><button class="x" data-action="close">×</button></div><p class="muted small" style="margin-top:0">один тап — расход записан на сегодня, без ввода цифр</p><div class="presets">${p.map(v=>`<button class="preset" data-action="fuelPreset" data-amt="${v}">${v}<span class="cur">${cur()}</span></button>`).join("")}</div><button class="btn" data-action="quick" data-cat="fuel">✍️ Другая сумма</button><div style="height:8px"></div><button class="btn ghost sm" data-action="openFuelPresets" style="width:100%">⚙️ Настроить суммы</button>`); }
-function modalFuelPresets(){ const p=fuelPresets(); openModal(`<div class="mhead"><h3>⚙️ Суммы быстрой заправки</h3><button class="x" data-action="close">×</button></div><div class="grid3"><div class="field"><label>Сумма 1</label><input id="fp0" class="input" type="number" inputmode="decimal" value="${p[0]}"></div><div class="field"><label>Сумма 2</label><input id="fp1" class="input" type="number" inputmode="decimal" value="${p[1]}"></div><div class="field"><label>Сумма 3</label><input id="fp2" class="input" type="number" inputmode="decimal" value="${p[2]}"></div></div><button class="btn primary" data-action="saveFuelPresets">Сохранить</button>`); }
-function openDrive(){ const p=fuelPresets(); const m=$("#modal"); m.innerHTML=`<div class="drive"><div class="dhead"><div class="dtitle">🚦 За рулём</div><button class="x" data-action="close">×</button></div><div class="dpresets">${p.map(v=>`<button class="dbig" data-action="fuelPreset" data-amt="${v}">⛽ ${v}<span class="cur">${cur()}</span></button>`).join("")}</div><div class="drow"><button class="dcat" data-action="driveCat" data-cat="wash">🫧 Мойка</button><button class="dcat" data-action="driveCat" data-cat="repair">🔧 Ремонт</button><button class="dcat" data-action="driveCat" data-cat="other">📦 Другое</button></div><button class="btn danger" data-action="close">✖ Выйти из режима</button></div>`; m.hidden=false; try{TG?.BackButton?.show();}catch{} }
+function openModal(html){ 
+  const m=$("#modal"); 
+  m.innerHTML=`<div class="modal">${html}</div>`; 
+  m.hidden=false; 
+  try{TG?.BackButton?.show();}catch{} 
+}
+function closeModal(){ 
+  $("#modal").hidden=true; 
+  $("#modal").innerHTML=""; 
+  state.modalEditId=null; 
+  state.modalReceipt=null; 
+  try{TG?.BackButton?.hide();}catch{} 
+}
+function modalFuelQuick(){ 
+  const p=fuelPresets(); 
+  openModal(`
+    <div class="mhead"><h3>⛽ Быстрая заправка</h3><button class="x" data-action="close">×</button></div>
+    <p class="small muted">Один тап — расход записан на сегодня, без ввода цифр</p>
+    <div class="presets">
+      ${p.map(v=>`<button class="preset" data-action="fuelPreset" data-amt="${v}">${v}<span class="cur">${cur()}</span></button>`).join("")}
+    </div>
+    <button class="btn ghost" style="margin-top:12px" data-action="openFuelPresets">⚙️ Настроить суммы</button>
+  `); 
+}
+function modalFuelPresets(){ 
+  const p=fuelPresets(); 
+  openModal(`
+    <div class="mhead"><h3>⚙️ Суммы быстрой заправки</h3><button class="x" data-action="close">×</button></div>
+    <div class="field"><label>Сумма 1</label><input class="input" id="fp0" type="number" value="${p[0]}" /></div>
+    <div class="field"><label>Сумма 2</label><input class="input" id="fp1" type="number" value="${p[1]}" /></div>
+    <div class="field"><label>Сумма 3</label><input class="input" id="fp2" type="number" value="${p[2]}" /></div>
+    <button class="btn primary" style="margin-top:12px" data-action="saveFuelPresets">Сохранить</button>
+  `); 
+}
+function openDrive(){ 
+  const p=fuelPresets(); 
+  const m=$("#modal"); 
+  m.innerHTML=`
+    <div class="drive">
+      <div class="dhead"><span class="dtitle">🚦 За рулём</span><button class="x" data-action="close">×</button></div>
+      <div class="dpresets">
+        <button class="dbig" data-action="driveCat" data-cat="fuel">⛽ <span class="cur">${cur()}</span></button>
+        <div class="drow">
+          ${CAR_CATS.filter(c=>c!=="fuel").map(c=>`<button class="dcat" data-action="driveCat" data-cat="${c}">${CATS[c].ico}<br>${CATS[c].t}</button>`).join("")}
+        </div>
+      </div>
+      <button class="btn danger" data-action="close">✖ Выйти из режима</button>
+    </div>
+  `; 
+  m.hidden=false; 
+  try{TG?.BackButton?.show();}catch{} 
+}
 function modalExpense(cat,edit=null){
   const ecat = edit ? edit.category : cat;
   state.modalCat=ecat; state.modalEditId=edit?edit.id:null; state.modalReceipt=edit?.receipt||null;
@@ -926,36 +825,222 @@ function modalExpense(cat,edit=null){
   const isWear = WEAR_CATS.includes(ecat);
   const noteLabel = (ecat==="repair"||ecat==="parts") ? "Деталь / работа" : "Заметка";
   const mileLabel = (ecat==="repair"||ecat==="parts") ? "Пробег установки, км" : "Пробег, км";
-  const noteHint  = (ecat==="repair"||ecat==="parts") ? "название детали — по нему считается износ" : "например: АЗС Лукойл";
-  const mileField = isWear ? `<div class="field"><label>${mileLabel}</label><input id="m_mileage" class="input" type="number" inputmode="numeric" value="${v.mileage??""}" placeholder="${ecat==="fuel"?"необяз.":"обязательно для износа"}"></div>` : "";
-  openModal(`<div class="mhead"><h3>${edit?"✏️ Изменить":CATS[ecat].ico+" "+CATS[ecat].t}</h3><button class="x" data-action="close">×</button></div>
-    <div class="field"><label>Сумма</label><input id="m_amount" class="input" type="number" inputmode="decimal" value="${v.amount??""}" placeholder="0" autofocus></div>
-    <div class="grid2"><div class="field"><label>Дата</label><input id="m_date" class="input" type="date" value="${v.date||today()}"></div>${mileField}</div>
-    <div class="field"><label>${noteLabel}</label><input id="m_note" class="input" value="${esc(v.note||"")}" placeholder="${noteHint}"></div>
-    <div class="field"><label>Чек / скриншот</label><div id="m_receipt_box">${receiptBoxHTML()}</div></div>
-    <button class="btn primary" data-action="saveExpense">${edit?"Сохранить изменения":"Сохранить"}</button>`);
+  const noteHint = (ecat==="repair"||ecat==="parts") ? "название детали — по нему считается износ" : "например: АЗС Лукойл";
+  const mileField = isWear ? `
+    <div class="field">
+      <label>${mileLabel}</label>
+      <input class="input" id="m_mileage" type="number" value="${v.mileage||""}" placeholder="Необязательно" />
+    </div>
+  ` : "";
+  openModal(`
+    <div class="mhead"><h3>${edit?"✏️ Изменить":CATS[ecat].ico+" "+CATS[ecat].t}</h3><button class="x" data-action="close">×</button></div>
+    <div class="field">
+      <label>Сумма</label>
+      <input class="input" id="m_amount" type="number" step="0.01" value="${v.amount||""}" required />
+    </div>
+    <div class="field">
+      <label>Дата</label>
+      <input class="input" id="m_date" type="date" value="${v.date||today()}" />
+    </div>
+    ${mileField}
+    <div class="field">
+      <label>${noteLabel}</label>
+      <input class="input" id="m_note" type="text" value="${esc(v.note||"")}" placeholder="${noteHint}" />
+    </div>
+    <div class="field">
+      <label>Чек / скриншот</label>
+      <div id="m_receipt_box">${receiptBoxHTML()}</div>
+    </div>
+    <button class="btn primary" style="margin-top:12px" data-action="saveExpense">${edit?"Сохранить изменения":"Сохранить"}</button>
+  `);
   setTimeout(()=>$("#m_amount")?.focus(),60);
 }
-function modalMaint(){ openModal(`<div class="mhead"><h3>🔧 Событие ТО</h3><button class="x" data-action="close">×</button></div><div class="field"><label>Что сделали</label><input id="m_title" class="input" placeholder="Замена колодок" autofocus></div><div class="grid2"><div class="field"><label>Дата</label><input id="m_date" class="input" type="date" value="${today()}"></div><div class="field"><label>Пробег, км</label><input id="m_mileage" class="input" type="number" inputmode="numeric"></div></div><div class="field"><label>Заметка</label><input id="m_note" class="input"></div><button class="btn primary" data-action="saveMaint">Сохранить</button>`); }
-function modalDoc(){ openModal(`<div class="mhead"><h3>📄 Документ</h3><button class="x" data-action="close">×</button></div><div class="field"><label>Быстрые названия</label><div class="chips">${DOC_PRESETS.map(t=>`<span class="chip" data-action="docPreset" data-name="${esc(t)}">${esc(t)}</span>`).join("")}</div></div><div class="field"><label>Название</label><input id="m_name" class="input" placeholder="Страховка / Техосмотр" autofocus></div><div class="grid2"><div class="field"><label>Выдан</label><input id="m_issue" class="input" type="date"></div><div class="field"><label>Действует до</label><input id="m_expiry" class="input" type="date"></div></div><div class="field"><label>Заметка</label><input id="m_note" class="input"></div><button class="btn primary" data-action="saveDoc">Сохранить</button>`); }
-async function modalCar(){ const car=await dbGet("car",1)||{}; openModal(`<div class="mhead"><h3>🚗 Автомобиль</h3><button class="x" data-action="close">×</button></div><div class="field"><label>Модель</label><input id="m_model" class="input" value="${esc(car.model||"")}" placeholder="Skoda Octavia"></div><div class="grid2"><div class="field"><label>Номер</label><input id="m_plate" class="input" value="${esc(car.plate||"")}" placeholder="1234 AB-7"></div><div class="field"><label>Расход л/100</label><input id="m_fuel" class="input" type="number" inputmode="decimal" value="${esc(car.fuelPer100||"")}"></div></div><div class="grid2"><div class="field"><label>Текущий пробег</label><input id="m_km" class="input" type="number" inputmode="numeric" value="${esc(car.currentMileage||"")}"></div><div class="field"><label>Масло на км</label><input id="m_oilkm" class="input" type="number" inputmode="numeric" value="${esc(car.lastOilMileage||"")}"></div></div><div class="field"><label>Интервал замены масла, км</label><input id="m_oilint" class="input" type="number" inputmode="numeric" value="${esc(car.oilInterval||"10000")}"></div><button class="btn primary" data-action="saveCar">Сохранить</button>`); }
-function modalTaxReminder(){ openModal(`<div class="mhead"><h3>🗓 Напоминание по сроку</h3><button class="x" data-action="close">×</button></div><div class="field"><label>Быстрые названия</label><div class="chips">${TAX_PRESETS.map(t=>`<span class="chip" data-action="taxPreset" data-name="${esc(t)}">${esc(t)}</span>`).join("")}</div></div><div class="field"><label>Название</label><input id="t_name" class="input" placeholder="Единый налог" autofocus></div><div class="grid2"><div class="field"><label>Срок</label><input id="t_date" class="input" type="date" value="${today()}"></div><div class="field"><label>Повтор</label><select id="t_repeat" class="input"><option value="none">без повтора</option><option value="month">каждый месяц</option><option value="quarter">каждый квартал</option><option value="year">каждый год</option></select></div></div><button class="btn primary" data-action="saveTax">Сохранить</button>`); }
-function modalFine(){ openModal(`<div class="mhead"><h3>🚨 Штраф</h3><button class="x" data-action="close">×</button></div><div class="field"><label>Быстрые названия</label><div class="chips">${FINE_PRESETS.map(t=>`<span class="chip" data-action="finePreset" data-name="${esc(t)}">${esc(t)}</span>`).join("")}</div></div><div class="field"><label>За что</label><input id="f_name" class="input" placeholder="Камера / превышение" autofocus></div><div class="grid2"><div class="field"><label>Сумма</label><input id="f_amount" class="input" type="number" inputmode="decimal" placeholder="0"></div><div class="field"><label>Дата выписки</label><input id="f_date" class="input" type="date" value="${today()}"></div></div><button class="btn primary" data-action="saveFine">Сохранить как неоплаченный</button>`); setTimeout(()=>$("#f_name")?.focus(),60); }
-function modalBackupText(txt){ openModal(`<div class="mhead"><h3>💾 Копия текстом</h3><button class="x" data-action="close">×</button></div>
-  <p class="fszn-note">Telegram не дал сохранить файл. Скопируй текст ниже и вставь себе в «Избранное» в Telegram — это твоя копия цифр (без картинок чеков; чеки снимай скриншотами отдельно).</p>
-  <textarea id="bk_text" class="input" readonly style="height:210px;font-size:10px;line-height:1.4">${esc(txt)}</textarea>
-  <div style="height:10px"></div>
-  <button class="btn primary" data-action="copyBkText">📋 Скопировать текст копии</button>
-  <div class="fszn-note">Чтобы восстановить — «⬆️ Восстановить из текста» и вставь этот же текст обратно.</div>`); }
-function modalImportText(){ openModal(`<div class="mhead"><h3>⬆️ Восстановить из текста</h3><button class="x" data-action="close">×</button></div>
-  <p class="fszn-note">Вставь сюда текст копии (тот, что копировал в «Избранное»). Внимание: текущие данные заменятся.</p>
-  <textarea id="imp_text" class="input" style="height:210px;font-size:10px;line-height:1.4" placeholder="вставь текст копии сюда…"></textarea>
-  <div style="height:10px"></div>
-  <button class="btn primary" data-action="doImportText">⬆️ Восстановить</button>`); }
+function receiptBoxHTML(){
+  if(state.modalReceipt){
+    return `<div class="rcpt">
+      <img src="${state.modalReceipt}" data-action="viewReceiptCurrent" />
+      <div class="rcpt-actions">
+        <button class="btn sm" data-action="clearReceipt">Удалить фото</button>
+      </div>
+    </div>`;
+  }
+  return `<button class="btn ghost" data-action="pickReceipt">📸 Сделать снимок или выбрать</button>`;
+}
+async function addReceiptFromPicker(){
+  try{
+    const handle = await window.showOpenFilePicker({ types: [{ description: 'Images', accept: {'image/*': ['.jpg','.jpeg','.png']} }] });
+    const file = await handle[0].getFile();
+    state.modalReceipt = await blobToDataUrl(file);
+    const b=$("#m_receipt_box"); if(b) b.innerHTML=receiptBoxHTML();
+    hapticOk();
+  }catch(e){
+    // Fallback to input type file if showOpenFilePicker is not supported
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (ev) => {
+      const f = ev.target.files[0];
+      if(f){
+        state.modalReceipt = await blobToDataUrl(f);
+        const b=$("#m_receipt_box"); if(b) b.innerHTML=receiptBoxHTML();
+        hapticOk();
+      }
+    };
+    input.click();
+  }
+}
+function blobToDataUrl(blob){
+  return new Promise((res,rej)=>{
+    const reader = new FileReader();
+    reader.onload = () => res(reader.result);
+    reader.onerror = rej;
+    reader.readAsDataURL(blob);
+  });
+}
+function openReceiptViewer(url){
+  const v = document.createElement("div");
+  v.className = "viewer";
+  v.innerHTML = `<button class="vclose" data-action="shotClose">×</button><img src="${url}" />`;
+  v.onclick = (e) => { if(e.target===v) v.remove(); };
+  document.body.appendChild(v);
+}
+
+async function modalDailyRev(){
+  const todayStr = today();
+  const rev = dailyRevOf(todayStr);
+  const target = dailyTarget();
+  openModal(`
+    <div class="mhead"><h3>💵 Выручка за день</h3><button class="x" data-action="close">×</button></div>
+    <div class="field">
+      <label>Дата</label>
+      <input class="input" id="d_date" type="date" value="${todayStr}" />
+    </div>
+    <div class="field">
+      <label>Сумма выручки</label>
+      <input class="input" id="d_rev" type="number" step="0.01" value="${rev||""}" placeholder="0" />
+    </div>
+    <div class="field">
+      <label>Цель на день</label>
+      <input class="input" id="d_target" type="number" step="0.01" value="${target||""}" placeholder="0" />
+    </div>
+    <button class="btn primary" style="margin-top:12px" data-action="saveDailyRev">Сохранить</button>
+  `);
+}
+function highlightRevCol(date){
+  // Visual feedback handled by input change
+}
+function modalMaint(){ 
+  openModal(`
+    <div class="mhead"><h3>🔧 Событие ТО</h3><button class="x" data-action="close">×</button></div>
+    <div class="field"><label>Что сделали</label><input class="input" id="m_title" type="text" placeholder="Например: Замена масла" /></div>
+    <div class="field"><label>Дата</label><input class="input" id="m_date" type="date" value="${today()}" /></div>
+    <div class="field"><label>Пробег, км</label><input class="input" id="m_mileage" type="number" placeholder="Необязательно" /></div>
+    <div class="field"><label>Заметка</label><input class="input" id="m_note" type="text" /></div>
+    <button class="btn primary" style="margin-top:12px" data-action="saveMaint">Сохранить</button>
+  `); 
+}
+function modalDoc(){ 
+  openModal(`
+    <div class="mhead"><h3>📄 Документ</h3><button class="x" data-action="close">×</button></div>
+    <div class="field">
+      <label>Быстрые названия</label>
+      <div class="chips">${DOC_PRESETS.map(t=>`<button class="chip" data-action="docPreset" data-name="${esc(t)}">${esc(t)}</button>`).join("")}</div>
+    </div>
+    <div class="field"><label>Название</label><input class="input" id="m_name" type="text" /></div>
+    <div class="grid2">
+      <div class="field"><label>Выдан</label><input class="input" id="m_issue" type="date" /></div>
+      <div class="field"><label>Действует до</label><input class="input" id="m_expiry" type="date" /></div>
+    </div>
+    <div class="field"><label>Заметка</label><input class="input" id="m_note" type="text" /></div>
+    <button class="btn primary" style="margin-top:12px" data-action="saveDoc">Сохранить</button>
+  `); 
+}
+async function modalCar(){ 
+  const car=await dbGet("car",1)||{}; 
+  openModal(`
+    <div class="mhead"><h3>🚗 Автомобиль</h3><button class="x" data-action="close">×</button></div>
+    <div class="field"><label>Модель</label><input class="input" id="m_model" type="text" value="${esc(car.model||"")}" /></div>
+    <div class="field"><label>Номер</label><input class="input" id="m_plate" type="text" value="${esc(car.plate||"")}" /></div>
+    <div class="grid2">
+      <div class="field"><label>Расход л/100</label><input class="input" id="m_fuel" type="number" step="0.1" value="${car.fuelPer100||""}" /></div>
+      <div class="field"><label>Текущий пробег</label><input class="input" id="m_km" type="number" value="${car.currentMileage||0}" /></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>Масло на км</label><input class="input" id="m_oilkm" type="number" value="${car.lastOilMileage||0}" /></div>
+      <div class="field"><label>Интервал замены масла, км</label><input class="input" id="m_oilint" type="number" value="${car.oilInterval||10000}" /></div>
+    </div>
+    <button class="btn primary" style="margin-top:12px" data-action="saveCar">Сохранить</button>
+  `); 
+}
+function modalTaxReminder(){ 
+  openModal(`
+    <div class="mhead"><h3>🗓 Напоминание по сроку</h3><button class="x" data-action="close">×</button></div>
+    <div class="field">
+      <label>Быстрые названия</label>
+      <div class="chips">${TAX_PRESETS.map(t=>`<button class="chip" data-action="taxPreset" data-name="${esc(t)}">${esc(t)}</button>`).join("")}</div>
+    </div>
+    <div class="field"><label>Название</label><input class="input" id="t_name" type="text" /></div>
+    <div class="field"><label>Срок</label><input class="input" id="t_date" type="date" /></div>
+    <div class="field">
+      <label>Повтор</label>
+      <select class="input" id="t_repeat">
+        <option value="none">Без повтора</option>
+        <option value="month">Каждый месяц</option>
+        <option value="quarter">Каждый квартал</option>
+        <option value="year">Каждый год</option>
+      </select>
+    </div>
+    <button class="btn primary" style="margin-top:12px" data-action="saveTax">Сохранить</button>
+  `); 
+}
+function modalFine(){ 
+  openModal(`
+    <div class="mhead"><h3>🚨 Штраф</h3><button class="x" data-action="close">×</button></div>
+    <div class="field">
+      <label>Быстрые названия</label>
+      <div class="chips">${FINE_PRESETS.map(t=>`<button class="chip" data-action="finePreset" data-name="${esc(t)}">${esc(t)}</button>`).join("")}</div>
+    </div>
+    <div class="field"><label>За что</label><input class="input" id="f_name" type="text" /></div>
+    <div class="field"><label>Сумма</label><input class="input" id="f_amount" type="number" step="0.01" /></div>
+    <div class="field"><label>Дата выписки</label><input class="input" id="f_date" type="date" value="${today()}" /></div>
+    <button class="btn primary" style="margin-top:12px" data-action="saveFine">Сохранить как неоплаченный</button>
+  `); 
+  setTimeout(()=>$("#f_name")?.focus(),60); 
+}
+function modalBackupText(txt){ 
+  openModal(`
+    <div class="mhead"><h3>💾 Копия текстом</h3><button class="x" data-action="close">×</button></div>
+    <p class="small muted">Telegram не дал сохранить файл. Скопируй текст ниже и вставь себе в «Избранное» в Telegram — это твоя копия цифр (без картинок чеков; чеки снимай скриншотами отдельно).</p>
+    <textarea class="input" id="bk_text" rows="10" readonly style="font-size:11px; margin-top:12px">${esc(txt)}</textarea>
+    <button class="btn primary" style="margin-top:12px" data-action="copyBkText">📋 Скопировать текст копии</button>
+    <p class="small muted" style="margin-top:12px">Чтобы восстановить — «⬆️ Восстановить из текста» и вставь этот же текст обратно.</p>
+  `); 
+}
+function modalImportText(){ 
+  openModal(`
+    <div class="mhead"><h3>⬆️ Восстановить из текста</h3><button class="x" data-action="close">×</button></div>
+    <p class="small muted">Вставь сюда текст копии (тот, что копировал в «Избранное»). Внимание: текущие данные заменятся.</p>
+    <textarea class="input" id="imp_text" rows="10" style="margin-top:12px" placeholder="Вставь текст сюда..."></textarea>
+    <button class="btn primary" style="margin-top:12px" data-action="doImportText">⬆️ Восстановить</button>
+  `); 
+}
 
 /* ---------- действия ---------- */
-async function fuelPreset(amt){ await dbPut("expenses",{id:uid(),category:"fuel",amount:amt,date:today(),mileage:null,note:"быстрая заправка"}); closeModal(); toast(`Заправка ${money(amt)}`); hapticOk(); renderAsync(); }
-function saveFuelPresets(){ const a=[0,1,2].map(i=>parseFloat($("#fp"+i).value)||0); if(a.some(v=>v<=0)){toast("Все суммы должны быть > 0");hapticBad();return;} setFuelPresets(a); closeModal(); toast("Суммы сохранены"); hapticOk(); }
+async function fuelPreset(amt){ 
+  await dbPut("expenses",{id:uid(),category:"fuel",amount:amt,date:today(),mileage:null,note:"быстрая заправка"}); 
+  closeModal(); 
+  toast(`Заправка ${money(amt)}`); 
+  hapticOk(); 
+  renderAsync(); 
+}
+function saveFuelPresets(){ 
+  const a=[0,1,2].map(i=>parseFloat($("#fp"+i).value)||0); 
+  if(a.some(v=>v<=0)){toast("Все суммы должны быть > 0");hapticBad();return;} 
+  setFuelPresets(a); 
+  closeModal(); 
+  toast("Суммы сохранены"); 
+  hapticOk(); 
+}
 function saveDailyRev(){
   const dateEl=$("#d_date"); const revEl=$("#d_rev"); const targetEl=$("#d_target");
   const date=(dateEl&&dateEl.value)?dateEl.value:today();
@@ -967,29 +1052,107 @@ function saveDailyRev(){
   toast(rev>0?`Выручка ${money(rev)} · ${date===today()?"сегодня":fmtDate(date)}`:`Выручка за ${fmtDate(date)} очищена`);
   hapticOk(); renderAsync();
 }
-async function saveExpense(){ const amount=parseFloat($("#m_amount").value); if(!amount||amount<=0){toast("Введи сумму");hapticBad();return;}
+async function saveExpense(){ 
+  const amount=parseFloat($("#m_amount").value); 
+  if(!amount||amount<=0){toast("Введи сумму");hapticBad();return;}
   const mileEl=$("#m_mileage"); const mileage = mileEl ? (parseFloat(mileEl.value)||0) : 0;
   const e={id:state.modalEditId||uid(),category:state.modalCat,amount,date:$("#m_date").value||today(),mileage:mileage>0?mileage:null,note:$("#m_note").value.trim(),receipt:state.modalReceipt||null};
   await dbPut("expenses",e);
   if(e.mileage){ const car=await dbGet("car",1)||{id:1}; if(!car.currentMileage||e.mileage>car.currentMileage){car.currentMileage=e.mileage;await dbPut("car",car);} }
-  closeModal(); toast(state.modalEditId?"Изменено":"Расход добавлен"); hapticOk(); renderAsync(); }
+  closeModal(); toast(state.modalEditId?"Изменено":"Расход добавлен"); hapticOk(); renderAsync(); 
+}
 async function editExpense(id){ const r=await dbGet("expenses",id); if(r) modalExpense(r.category,r); }
-async function saveMaint(){ const title=$("#m_title").value.trim(); if(!title){toast("Введи описание");hapticBad();return;} const mileage=parseFloat($("#m_mileage").value); await dbPut("maintenance",{id:uid(),title,date:$("#m_date").value||today(),mileage:mileage>0?mileage:null,note:$("#m_note").value.trim()}); closeModal(); toast("Событие ТО добавлено"); hapticOk(); renderAsync(); }
-async function saveDoc(){ const name=$("#m_name").value.trim(); if(!name){toast("Введи название");hapticBad();return;} await dbPut("documents",{id:uid(),name,issueDate:$("#m_issue").value||null,expiryDate:$("#m_expiry").value||null,note:$("#m_note").value.trim()}); closeModal(); toast("Документ добавлен"); hapticOk(); renderAsync(); }
-async function saveCar(){ await dbPut("car",{id:1,model:$("#m_model").value.trim(),plate:$("#m_plate").value.trim(),fuelPer100:parseFloat($("#m_fuel").value)||null,currentMileage:parseFloat($("#m_km").value)||0,lastOilMileage:parseFloat($("#m_oilkm").value)||0,oilInterval:parseFloat($("#m_oilint").value)||10000}); closeModal(); toast("Авто сохранено"); hapticOk(); renderAsync(); }
-function saveFsznSettings(){ const m=parseFloat($("#fszn_mzp").value)||0,r=parseFloat($("#fszn_rate").value)||0; if(m<=0||r<=0){toast("МЗП и ставка должны быть > 0");hapticBad();return;} localStorage.setItem("blvck_fszn_mzp",String(m)); localStorage.setItem("blvck_fszn_rate",String(r)); toast("Параметры сохранены"); hapticOk(); renderAsync(); }
-async function saveFsznField(q,field,value){ const id=`${YEAR()}-Q${q}`; const rec=await dbGet("fszn",id)||{id,year:YEAR(),quarter:q,income:0,paid:0}; rec[field]=value; await dbPut("fszn",rec); }
+async function saveMaint(){ 
+  const title=$("#m_title").value.trim(); 
+  if(!title){toast("Введи описание");hapticBad();return;} 
+  const mileage=parseFloat($("#m_mileage").value); 
+  await dbPut("maintenance",{id:uid(),title,date:$("#m_date").value||today(),mileage:mileage>0?mileage:null,note:$("#m_note").value.trim()}); 
+  closeModal(); toast("Событие ТО добавлено"); hapticOk(); renderAsync(); 
+}
+async function saveDoc(){ 
+  const name=$("#m_name").value.trim(); 
+  if(!name){toast("Введи название");hapticBad();return;} 
+  await dbPut("documents",{id:uid(),name,issueDate:$("#m_issue").value||null,expiryDate:$("#m_expiry").value||null,note:$("#m_note").value.trim()}); 
+  closeModal(); toast("Документ добавлен"); hapticOk(); renderAsync(); 
+}
+async function saveCar(){ 
+  await dbPut("car",{id:1,model:$("#m_model").value.trim(),plate:$("#m_plate").value.trim(),fuelPer100:parseFloat($("#m_fuel").value)||null,currentMileage:parseFloat($("#m_km").value)||0,lastOilMileage:parseFloat($("#m_oilkm").value)||0,oilInterval:parseFloat($("#m_oilint").value)||10000}); 
+  closeModal(); toast("Авто сохранено"); hapticOk(); renderAsync(); 
+}
+function saveFsznSettings(){ 
+  const m=parseFloat($("#fszn_mzp").value)||0,r=parseFloat($("#fszn_rate").value)||0; 
+  if(m<=0||r<=0){toast("МЗП и ставка должны быть > 0");hapticBad();return;} 
+  localStorage.setItem("blvck_fszn_mzp",String(m)); 
+  localStorage.setItem("blvck_fszn_rate",String(r)); 
+  toast("Параметры сохранены"); hapticOk(); renderAsync(); 
+}
+async function saveFsznField(q,field,value){ 
+  const id=`${YEAR()}-Q${q}`; 
+  const rec=await dbGet("fszn",id)||{id,year:YEAR(),quarter:q,income:0,paid:0}; 
+  rec[field]=value; 
+  await dbPut("fszn",rec); 
+}
 function saveIncome(){ const v=parseFloat($("#income_month").value)||0; setIncome(ymNow(),v); toast("Доход сохранён"); hapticOk(); renderAsync(); }
 function saveEff(){ setKm(ymNow(),parseFloat($("#eff_km").value)||0); setHours(ymNow(),parseFloat($("#eff_hours").value)||0); toast("Пробег и часы сохранены"); hapticOk(); renderAsync(); }
-function saveTax(){ const name=$("#t_name").value.trim(); if(!name){toast("Введи название");hapticBad();return;} const l=taxList(); l.push({id:uid(),name,date:$("#t_date").value||null,repeat:$("#t_repeat").value}); saveTaxList(l); closeModal(); toast("Напоминание добавлено"); hapticOk(); renderAsync(); }
-function taxPaid(id){ const l=taxList(); const r=l.find(x=>x.id===id); if(!r) return; if(r.repeat&&r.repeat!=="none"&&r.date){ const d=new Date(r.date+"T00:00:00"); if(r.repeat==="month")d.setMonth(d.getMonth()+1); if(r.repeat==="quarter")d.setMonth(d.getMonth()+3); if(r.repeat==="year")d.setFullYear(d.getFullYear()+1); r.date=d.toISOString().slice(0,10); saveTaxList(l); toast(`Отмечено · след. срок ${fmtDate(r.date)}`); } else { saveTaxList(l.filter(x=>x.id!==id)); toast("Удалено"); } hapticOk(); renderAsync(); }
+function saveTax(){ 
+  const name=$("#t_name").value.trim(); 
+  if(!name){toast("Введи название");hapticBad();return;} 
+  const l=taxList(); 
+  l.push({id:uid(),name,date:$("#t_date").value||null,repeat:$("#t_repeat").value}); 
+  saveTaxList(l); 
+  closeModal(); toast("Напоминание добавлено"); hapticOk(); renderAsync(); 
+}
+function taxPaid(id){ 
+  const l=taxList(); 
+  const r=l.find(x=>x.id===id); 
+  if(!r) return; 
+  if(r.repeat&&r.repeat!=="none"&&r.date){ 
+    const d=new Date(r.date+"T00:00:00"); 
+    if(r.repeat==="month")d.setMonth(d.getMonth()+1); 
+    if(r.repeat==="quarter")d.setMonth(d.getMonth()+3); 
+    if(r.repeat==="year")d.setFullYear(d.getFullYear()+1); 
+    r.date=d.toISOString().slice(0,10); 
+    saveTaxList(l); 
+    toast(`Отмечено · след. срок ${fmtDate(r.date)}`); 
+  } else { 
+    saveTaxList(l.filter(x=>x.id!==id)); 
+    toast("Удалено"); 
+  } 
+  hapticOk(); renderAsync(); 
+}
 function taxDel(id){ saveTaxList(taxList().filter(x=>x.id!==id)); toast("Удалено"); haptic(); renderAsync(); }
-function saveFine(){ const name=$("#f_name").value.trim(); if(!name){toast("Введи «за что»");hapticBad();return;} const amount=parseFloat($("#f_amount").value)||0; if(amount<=0){toast("Введи сумму");hapticBad();return;} const l=finesList(); l.push({id:uid(),name,amount,date:$("#f_date").value||today(),paid:false,paidDate:null,expenseId:null}); saveFinesList(l); closeModal(); toast("Штраф добавлен — висит долгом"); hapticOk(); renderAsync(); }
-async function finePaid(id){ const l=finesList(); const r=l.find(x=>x.id===id); if(!r||r.paid) return; r.paid=true; r.paidDate=today(); const exp={id:uid(),category:"other",amount:r.amount,date:today(),mileage:null,note:"Штраф: "+r.name,receipt:null}; await dbPut("expenses",exp); r.expenseId=exp.id; saveFinesList(l); toast("Оплачено → ушло в расходы"); hapticOk(); renderAsync(); }
-async function fineDel(id){ if(!confirm("Удалить штраф?")) return; const l=finesList(); const r=l.find(x=>x.id===id); if(r&&r.paid&&r.expenseId) await dbDel("expenses",r.expenseId); saveFinesList(l.filter(x=>x.id!==id)); toast("Удалено"); haptic(); renderAsync(); }
+function saveFine(){ 
+  const name=$("#f_name").value.trim(); 
+  if(!name){toast("Введи «за что»");hapticBad();return;} 
+  const amount=parseFloat($("#f_amount").value)||0; 
+  if(amount<=0){toast("Введи сумму");hapticBad();return;} 
+  const l=finesList(); 
+  l.push({id:uid(),name,amount,date:$("#f_date").value||today(),paid:false,paidDate:null,expenseId:null}); 
+  saveFinesList(l); 
+  closeModal(); toast("Штраф добавлен — висит долгом"); hapticOk(); renderAsync(); 
+}
+async function finePaid(id){ 
+  const l=finesList(); 
+  const r=l.find(x=>x.id===id); 
+  if(!r||r.paid) return; 
+  r.paid=true; r.paidDate=today(); 
+  const exp={id:uid(),category:"other",amount:r.amount,date:today(),mileage:null,note:"Штраф: "+r.name,receipt:null}; 
+  await dbPut("expenses",exp); 
+  r.expenseId=exp.id; 
+  saveFinesList(l); 
+  toast("Оплачено → ушло в расходы"); hapticOk(); renderAsync(); 
+}
+async function fineDel(id){ 
+  if(!confirm("Удалить штраф?")) return; 
+  const l=finesList(); 
+  const r=l.find(x=>x.id===id); 
+  if(r&&r.paid&&r.expenseId) await dbDel("expenses",r.expenseId); 
+  saveFinesList(l.filter(x=>x.id!==id)); 
+  toast("Удалено"); haptic(); renderAsync(); 
+}
 
 /* ---------- CSV ---------- */
-function csvCell(v){ v=String(v??""); return /[";\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
+function csvCell(v){ v=String(v??""); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
 
 /* ---------- сбор payload + облако + отправка боту ---------- */
 async function buildPayload(){
@@ -1072,7 +1235,7 @@ function makeParticles(){ const box=$(".bg-particles"); if(!box) return; for(let
 let searchT=null;
 document.addEventListener("input",(ev)=>{ const el=ev.target; if(el&&el.id==="exp_search"){ clearTimeout(searchT); searchT=setTimeout(()=>{ state.expQ=el.value; renderAsync(); },160); } });
 
-/* ---------- события (без визуальной вспышки — она ломалась на чипе Honor) ---------- */
+/* ---------- события ---------- */
 document.addEventListener("click", async (ev)=>{
   const el=ev.target.closest("[data-action]"); if(!el) return; const a=el.dataset.action; haptic("light");
   switch(a){
@@ -1094,10 +1257,6 @@ document.addEventListener("click", async (ev)=>{
     case "setExpCat": state.expCat=el.dataset.cat; renderAsync(); break;
     case "sendReportBot": sendReportToBot(); break;
     case "syncCloud": syncToCloud(false).then(ok=>{ if(ok) renderAsync(); }); break;
-    case "exportShotFull": exportShotFull(); break;
-    case "exportShotChecks": exportShotChecks(); break;
-    case "shotClose": closeShotMode(); break;
-    case "exportReceiptsCsv": exportReceiptsCsv(); break;
     case "openFines": state.screen="fines"; state._animateScreen=true; renderAsync(); break;
     case "openAddFine": modalFine(); break;
     case "finePreset": { const i=$("#f_name"); if(i&&!i.value) i.value=el.dataset.name; } break;
