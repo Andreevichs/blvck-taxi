@@ -1,32 +1,76 @@
 <!DOCTYPE html>
 <html lang="ru" data-theme="dark">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#0a0a0f" />
-<title>BLVCK TAXI</title>
-<!-- Telegram Mini App SDK -->
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
-<link rel="manifest" href="./manifest.webmanifest" />
-<link rel="icon" href="./icon.svg" type="image/svg+xml" />
-<link rel="apple-touch-icon" href="./icon.svg" />
-<link rel="stylesheet" href="./styles.css" />
+  <meta charset="UTF-8">
+
+  <!-- viewport-fit=cover нужен для safe-area (нижний таббар учитывает «подбородок»);
+       maximum-scale=1 — чтобы в мини‑приложении не зумило при фокусе полей -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+  <!-- theme-color обновляется из app.js (applyTheme) при смене темы;
+       дефолт — тёмный, чтобы не мигало белым до загрузки стилей -->
+  <meta name="theme-color" content="#0a0a0a">
+
+  <meta name="description" content="BLVCK TAXI — учёт расходов таксиста: выручка, расходы, чеки, штрафы, ФСЗН и режим труда и отдыха. Всё офлайн, без регистрации, данные только в твоём телефоне.">
+
+  <!-- PWA / установка на главный экран (катай с ярлыка — без шапки Telegram и без овала) -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="BLVCK TAXI">
+  <meta name="application-name" content="BLVCK TAXI">
+
+  <link rel="manifest" href="./manifest.webmanifest.json">
+  <link rel="icon" type="image/svg+xml" href="./icon.svg">
+  <link rel="apple-touch-icon" href="./icon.svg">
+
+  <!-- Telegram Web App SDK — должен быть ДО app.js, чтобы window.Telegram был готов -->
+  <link rel="preconnect" href="https://telegram.org">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <title>BLVCK TAXI</title>
+
+  <!-- критический фон до загрузки styles.css: убирает белую вспышку (FOUC)
+       при открытии; без fixed/blend/mask/animation — овал не триггерит -->
+  <style>
+    html,body{margin:0;background:#0a0a0a}
+    #app{min-height:100vh}
+  </style>
+
+  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <div class="bg-mesh" aria-hidden="true"></div>
-  <div class="bg-noise" aria-hidden="true"></div>
-  <div class="bg-particles" aria-hidden="true"></div>
 
-  <main id="app" class="app"></main>
+  <!-- основной экран: app.js рендерит сюда всю страницу (screenDash / screenStats / …) -->
+  <div id="app"></div>
 
-  <nav class="tabbar" id="tabbar"></nav>
+  <!-- нижняя навигация: app.js пишет сюда вкладки через renderTabs() -->
+  <nav id="tabbar" class="tabbar" aria-label="Разделы"></nav>
 
-  <div id="modal" class="modal-root" hidden></div>
-  <div id="toast" class="toast" hidden></div>
+  <!-- оверлей модалок (ввод расхода, выручки, авто и т.д.); внутрь app.js кладёт .modal -->
+  <div id="modal" class="modal-root" role="dialog" aria-modal="true" hidden></div>
 
-  <input type="file" id="restoreInput" accept="application/json,.json" hidden />
+  <!-- всплывающие подсказки («Заправка 50 BYN», «Смена завершена ✅» и т.п.) -->
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
+  <!-- скрытый файловый ввод для «Восстановить из файла»; app.js кликает его программно,
+       поэтому прячем за экраном, а не атрибутом hidden (иначе диалог не откроется) -->
+  <input type="file" id="restoreInput" accept="application/json,.json"
+         style="position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;pointer-events:none">
+
+  <noscript>
+    <p style="color:#f3f3f8;font-family:system-ui,sans-serif;padding:24px;text-align:center">
+      BLVCK TAXI работает только с включённым JavaScript.
+    </p>
+  </noscript>
+
+  <!-- порядок важен: app.js создаёт window.BLVCK_HOOKS и запускает init(),
+       который на await openDB() приостанавливается — в эту паузу синхронно
+       выполняются tax.js и rto.js и регистрируют свои хуки; когда init()
+       продолжится, postRender() уже увидит заполненные хуки. -->
   <script src="./app.js"></script>
-  <script src="tax.js"></script>
+  <script src="./tax.js"></script>
+  <script src="./rto.js"></script>
+
 </body>
 </html>
