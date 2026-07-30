@@ -53,7 +53,8 @@ const WD = ["Вс","Пн","Вт","Ср","Чт","Пт","Сб"];
 const WD_ORDER = [1,2,3,4,5,6,0];
 
 const state = { screen:"dash", range:"month", modalCat:"fuel", modalEditId:null, modalReceipt:null,
-                receiptMode:"quarter", receiptOffset:0, receiptCat:"all", _animateScreen:true };
+                receiptMode:"quarter", receiptOffset:0, receiptCat:"all", _animateScreen:true,
+                expRange:"month", expScale:"day", expCat:"all", expQ:"" };
 
 /* ---------- утилиты ---------- */
 const $  = (s, r=document) => r.querySelector(s);
