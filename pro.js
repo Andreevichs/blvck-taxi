@@ -12,12 +12,10 @@
    грузиться ПОСЛЕ app.js (в index.html так и стоит).
    Никаких css-анимаций — рендер статичный, ради чипов Mali.
 
-   FIX гонки загрузки: на медленной сети главная может отрисоваться
-   РАНЬШЕ, чем выполнится этот скрипт, и первый postRender пройдёт
-   без хука inject → плашки не будет. Поэтому boot() после сверки
-   статуса принудительно вызывает inject() и перерисовывает главную/
-   настройки один раз — плашка встаёт с актуальным текстом триала
-   независимо от того, успел ли скрипт к первому рендеру.
+   FIX плашки: точка входа вшивается СРАЗУ, как только отрисовалась
+   главная, через короткий «догоняющий» интервал — НЕ дожидаясь сети.
+   Раньше ensureInjected ждал refreshStatus, а тот висел 30–50 сек на
+   холодном старте Render, и плашка появлялась слишком поздно.
    ========================================================= */
 (function(){
   /* ---- тарифы: BYN для витрины, Stars(XTR) для invoice ---- */
@@ -62,8 +60,6 @@
       exps.forEach(e=>{ const d=new Date(e.date); if(d>=ms){ const a=Number(e.amount||0); spent+=a; if(CAR.includes(e.category)) carCost+=a; } });
     }catch(e){}
     const dayInc = sumDaysForYM(ym).sum;
-    /* если дневной выручки нет — берём ручной доход месяца, чтобы витрина
-       не показывала унылый 0% на пустом экране */
     const inc = dayInc || (typeof incomeOf === 'function' ? incomeOf(ym) : 0);
     const pct = inc>0 ? Math.round(carCost/inc*100) : 0;
     return { spent, carCost, inc, pct };
@@ -127,7 +123,7 @@
 
   /* ---- покупка: invoice -> openInvoice -> confirm ---- */
   async function buy(plan){
-    if(busy) return;                 /* уже готовим оплату — игнор повторный тап */
+    if(busy) return;
     const p = PLANS[plan]; if(!p){ return; }
     if(!isTelegram || !TG){ toast('Открой приложение через бота для оплаты'); return; }
     if(!TG.openInvoice){ toast('Твой Telegram не поддерживает оплату — обнови приложение'); return; }
@@ -144,7 +140,7 @@
     }catch(e){ toast('Нет связи с сервером'); hapticBad(); busy = false; return; }
     if(!link){ toast('Счёт не создан'); busy = false; return; }
     TG.openInvoice(link, async (status)=>{
-      busy = false;                  /* окно оплаты закрылось — можно снова */
+      busy = false;
       if(status === 'paid'){
         try{
           await fetch(RENDER + '/pro/confirm', {
@@ -160,7 +156,6 @@
       } else if(status === 'cancelled'){
         toast('Оплата отменена');
       }
-      /* 'pending' и прочее — тихо игнорируем, без ложных тостов */
     });
   }
 
@@ -218,15 +213,24 @@
     else if(a === 'proTrialDemo'){ trialDemo(); }
   });
 
-  /* ---- дошивка точек входа, если первый рендер прошёл мимо (гонка загрузки) ---- */
+  /* ---- ДОГОНЯЮЩИЙ инжект: вшивает плашку, как только главная отрисована,
+     НЕ дожидаясь сети. Крутится первые ~5 сек (защита от дублей внутри inject).
+     Это и есть фикс «плашки нет»: раньше она ждала холодный старт Render. ---- */
+  let chaseTries = 0;
+  const chase = setInterval(()=>{
+    inject();
+    if(document.getElementById('pro-dash-plaque') || ++chaseTries > 20){ clearInterval(chase); }
+  }, 250);
+
+  /* ---- дошивка с актуальным статусом (текст триала) после сверки с сервером ---- */
   function ensureInjected(){
     inject();
     if(typeof state !== 'undefined' && (state.screen === 'dash' || state.screen === 'settings')){
-      renderAsync();   /* перерисует с актуальным статусом; защита от дублей внутри inject */
+      renderAsync();
     }
   }
 
-  /* ---- фоновая сверка статуса (не блокирует загрузку) ---- */
+  /* ---- фоновая сверка статуса (не блокирует загрузку и не блокирует плашку) ---- */
   (async function boot(){
     await refreshStatus();
     ensureInjected();
