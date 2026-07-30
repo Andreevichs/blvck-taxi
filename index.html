@@ -38,6 +38,9 @@
     </p>
   </noscript>
 
+  <!-- порядок важен: app.js создаёт window.BLVCK_HOOKS и рисует главную;
+       tax.js и pro.js регистрируют свои хуки; pro.js дополнительно вшивает
+       плашку PRO мгновенно через догоняющий интервал, не дожидаясь сервера. -->
   <script src="./app.js"></script>
   <script src="./tax.js"></script>
   <script src="./pro.js"></script>
