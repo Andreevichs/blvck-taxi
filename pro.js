@@ -11,6 +11,13 @@
    const/function из app.js, они НЕ свойства window. pro.js должен
    грузиться ПОСЛЕ app.js (в index.html так и стоит).
    Никаких css-анимаций — рендер статичный, ради чипов Mali.
+
+   FIX гонки загрузки: на медленной сети главная может отрисоваться
+   РАНЬШЕ, чем выполнится этот скрипт, и первый postRender пройдёт
+   без хука inject → плашки не будет. Поэтому boot() после сверки
+   статуса принудительно вызывает inject() и перерисовывает главную/
+   настройки один раз — плашка встаёт с актуальным текстом триала
+   независимо от того, успел ли скрипт к первому рендеру.
    ========================================================= */
 (function(){
   /* ---- тарифы: BYN для витрины, Stars(XTR) для invoice ---- */
@@ -21,6 +28,7 @@
   };
   const RENDER = (typeof RENDER_URL !== 'undefined' ? RENDER_URL : '').replace(/\/+$/,'');
   const LS_KEY = 'blvck_pro_status';
+  let busy = false; /* защита от двойного тапа по тарифу */
 
   /* ---- статус: кэш + сервер ---- */
   function readCache(){ try{ return JSON.parse(localStorage.getItem(LS_KEY)) || {}; }catch(e){ return {}; } }
@@ -53,7 +61,10 @@
       const CAR = ['fuel','parts','repair','wash','rent'];
       exps.forEach(e=>{ const d=new Date(e.date); if(d>=ms){ const a=Number(e.amount||0); spent+=a; if(CAR.includes(e.category)) carCost+=a; } });
     }catch(e){}
-    const inc = sumDaysForYM(ym).sum;
+    const dayInc = sumDaysForYM(ym).sum;
+    /* если дневной выручки нет — берём ручной доход месяца, чтобы витрина
+       не показывала унылый 0% на пустом экране */
+    const inc = dayInc || (typeof incomeOf === 'function' ? incomeOf(ym) : 0);
     const pct = inc>0 ? Math.round(carCost/inc*100) : 0;
     return { spent, carCost, inc, pct };
   }
@@ -116,9 +127,11 @@
 
   /* ---- покупка: invoice -> openInvoice -> confirm ---- */
   async function buy(plan){
+    if(busy) return;                 /* уже готовим оплату — игнор повторный тап */
     const p = PLANS[plan]; if(!p){ return; }
     if(!isTelegram || !TG){ toast('Открой приложение через бота для оплаты'); return; }
     if(!TG.openInvoice){ toast('Твой Telegram не поддерживает оплату — обнови приложение'); return; }
+    busy = true;
     toast('Готовлю оплату…'); haptic('light');
     let link;
     try{
@@ -126,11 +139,12 @@
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ initData: TG.initData, plan })
       });
-      if(!r.ok){ toast('Не удалось создать счёт'); hapticBad(); return; }
+      if(!r.ok){ toast('Не удалось создать счёт'); hapticBad(); busy = false; return; }
       link = (await r.json()).invoiceLink;
-    }catch(e){ toast('Нет связи с сервером'); hapticBad(); return; }
-    if(!link){ toast('Счёт не создан'); return; }
+    }catch(e){ toast('Нет связи с сервером'); hapticBad(); busy = false; return; }
+    if(!link){ toast('Счёт не создан'); busy = false; return; }
     TG.openInvoice(link, async (status)=>{
+      busy = false;                  /* окно оплаты закрылось — можно снова */
       if(status === 'paid'){
         try{
           await fetch(RENDER + '/pro/confirm', {
@@ -146,6 +160,7 @@
       } else if(status === 'cancelled'){
         toast('Оплата отменена');
       }
+      /* 'pending' и прочее — тихо игнорируем, без ложных тостов */
     });
   }
 
@@ -203,14 +218,23 @@
     else if(a === 'proTrialDemo'){ trialDemo(); }
   });
 
+  /* ---- дошивка точек входа, если первый рендер прошёл мимо (гонка загрузки) ---- */
+  function ensureInjected(){
+    inject();
+    if(typeof state !== 'undefined' && (state.screen === 'dash' || state.screen === 'settings')){
+      renderAsync();   /* перерисует с актуальным статусом; защита от дублей внутри inject */
+    }
+  }
+
   /* ---- фоновая сверка статуса (не блокирует загрузку) ---- */
   (async function boot(){
     await refreshStatus();
+    ensureInjected();
     if(typeof state !== 'undefined' && state.screen === 'fszn'){ renderAsync(); }
   })();
   document.addEventListener('visibilitychange', function(){
     if(document.visibilityState === 'visible'){
-      refreshStatus().then(()=>{ if(typeof state !== 'undefined' && state.screen === 'fszn'){ renderAsync(); } });
+      refreshStatus().then(ensureInjected);
     }
   });
 })();
