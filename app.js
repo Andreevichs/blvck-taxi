@@ -532,7 +532,7 @@ async function screenStats(){
     <div class="h1">Аналитика</div><p class="muted small">расходы по категориям и месяцам</p>
     <div class="rangebar">${[["month","Месяц"],["quarter","Квартал"],["year","Год"],["all","Всё"]].map(([k,t])=>`<button class="chip ${state.range===k?"on":""}" data-action="setRange" data-range="${k}">${t}</button>`).join("")}</div>
     <div class="glass card"><div class="row between"><b>По категориям</b><span class="muted small">${money(total)}</span></div>${total>0?donut(byCat):`<div class="empty">Нет данных за период</div>`}</div>
-    <div class="glass card"><b>По месяцам</b>${months.length>0?bars(months.map(m=>({label:m.slice(2),value:byMonth[m]}))):`<div class="empty">Нет данных</div>`}</div>
+    <div class="glass card"><b>По месяцам</b>${months.length>0?bars(months.map(m=>({label:new Date(m+"-01T00:00:00").toLocaleDateString("ru-RU",{month:"short"}),value:byMonth[m]}))):`<div class="empty">Нет данных</div>`}</div>
     <div class="h2">выгодные дни недели</div>
     <div class="glass card">${hasWd?`${bars(WD_ORDER.map(i=>({label:WD[i],value:wka.avg[i]})))}<div class="fszn-note">🏆 лучший день — <b>${WD[wka.bestIdx]}</b> (в среднем ${rate(wka.avg[wka.bestIdx])}). Чем больше дней внесено, тем точнее карта.</div>`:`<div class="empty">Вноси «💵 Выручка» — здесь появится карта выгодных дней</div>`}</div>
     <div class="h2">эффективность · ${monthLabel(ym)}</div>
