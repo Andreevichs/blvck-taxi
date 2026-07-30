@@ -355,3 +355,10 @@ body{background:var(--bg) !important}
 .pro-plaque-d{width:10px;height:10px;border-radius:3px;background:var(--accent);transform:rotate(45deg);flex:none;box-shadow:0 0 0 3px var(--accent-soft)}
 .pro-plaque-t{flex:1;font-size:13.5px;font-weight:700;line-height:1.35}
 .pro-plaque-a{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent);white-space:nowrap}
+
+/* переключатель «по дням / по месяцам» на экране Расходы (.seg) —
+   стили были потеряны в сборке, из-за чего сегмент рисовался белыми блоками */
+.seg{position:relative;display:flex;gap:4px;background:var(--s2);border:1px solid var(--line);border-radius:14px;padding:4px;margin:8px 0}
+.seg .thumb{position:absolute;top:4px;left:4px;height:calc(100% - 8px);border-radius:10px;background:var(--accent);transition:none}
+.seg button{position:relative;z-index:1;flex:1;border:none;background:transparent;color:var(--muted);font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding:9px 0;border-radius:10px;cursor:pointer}
+.seg button.on{color:var(--on-accent)}
