@@ -1061,10 +1061,8 @@ document.addEventListener("input",(ev)=>{ const el=ev.target; if(el&&el.id==="ex
 
 /* ---------- события ---------- */
 document.addEventListener("click", async (ev)=>{
-  const host=ev.target.closest(".btn,.qcard,.preset,.chip,.tab,.dcat,.dbig,.pbtn,.iconbtn,.seg button,.shot-x");
-  if(host){ const r=document.createElement("span"); r.className="ripple"; const rc=host.getBoundingClientRect(); const sz=Math.max(rc.width,rc.height); r.style.width=r.style.height=sz+"px"; r.style.left=(ev.clientX-rc.left-sz/2)+"px"; r.style.top=(ev.clientY-rc.top-sz/2)+"px"; host.appendChild(r); setTimeout(()=>r.remove(),600); }
-  const el=ev.target.closest("[data-action]"); if(!el) return; const a=el.dataset.action; haptic("light");
-  switch(a){
+ const el=ev.target.closest("[data-action]"); if(!el) return; const a=el.dataset.action; haptic("light");
+ switch(a){
     case "nav": state.screen=el.dataset.to; state._animateScreen=true; renderAsync(); break;
     case "onboardDone": localStorage.setItem("blvck_onboarded","1"); state._animateScreen=true; renderAsync(); break;
     case "quick": modalExpense(el.dataset.cat); break;
