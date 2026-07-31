@@ -899,7 +899,7 @@ async function screenSettings(){ const exps=await dbAll("expenses"); const tgNam
 
     <div class="h2">Отчёт</div>
     <div class="glass card">
-      <button class="btn primary" data-action="sendReport">📤 Отправить отчёт боту в чат</button>
+      <button class="btn btn-report" data-action="sendReport"><span style="font-size:20px;margin-right:8px"></span> Отправить отчёт боту в чат</button>
     </div>
 
     <div class="danger-zone">
