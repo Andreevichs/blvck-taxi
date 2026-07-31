@@ -34,7 +34,7 @@ function syncTgColors(){
 const CATS = {
   fuel:   { ico:"⛽", t:"Заправка" },
   parts:  { ico:"🔩", t:"Запчасти" },
-  repair: { ico:"", t:"Ремонт" },
+  repair: { ico:"🔧", t:"Ремонт" },
   wash:   { ico:"🫧", t:"Мойка" },
   rent:   { ico:"🗝️", t:"Аренда авто" },
   other:  { ico:"📦", t:"Другое" },
