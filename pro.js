@@ -92,7 +92,7 @@
       ? `<div class="pro-note">Оплата и авто‑отчёты работают внутри Telegram. Открой приложение через бота — и PRO активируется здесь же.</div>` : '';
 
     const html = `
-      <div class="mhead"><h3>BLVCK <span style="color:var(--accent)">PRO</span></h3><button class="x" data-action="close">×</button></div>
+      <div class="mhead"><h3>METR <span style="color:var(--accent)">PRO</span></h3><button class="x" data-action="close">×</button></div>
       <div class="pro-status">${statusLine}</div>
       <p class="pro-lead">Ядро бесплатно навсегда. PRO добавляет то, что без сервера не живёт: авто‑PDF в чат первого числа, облачный бэкап между телефонами, живой расчёт единого / подоходного и пинги по срокам.</p>
       ${demo}
