@@ -1,19 +1,37 @@
 {
-  "name": "BLVCK TAXI — учёт расходов",
-  "short_name": "BLVCK TAXI",
-  "description": "Карманный учёт расходов для водителя. Офлайн, без серверов.",
-  "start_url": ".",
-  "scope": ".",
+  "name": "METR — учёт для таксиста",
+  "short_name": "METR",
+  "description": "Учёт расходов, штрафов, ФСЗН для водителя такси. Офлайн, данные только в твоём телефоне.",
+  "start_url": "./",
   "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
   "orientation": "portrait",
-  "background_color": "#0a0a0f",
-  "theme_color": "#0a0a0f",
   "icons": [
-    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
   ],
   "shortcuts": [
-    { "name": "Быстрая заправка", "short_name": "Заправка", "description": "Добавить заправку в 1 тап", "url": "./index.html?act=fuel", "icons": [ { "src": "./icon.svg", "sizes": "any" } ] },
-    { "name": "Мойка", "short_name": "Мойка", "url": "./index.html?act=wash", "icons": [ { "src": "./icon.svg", "sizes": "any" } ] },
-    { "name": "Ремонт", "short_name": "Ремонт", "url": "./index.html?act=repair", "icons": [ { "src": "./icon.svg", "sizes": "any" } ] }
+    {
+      "name": "Заправка",
+      "short_name": "Заправка",
+      "url": "./?act=fuel",
+      "icons": [{"src": "./icon.svg", "sizes": "any"}]
+    },
+    {
+      "name": "Мойка",
+      "short_name": "Мойка",
+      "url": "./?act=wash",
+      "icons": [{"src": "./icon.svg", "sizes": "any"}]
+    },
+    {
+      "name": "Ремонт",
+      "short_name": "Ремонт",
+      "url": "./?act=repair",
+      "icons": [{"src": "./icon.svg", "sizes": "any"}]
+    }
   ]
 }
