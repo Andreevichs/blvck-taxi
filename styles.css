@@ -1,4 +1,4 @@
-/* ===== BLVCK TAXI 2026 — instrument minimalism: black / white / orange ===== */
+/* ===== METR 2026 — учёт для таксиста ===== */
 :root{
   --bg:#0a0a0a; --bg2:#101010; --s1:#141414; --s2:#1b1b1b; --s3:#242424;
   --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.16);
@@ -14,10 +14,10 @@
   --mono:ui-monospace,"SF Mono","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
 }
 [data-theme="light"]{
-  --bg:#f3f2ee; --bg2:#ffffff; --s1:#ffffff; --s2:#f0efea; --s3:#e7e6df;
+  --bg:#f5f3ee; --bg2:#ffffff; --s1:#ffffff; --s2:#f0efea; --s3:#e7e6df;
   --line:rgba(10,10,10,.10); --line2:rgba(10,10,10,.20);
-  --text:#0c0c0c; --muted:#6b6b65; --faint:#a6a69f;
-  --accent:#ff4d00; --accent2:#ff6f1a; --accent-soft:rgba(255,77,0,.10); --accent-line:rgba(255,77,0,.5);
+  --text:#0c0c0c; --muted:#5a5a55; --faint:#a6a69f;
+  --accent:#e64500; --accent2:#ff6f1a; --accent-soft:rgba(230,69,0,.10); --accent-line:rgba(230,69,0,.5);
   --on-accent:#ffffff; --shadow:0 18px 50px -28px rgba(0,0,0,.25); --inset:inset 0 1px 0 rgba(255,255,255,.6);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -25,25 +25,49 @@ button,input,select,textarea{font:inherit;color:inherit}
 html,body{margin:0;height:100%}
 body{font-family:var(--sans);color:var(--text);background:var(--bg);overflow-x:hidden;-webkit-font-smoothing:antialiased}
 
-.bg-mesh,.bg-noise,.bg-particles{position:fixed;inset:0;pointer-events:none;z-index:0}
-.bg-mesh{background:
-  radial-gradient(78% 52% at 88% -12%, var(--accent-soft), transparent 60%),
-  radial-gradient(46% 46% at 12% 8%, rgba(255,138,51,.16), transparent 60%),
-  radial-gradient(60% 44% at -12% 112%, rgba(255,255,255,.035), transparent 60%),
-  radial-gradient(50% 50% at 70% 95%, rgba(255,90,0,.10), transparent 60%),
-  var(--bg);}
-[data-theme="light"] .bg-mesh{background:
-  radial-gradient(78% 52% at 88% -12%, var(--accent-soft), transparent 60%),
-  radial-gradient(60% 44% at -12% 112%, rgba(0,0,0,.03), transparent 60%),
-  var(--bg);}
-.bg-noise{opacity:.05;mix-blend-mode:overlay;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>")}
-.bg-particles{background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:34px 34px;-webkit-mask-image:radial-gradient(120% 88% at 70% 0%,#000,transparent 78%);mask-image:radial-gradient(120% 88% at 70% 0%,#000,transparent 78%)}
-.bg-particles span{position:absolute;width:3px;height:3px;border-radius:50%;background:var(--text);opacity:.10;animation:drift linear infinite}
-.bg-particles span:nth-child(3n){background:var(--accent);opacity:.26;width:4px;height:4px}
-@keyframes drift{0%{transform:translateY(16vh) scale(.6);opacity:0}12%{opacity:.24}88%{opacity:.24}100%{transform:translateY(-114vh) scale(1);opacity:0}}
+/* ---- ФОН УРОВЕНЬ C: ночной кокпит с частицами (тёмная) / дневной бланк (светлая) ---- */
+.bg-mesh{position:fixed;inset:0;pointer-events:none;z-index:0}
+.bg-mesh::before{
+  content:"";position:absolute;inset:0;
+  background:radial-gradient(60% 50% at 85% 5%,var(--accent-soft),transparent 60%),
+             radial-gradient(40% 40% at 10% 90%,rgba(255,138,51,.08),transparent 60%),
+             var(--bg);
+}
+[data-theme="light"] .bg-mesh::before{
+  background:radial-gradient(50% 40% at 80% 10%,rgba(230,69,0,.06),transparent 60%),
+             var(--bg);
+}
 
-.app{position:relative;display:block;width:100%;max-width:540px;margin:0 auto;min-height:100%;padding:18px 16px calc(var(--tab-h) + 28px);overflow-x:hidden}
-@keyframes screenIn{from{opacity:0}to{opacity:1}}
+.bg-grid{position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.4}
+.bg-grid::before{
+  content:"";position:absolute;inset:0;
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:40px 40px;
+  -webkit-mask-image:radial-gradient(80% 70% at 50% 50%,#000,transparent 80%);
+  mask-image:radial-gradient(80% 70% at 50% 50%,#000,transparent 80%);
+}
+[data-theme="light"] .bg-grid{opacity:.6}
+[data-theme="light"] .bg-grid::before{
+  background-image:linear-gradient(rgba(10,10,10,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(10,10,10,.08) 1px,transparent 1px);
+  background-size:20px 20px;
+}
+
+/* Частицы: изолированный контейнер, без blend/mask, только transform для движения */
+.bg-particles{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+.bg-particles span{
+  position:absolute;width:2px;height:2px;border-radius:50%;
+  background:var(--accent);opacity:.3;
+  animation:particleFloat linear infinite;
+}
+@keyframes particleFloat{
+  0%{transform:translateY(100vh) scale(0);opacity:0}
+  10%{opacity:.4}
+  90%{opacity:.4}
+  100%{transform:translateY(-10vh) scale(1);opacity:0}
+}
+[data-theme="light"] .bg-particles span{background:var(--accent);opacity:.2}
+
+.app{position:relative;z-index:1;display:block;width:100%;max-width:540px;margin:0 auto;min-height:100%;padding:18px 16px calc(var(--tab-h) + 28px);overflow-x:hidden}
 
 .app .glass,.app .item,.app .alert,.app .h1,.app .h2,.app .qcard-f,.app .hero,.app .quickrow,.app .streak,.app .toolgrid,.app .metricrow,.app .today,.app .sparkcard,.app .seg,.app .searchwrap,.app .info,.app .ownblock,.app .backupbelt{opacity:1;transform:none}
 .app .revealed{opacity:1;transform:none}
@@ -154,8 +178,8 @@ body{font-family:var(--sans);color:var(--text);background:var(--bg);overflow-x:h
 .rangebar{display:flex;gap:8px;margin:6px 0 4px;flex-wrap:wrap}
 
 .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:5;height:var(--tab-h);display:flex;justify-content:center;padding:8px 12px calc(8px + env(safe-area-inset-bottom))}
-.tabbar .inner{max-width:540px;width:100%;display:grid;grid-template-columns:repeat(6,1fr);background:var(--s1);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow),var(--inset)}
-.tab{position:relative;border:none;background:transparent;color:var(--muted);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.5px;padding:9px 0;border-radius:16px;transition:color .2s,transform .25s var(--spring)}
+.tabbar .inner{max-width:540px;width:100%;display:flex;background:var(--s1);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow),var(--inset)}
+.tab{position:relative;border:none;background:transparent;color:var(--muted);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;font-family:var(--mono);font-size:9px;font-weight:600;letter-spacing:.5px;padding:9px 0;border-radius:16px;transition:color .2s,transform .25s var(--spring);flex:1 1 0;min-width:0}
 .tab .ti{font-size:19px} .tab.on{color:var(--accent)} .tab.on .ti{transform:translateY(-1px) scale(1.08)}
 .tab.on::after{content:"";position:absolute;bottom:5px;left:50%;transform:translateX(-50%);width:16px;height:2px;border-radius:2px;background:var(--accent)}
 
@@ -218,41 +242,26 @@ body{font-family:var(--sans);color:var(--text);background:var(--bg);overflow-x:h
 .switch{display:flex;gap:8px}
 
 .onboard{position:fixed;inset:0;z-index:60;background:var(--bg);display:flex;flex-direction:column;padding:34px 24px calc(46px + env(safe-area-inset-bottom));overflow:auto}
-.onboard::before,.onboard::after{content:"";position:fixed;inset:0;pointer-events:none}
-.onboard::before{background:radial-gradient(80% 50% at 86% -10%,var(--accent-soft),transparent 60%),radial-gradient(54% 40% at -8% 110%,rgba(255,255,255,.03),transparent 60%)}
-.onboard::after{background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:34px 34px;opacity:.5;-webkit-mask-image:radial-gradient(120% 90% at 70% 0%,#000,transparent 80%);mask-image:radial-gradient(120% 90% at 70% 0%,#000,transparent 80%)}
 .onboard > *{position:relative;z-index:1}
 .onboard .ob-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .onboard .ob-top .brand-dot{width:9px;height:9px;border-radius:3px;background:var(--accent);animation:pulse 2.6s var(--spring) infinite}
 .onboard .ob-top .brand-name{font-family:var(--mono);font-weight:700;font-size:14px;letter-spacing:2px}
 .onboard .ob-top .brand-sub{font-family:var(--mono);font-size:14px;color:var(--accent);letter-spacing:2px}
 .onboard h2{font-size:clamp(36px,12vw,56px);font-weight:800;letter-spacing:-1.8px;margin:8px 0 4px;line-height:.94;position:relative;display:inline-block}
-.onboard h2::after{content:"";position:absolute;left:2px;right:30%;bottom:-6px;height:3px;border-radius:3px;background:linear-gradient(90deg,var(--accent),transparent);background-size:200% 100%;animation:shine 3.4s linear infinite}
-@keyframes shine{to{background-position:200% 0}}
 .onboard .ob-sub{color:var(--muted);font-size:15px;margin:14px 0 26px;max-width:34ch;line-height:1.5}
-.ob-step{display:flex;gap:16px;align-items:flex-start;padding:18px 0;border-top:1px solid var(--line);opacity:0;transform:translateY(14px);animation:obIn .6s var(--spring) forwards}
-.ob-step:nth-child(1){animation-delay:.15s} .ob-step:nth-child(2){animation-delay:.3s} .ob-step:nth-child(3){animation-delay:.45s}
-@keyframes obIn{to{opacity:1;transform:none}}
+.ob-step{display:flex;gap:16px;align-items:flex-start;padding:18px 0;border-top:1px solid var(--line)}
 .ob-step .n{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--accent);padding-top:2px}
 .ob-step .tt{font-weight:700;font-size:17px;letter-spacing:-.3px}
 .ob-step .ds{color:var(--muted);font-size:13px;margin-top:3px;line-height:1.5}
 .onboard .ob-go{margin-top:auto;position:relative;overflow:hidden}
-.onboard .ob-go .arrow{display:inline-block;animation:nudge 1.5s var(--spring) infinite}
-@keyframes nudge{0%,100%{transform:translateX(0)}50%{transform:translateX(5px)}}
 
 @media (max-width:360px){.metricrow,.grid2,.grid3,.presets,.eff,.drive .drow,.toolgrid{grid-template-columns:1fr}.toolgrid .span2{grid-column:auto}.tab{font-size:8px;padding:7px 0}.tab .ti{font-size:16px}}
 
-/* =========================================================
-   ЯДЕРНЫЙ КАРАНТИН GPU-артефактов (чипы Mali / Honor / Telegram WebView).
-   Гасим ВСЕ css-анимации и transition глобально — убирает пересоздание
-   слоёв, а значит и оранжевый «овал». Накрутка цифр живая (через JS).
-   ========================================================= */
+/* ЯДЕРНЫЙ КАРАНТИН GPU-артефактов */
 *,*::before,*::after{animation:none !important;transition:none !important}
-.bg-mesh,.bg-noise,.bg-particles,.bg-particles span{display:none !important}
+.bg-mesh,.bg-grid,.bg-particles,.bg-particles span{display:block !important}
+.bg-particles span{animation:particleFloat linear infinite !important}
 body{background:var(--bg) !important}
-.onboard::before,.onboard::after{display:none !important}
-.onboard h2::after,.onboard .ob-go .arrow{display:none !important}
-.ob-step{opacity:1 !important;transform:none !important}
 .spark-area{opacity:1 !important}
 .spark-line{opacity:1 !important;stroke-dashoffset:0 !important}
 .spark-dot{opacity:1 !important}
@@ -265,11 +274,7 @@ body{background:var(--bg) !important}
 .modal-root{backdrop-filter:none !important;-webkit-backdrop-filter:none !important}
 .toast{transform:translateX(-50%) !important}
 
-/* ровный таббар при любом числе вкладок */
-.tabbar .inner{display:flex !important;grid-template-columns:none !important}
-.tabbar .tab{flex:1 1 0 !important;min-width:0}
-
-/* список деталей / износ */
+/* part/info/ownblock/seg/pro стили */
 .part{display:flex;align-items:center;gap:12px;padding:13px 2px;border-bottom:1px solid var(--line)}
 .part:last-child{border-bottom:none}
 .part .ic{font-size:19px;width:34px;height:34px;display:grid;place-items:center;border-radius:9px;background:var(--s2);flex:none}
@@ -281,7 +286,6 @@ body{background:var(--bg) !important}
 .pill.on{color:var(--accent);border:1px solid var(--accent-line);background:var(--accent-soft)}
 .pill.off{color:var(--muted);border:1px solid var(--line)}
 
-/* блок «доля машины в выручке» */
 .ownblock{padding:16px;margin:14px 0}
 .ownblock .ob-top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
 .ownblock .ob-pct{font-family:var(--mono);font-size:34px;font-weight:800;letter-spacing:-1.5px;line-height:1;color:var(--accent)}
@@ -299,7 +303,6 @@ body{background:var(--bg) !important}
 .ownblock .ob-empty{font-size:13px;color:var(--muted);line-height:1.45}
 .ownblock .ob-empty b{color:var(--text)}
 
-/* инфо-плашка «Где живут данные» + ритмика заголовков */
 .app .h1{margin:6px 2px 2px}
 .app .h2{margin:22px 2px 9px}
 .info{background:var(--s1);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--inset);padding:16px;margin:12px 0}
@@ -308,12 +311,11 @@ body{background:var(--bg) !important}
 .info p{margin:0;font-size:13.5px;line-height:1.6;color:var(--text);opacity:.92;overflow-wrap:anywhere;word-break:break-word}
 .info p b{color:var(--text);font-weight:700;opacity:1}
 
-/* =========================================================
-   PRO — экран подписки, демо-витрина, лесенка тарифов, плашка.
-   Всё статично (без animation/transition) — ради чипов Mali.
-   Лесенка масс: month — тонкая рамка, year — акцентная + бейдж,
-   forever — доминирующая плита с оранжевым кантом.
-   ========================================================= */
+.seg{position:relative;display:flex;gap:4px;background:var(--s2);border:1px solid var(--line);border-radius:14px;padding:4px;margin:8px 0}
+.seg .thumb{position:absolute;top:4px;left:4px;height:calc(100% - 8px);border-radius:10px;background:var(--accent);transition:none}
+.seg button{position:relative;z-index:1;flex:1;border:none;background:transparent;color:var(--muted);font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding:9px 0;border-radius:10px;cursor:pointer}
+.seg button.on{color:var(--on-accent)}
+
 .pro-status{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--s2);margin-bottom:14px}
 .pro-dot{width:9px;height:9px;border-radius:50%;flex:none}
 .pro-dot.on{background:#34d399;box-shadow:0 0 0 3px rgba(52,211,153,.18)}
@@ -350,15 +352,7 @@ body{background:var(--bg) !important}
 .pro-note{margin-top:12px;font-size:12px;line-height:1.5;color:var(--muted);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
 .pro-fine{margin-top:14px;font-size:10.5px;line-height:1.5;color:var(--faint)}
 
-/* плашка PRO на главной (вшивается pro.js перед .toolgrid) */
 .pro-plaque{display:flex;align-items:center;gap:12px;width:100%;text-align:left;cursor:pointer;border:1px solid var(--accent-line);border-radius:16px;background:linear-gradient(180deg,rgba(255,90,0,.12),var(--s1));padding:14px 16px;margin:0 0 14px;color:var(--text)}
 .pro-plaque-d{width:10px;height:10px;border-radius:3px;background:var(--accent);transform:rotate(45deg);flex:none;box-shadow:0 0 0 3px var(--accent-soft)}
 .pro-plaque-t{flex:1;font-size:13.5px;font-weight:700;line-height:1.35}
 .pro-plaque-a{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent);white-space:nowrap}
-
-/* переключатель «по дням / по месяцам» на экране Расходы (.seg) —
-   стили были потеряны в сборке, из-за чего сегмент рисовался белыми блоками */
-.seg{position:relative;display:flex;gap:4px;background:var(--s2);border:1px solid var(--line);border-radius:14px;padding:4px;margin:8px 0}
-.seg .thumb{position:absolute;top:4px;left:4px;height:calc(100% - 8px);border-radius:10px;background:var(--accent);transition:none}
-.seg button{position:relative;z-index:1;flex:1;border:none;background:transparent;color:var(--muted);font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding:9px 0;border-radius:10px;cursor:pointer}
-.seg button.on{color:var(--on-accent)}
