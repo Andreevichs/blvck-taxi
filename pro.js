@@ -176,7 +176,7 @@
         const card = anchor.closest('.glass');
         if(card && !card.querySelector('[data-action="proOpen"]')){
           card.insertAdjacentHTML('beforeend',
-            `<div style="height:10px"></div><button class="btn primary" data-action="proOpen">🔓 BLVCK PRO · подписка и авто‑отчёты</button>`);
+            `<div style="height:10px"></div><button class="btn primary" data-action="proOpen">🔓 METR PRO · подписка и авто‑отчёты</button>`);
         }
       }
     }catch(e){}
