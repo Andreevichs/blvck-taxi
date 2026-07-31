@@ -274,7 +274,7 @@ function postRender(){
 }
 function renderTabs(){
   const active = state.screen==="fszn"?"settings":(state.screen==="fines"||state.screen==="receipts"||state.screen==="expenses")?"dash":state.screen;
-  $("#tabbar").innerHTML=`<div class="inner">${TABS.map(t=>`<button class="tab ${active===t.id?"on":""}" data-action="nav" data-to="${t.id}"><span class="ti">${t.ico}</span><span>${t.t}</span></button>`).join("")}</div>`;
+   $("#tabbar").innerHTML=`<div class="inner">${TABS.map(t=>`<button class="tab ${active===t.id?"on":""}" data-action="nav" data-to="${t.id}"><span class="ti">${t.ico}</span><span>${t.t}</span></button>`).join("")}</div>`;
 }
 function onboardHTML(){
   return `<div class="onboard">
