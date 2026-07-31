@@ -286,6 +286,10 @@ body{font-family:var(--sans);color:var(--text);background:var(--bg);overflow-x:h
 .btn,.qcard,.preset,.iconbtn,.pbtn,.dcat,.dbig,.tab,.chip,.input{transition:transform .2s var(--spring),border-color .2s !important}
 .btn.primary,.qcard.qcard-add{filter:none !important}
 .btn.primary{box-shadow:0 8px 22px -10px rgba(255,90,0,.55) !important}
+.btn-report{background:linear-gradient(135deg,#ff6b00,#ff8a33);border:none;box-shadow:0 4px 20px -4px rgba(255,90,0,.4),inset 0 1px 0 rgba(255,255,255,.15);font-weight:800;font-size:16px;padding:16px 20px;position:relative;overflow:hidden}
+.btn-report::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:rgba(255,255,255,.3)}
+.btn-report:active{transform:scale(.98)}
+.tab .ti{font-size:24px;line-height:1;transition:transform .25s var(--spring);display:flex;align-items:center;justify-content:center}
 .qcard.qcard-add{box-shadow:0 12px 28px -14px var(--accent) !important}
 .btn:active,.qcard:active,.qcard.qcard-add:active,.preset:active,
 .iconbtn:active,.pbtn:active,.dcat:active,.dbig:active,.tab:active{transform:scale(.94) !important}
