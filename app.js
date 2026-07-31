@@ -277,7 +277,7 @@ function renderTabs(){
 }
 function onboardHTML(){
   return `<div class="onboard">
-    <div class="ob-top"><span class="brand-dot"></span><span class="brand-name">BLVCK</span><span class="brand-sub">TAXI</span></div>
+    <div class="ob-top"><span class="brand-dot"></span><span class="brand-name">METR</span></div>
     <h2>Твой счёт<br>за рулём.</h2>
     <p class="ob-sub">Три шага — и комбайн работает на тебя. Без регистрации и облака.</p>
     <div class="ob-step"><div class="n">01</div><div><div class="tt">Вноси в один тап</div><div class="ds">Выручку за день и расходы на авто — быстро, даже в перчатках.</div></div></div>
