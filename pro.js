@@ -162,7 +162,7 @@
         const tg = document.querySelector('.toolgrid');
         if(tg && !document.getElementById('pro-dash-plaque')){
           const txt = active ? 'PRO активна · авто‑отчёт придёт 1‑го'
-                    : (s.trial_active ? `Триал PRO · ${s.trial_days_left|0} дн. · смотри, что внутри` : 'BLVCK PRO · авто‑отчёты, облако, налоги');
+                    : (s.trial_active ? `Триал PRO · ${s.trial_days_left|0} дн. · смотри, что внутри` : 'METR PRO · авто‑отчёты, облако, налоги');
           const plaque = `<button id="pro-dash-plaque" class="pro-plaque" data-action="proOpen">
             <span class="pro-plaque-d"></span>
             <span class="pro-plaque-t">${txt}</span>
