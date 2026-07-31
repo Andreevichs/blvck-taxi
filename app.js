@@ -379,7 +379,7 @@ async function screenDash(){
 
   return `
     <div class="topbar">
-      <div class="brand"><span class="brand-dot"></span><span class="brand-name">BLVCK</span><span class="brand-sub">TAXI</span></div>
+      <div class="brand"><span class="brand-dot"></span><span class="brand-name">METR</span></div>
       <div class="topbar-r">${tgName?`<span class="who">${esc(tgName)}</span>`:""}<button class="iconbtn" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙":"☀️"}</button></div>
     </div>
 
