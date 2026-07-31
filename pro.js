@@ -1,25 +1,12 @@
 /* =========================================================
    pro.js — подписка PRO + замок + триал + демо-витрина.
-   Перезаписывает window.BLVCK_PRO (заглушку из app.js) на верхнем
-   уровне, поэтому ядро (app.js) править НЕ надо: tax.js и кнопки
-   сами видят реальный статус. Точки входа в PRO вшиваются хуком
-   в готовую разметку (плашка на главной + кнопка в настройках).
-   Оплата — Telegram Stars (createInvoiceLink + openInvoice);
-   подтверждение по факту paid-callback (звёзды списывает Telegram).
-   ВАЖНО: все утилиты ядра (dbAll, money, cur, state, TG, openModal,
-   renderAsync, toast…) берутся как прямые глобальные имена — это
-   const/function из app.js, они НЕ свойства window. pro.js должен
-   грузиться ПОСЛЕ app.js (в index.html так и стоит).
-   Никаких css-анимаций — рендер статичный, ради чипов Mali.
-
-   FIX плашки: точка входа вшивается СРАЗУ, как только отрисовалась
-   главная, через короткий «догоняющий» интервал — НЕ дожидаясь сети.
-   Раньше плашка ждала refreshStatus, а тот висел 30–50 сек на холодном
-   старте Render, и плашка появлялась слишком поздно (или не появлялась,
-   если index.html не подключал pro.js). Теперь обе причины закрыты.
+   Перезаписывает window.BLVCK_PRO (заглушку из app.js). Точки входа
+   вшиваются хуком + догоняющим интервалом. Оплата — Telegram Stars.
+   ВАЖНО для чипов Mali: рендер статичный, без css-анимаций.
+   FIX разлока: после сверки статуса экран перерисовывается всегда,
+   чтобы замок снимался мгновенно (нужно владельцу и оплатившим).
    ========================================================= */
 (function(){
-  /* ---- тарифы: BYN для витрины, Stars(XTR) для invoice ---- */
   const PLANS = {
     month:   { byn:5,  stars:25,  label:'Месяц',    days:30,    note:'без обязательств' },
     year:    { byn:39, stars:175, label:'Год',      days:365,   note:'−35% · как 7 по цене 5' },
@@ -27,9 +14,8 @@
   };
   const RENDER = (typeof RENDER_URL !== 'undefined' ? RENDER_URL : '').replace(/\/+$/,'');
   const LS_KEY = 'blvck_pro_status';
-  let busy = false; /* защита от двойного тапа по тарифу */
+  let busy = false;
 
-  /* ---- статус: кэш + сервер ---- */
   function readCache(){ try{ return JSON.parse(localStorage.getItem(LS_KEY)) || {}; }catch(e){ return {}; } }
   function writeCache(s){ try{ localStorage.setItem(LS_KEY, JSON.stringify(s)); }catch(e){} }
   function isActive(s){ return !!(s && s.active); }
@@ -47,10 +33,8 @@
     return readCache();
   }
 
-  /* ---- публичный API замка: любая платная фича -> active ---- */
   function unlocked(/*feature*/){ return isActive(statusNow()); }
 
-  /* ---- демо-витрина на реальных данных ядра ---- */
   async function demoNumbers(){
     const ym = ymNow();
     let spent = 0, carCost = 0;
@@ -66,7 +50,6 @@
     return { spent, carCost, inc, pct };
   }
 
-  /* ---- экран PRO (статичный, редакторская раскладка) ---- */
   async function openScreen(){
     const s = statusNow();
     const dn = await demoNumbers();
@@ -122,7 +105,6 @@
     openModal(html);
   }
 
-  /* ---- покупка: invoice -> openInvoice -> confirm ---- */
   async function buy(plan){
     if(busy) return;
     const p = PLANS[plan]; if(!p){ return; }
@@ -173,7 +155,6 @@
     }catch(e){ toast('Нет связи с сервером'); hapticBad(); }
   }
 
-  /* ---- инъекция точек входа в готовую разметку (без правок app.js) ---- */
   function inject(){
     try{
       const s = statusNow(); const active = isActive(s);
@@ -201,7 +182,6 @@
     }catch(e){}
   }
 
-  /* ---- регистрация в ядре ---- */
   window.BLVCK_PRO = { unlocked, openScreen };
   window.BLVCK_HOOKS = window.BLVCK_HOOKS || [];
   window.BLVCK_HOOKS.push(inject);
@@ -214,29 +194,21 @@
     else if(a === 'proTrialDemo'){ trialDemo(); }
   });
 
-  /* ---- ДОГОНЯЮЩИЙ инжект: вшивает плашку, как только главная отрисована,
-     НЕ дожидаясь сети. Крутится первые ~5 сек (защита от дублей внутри inject).
-     Это и есть фикс «плашки нет»: она больше не зависит ни от холодного Render,
-     ни от того, успел ли скрипт к первому рендеру. ---- */
   let chaseTries = 0;
   const chase = setInterval(()=>{
     inject();
     if(document.getElementById('pro-dash-plaque') || ++chaseTries > 20){ clearInterval(chase); }
   }, 250);
 
-  /* ---- дошивка с актуальным статусом (текст триала) после сверки с сервером ---- */
   function ensureInjected(){
     inject();
-    if(typeof state !== 'undefined' && (state.screen === 'dash' || state.screen === 'settings')){
-      renderAsync();
-    }
+    /* перерисовываем ЛЮБОЙ экран после сверки статуса — замок снимается сразу */
+    if(typeof state !== 'undefined'){ renderAsync(); }
   }
 
-  /* ---- фоновая сверка статуса (не блокирует загрузку и не блокирует плашку) ---- */
   (async function boot(){
     await refreshStatus();
     ensureInjected();
-    if(typeof state !== 'undefined' && state.screen === 'fszn'){ renderAsync(); }
   })();
   document.addEventListener('visibilitychange', function(){
     if(document.visibilityState === 'visible'){
