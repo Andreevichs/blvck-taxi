@@ -1,9 +1,9 @@
 /* =========================================================
-   BLVCK TAXI — instrument minimalism 2026 (black/white/orange)
+   METR — учёт для таксиста 2026
    vanilla, без зависимостей. IndexedDB + localStorage. Офлайн.
    + Telegram Mini App + сервер на Render (PDF в чат + облако + автоотчёт)
    + выручка: скролл на весь месяц, суммы над столбиками, сохранение
-   + модульная архитектура: tax.js / rto.js / pro.js через глобальные хуки
+   + модульная архитектура: tax.js / pro.js через глобальные хуки
    ========================================================= */
 
 /* ===== URL СЕРВЕРА — ЗАМЕНИ НА СВОЙ URL С RENDER (без слэша в конце) ===== */
@@ -34,7 +34,7 @@ function syncTgColors(){
 const CATS = {
   fuel:   { ico:"⛽", t:"Заправка" },
   parts:  { ico:"🔩", t:"Запчасти" },
-  repair: { ico:"🔧", t:"Ремонт" },
+  repair: { ico:"", t:"Ремонт" },
   wash:   { ico:"🫧", t:"Мойка" },
   rent:   { ico:"🗝️", t:"Аренда авто" },
   other:  { ico:"📦", t:"Другое" },
@@ -43,7 +43,7 @@ const CAR_CATS = ["fuel","parts","repair","wash","rent"];
 const WEAR_CATS = ["fuel","repair","parts"];
 const CURS = ["BYN","₽","$","€","₸"];
 const TABS = [
-  { id:"dash", ico:"🏠", t:"Главная" }, { id:"stats", ico:"📊", t:"Графики" },
+  { id:"dash", ico:"", t:"Главная" }, { id:"stats", ico:"📊", t:"Графики" },
   { id:"car", ico:"🚗", t:"Авто" }, { id:"docs", ico:"📄", t:"ТО/Доки" }, { id:"settings", ico:"⚙️", t:"Ещё" },
 ];
 const TAX_PRESETS = ["Единый налог","ФСЗН за квартал","Подоходный (аванс)","Декларация","Налог на проф. доход"];
@@ -152,7 +152,7 @@ async function shareFiles(name, content, mime, opts={}){
   const file = makeFile(name, content, mime);
   try{
     if(navigator.canShare && navigator.canShare({files:[file]})){
-      await navigator.share({ files:[file], title: opts.title||"BLVCK TAXI", text: opts.text||name });
+      await navigator.share({ files:[file], title: opts.title||"METR", text: opts.text||name });
       return {ok:true};
     }
   }catch(e){ if(e && e.name==="AbortError") return {aborted:true}; }
@@ -165,7 +165,7 @@ async function tryFile(name, content, mime){
   if(window.showSaveFilePicker){
     try{
       const ex=(/\.([a-z0-9]+)$/i.exec(name)||[,"bin"])[1];
-      const h=await window.showSaveFilePicker({ suggestedName:name, types:[{ description:"BLVCK TAXI", accept:{[mime||"application/octet-stream"]:["."+ex]} }] });
+      const h=await window.showSaveFilePicker({ suggestedName:name, types:[{ description:"METR", accept:{[mime||"application/octet-stream"]:["."+ex]} }] });
       const w=await h.createWritable(); await w.write(makeFile(name,content,mime)); await w.close();
       return {ok:true};
     }catch(e){ if(e && e.name==="AbortError") return {ok:false, aborted:true}; }
@@ -210,7 +210,7 @@ function compressImage(file,maxSide,quality){ return new Promise((res,rej)=>{ co
     const c=document.createElement("canvas"); c.width=w; c.height=h; const x=c.getContext("2d"); x.fillStyle="#fff"; x.fillRect(0,0,w,h); x.drawImage(img,0,0,w,h); res(c.toDataURL("image/jpeg",quality)); }; img.onerror=rej; img.src=fr.result; }; fr.onerror=rej; fr.readAsDataURL(file); }); }
 async function addReceiptFromPicker(){ const f=await pickImage(); if(!f) return;
   try{ state.modalReceipt=await compressImage(f,1400,.75); const b=$("#m_receipt_box"); if(b) b.innerHTML=receiptBoxHTML(); toast("Чек прикреплён"); hapticOk(); }catch(e){ toast("Не удалось прочитать фото"); hapticBad(); } }
-function receiptBoxHTML(){ if(state.modalReceipt){ return `<div class="rcpt"><img src="${state.modalReceipt}" data-action="viewReceiptCurrent" alt="чек"><div class="rcpt-actions"><button class="btn sm" data-action="pickReceipt">🔄 Заменить</button><button class="btn sm danger" data-action="clearReceipt">🗑 Убрать чек</button></div></div>`; }
+function receiptBoxHTML(){ if(state.modalReceipt){ return `<div class="rcpt"><img src="${state.modalReceipt}" data-action="viewReceiptCurrent" alt="чек"><div class="rcpt-actions"><button class="btn sm" data-action="pickReceipt"> Заменить</button><button class="btn sm danger" data-action="clearReceipt">🗑 Убрать чек</button></div></div>`; }
   return `<button class="btn" data-action="pickReceipt">🧾 Прикрепить чек / скриншот</button><div class="fszn-note">фото или скрин электронного чека сожмётся и сохранится вместе с расходом — и попадёт в резервную копию</div>`; }
 function openReceiptViewer(src){ const m=$("#modal"); m.innerHTML=`<div class="viewer" data-action="close"><button class="x vclose" data-action="close">×</button><img src="${src}" alt="чек"></div>`; m.hidden=false; try{TG?.BackButton?.show();}catch{} }
 
@@ -240,7 +240,7 @@ const dbGet=(s,id)=>reqP(tx(s).get(id));
 const dbAll=(s)=>reqP(tx(s).getAll());
 const dbClear=(s)=>reqP(tx(s,"readwrite").clear());
 
-/* ---------- рендер + post-render (без наблюдателя; хуки модулей после рендера) ---------- */
+/* ---------- рендер + post-render ---------- */
 let revealIO=null, revealGen=0;
 async function renderAsync(){
   const app=$("#app");
@@ -267,7 +267,7 @@ function postRender(){
     if(anim) countUp(el,to,dec,pre,suf); else el.textContent=pre+to.toLocaleString("ru-RU",{maximumFractionDigits:dec})+suf;
   });
   requestAnimationFrame(()=>{ if(gen!==revealGen) return; els.forEach((el,i)=>{ el.style.transitionDelay=(Math.min(i,8)*35)+"ms"; el.classList.add("revealed"); }); });
-  setTimeout(()=>{ if(gen!==revealGen) return; els.forEach(el=>{ el.style.transitionDelay="0ms"; el.classList.add("revealed"); }); if(revealIO){ revealIO.disconnect(); revealIO=null; } },600);
+  setTimeout(()=>{ if(gen!==revealGen) return; els.forEach(el=>{ el.style.transitionDelay="0ms"; el.classList.add("revealed"); }); if(revealIO){ revealIO.disconnect(); revealIO=null; } },400);
   try{ (window.BLVCK_HOOKS||[]).forEach(fn=>fn()); }catch(e){}
   state._animateScreen=false;
 }
@@ -277,7 +277,15 @@ function renderTabs(){
 }
 function onboardHTML(){
   return `<div class="onboard">
-    <div class="ob-top"><span class="brand-dot"></span><span class="brand-name">METR</span></div>
+    <div class="ob-top">
+      <svg class="brand-logo" viewBox="0 0 32 32" fill="none">
+        <rect x="2" y="6" width="28" height="20" rx="4" fill="var(--accent)"/>
+        <rect x="6" y="10" width="8" height="12" rx="1.5" fill="var(--on-accent)"/>
+        <rect x="18" y="10" width="8" height="4" rx="1" fill="var(--on-accent)" opacity=".7"/>
+        <rect x="18" y="16" width="8" height="6" rx="1" fill="var(--on-accent)" opacity=".5"/>
+      </svg>
+      <span class="brand-name">METR</span>
+    </div>
     <h2>Твой счёт<br>за рулём.</h2>
     <p class="ob-sub">Три шага — и комбайн работает на тебя. Без регистрации и облака.</p>
     <div class="ob-step"><div class="n">01</div><div><div class="tt">Вноси в один тап</div><div class="ds">Выручку за день и расходы на авто — быстро, даже в перчатках.</div></div></div>
@@ -309,7 +317,6 @@ async function screenDash(){
   finesList().filter(f=>!f.paid).forEach(f=>{ const days=f.date?Math.round((now-new Date(f.date+"T00:00:00"))/86400000):null;
     alerts.push({bad:true,t:`🚨 Не оплачен штраф: ${esc(f.name)}`,s:`${money(f.amount)}${f.date?` · выписан ${fmtDate(f.date)}${days!=null?` (${days} дн. назад)`:""}`:""}`}); });
 
-  // баннеры от модулей (tax.js / rto.js) — подтягиваются после штатных
   try{ (window.BLVCK_ALERT_HOOKS||[]).forEach(fn=>{ (fn()||[]).forEach(a=>alerts.push(a)); }); }catch(e){}
 
   const tgName=localStorage.getItem("blvck_tg_name");
@@ -366,7 +373,7 @@ async function screenDash(){
   { const hasData = exps.length>0 || Object.keys(dailyRevMap()).some(d=>Number(dailyRevMap()[d])>0) || finesList().length>0;
     if(hasData){ const lb=Number(localStorage.getItem("blvck_last_backup"))||0; const ak=Number(localStorage.getItem("blvck_backup_ack"))||0; const eff=Math.max(lb,ak); const nowMs=Date.now(); const days=eff?Math.floor((nowMs-eff)/86400000):null;
       if(eff===0 || days>=14){ const msg = eff===0 ? `Ты ещё ни разу не делал копию — если телефон сломается, всё пропадёт.` : `Прошло <b>${days} ${ruPlural(days,["день","дня","дней"])}</b> с последней копии.`;
-        backupBelt=`<div class="backupbelt"><div class="bb-ic">🛡️</div><div class="bb-txt">${msg} Сделай копию текстом в «Избранное».</div><div class="bb-acts"><button class="btn sm primary" data-action="export">💾 Копию</button><button class="btn sm ghost" data-action="dismissBackup">позже</button></div></div>`; }
+        backupBelt=`<div class="backupbelt"><div class="bb-ic">🛡️</div><div class="bb-txt">${msg} Сделай копию текстом в «Избранное».</div><div class="bb-acts"><button class="btn sm primary" data-action="export"> Копию</button><button class="btn sm ghost" data-action="dismissBackup">позже</button></div></div>`; }
     }
   }
 
@@ -379,11 +386,19 @@ async function screenDash(){
 
   return `
     <div class="topbar">
-      <div class="brand"><span class="brand-dot"></span><span class="brand-name">METR</span></div>
+      <div class="brand">
+        <svg class="brand-logo" viewBox="0 0 32 32" fill="none">
+          <rect x="2" y="6" width="28" height="20" rx="4" fill="var(--accent)"/>
+          <rect x="6" y="10" width="8" height="12" rx="1.5" fill="var(--on-accent)"/>
+          <rect x="18" y="10" width="8" height="4" rx="1" fill="var(--on-accent)" opacity=".7"/>
+          <rect x="18" y="16" width="8" height="6" rx="1" fill="var(--on-accent)" opacity=".5"/>
+        </svg>
+        <span class="brand-name">METR</span>
+      </div>
       <div class="topbar-r">${tgName?`<span class="who">${esc(tgName)}</span>`:""}<button class="iconbtn" data-action="toggleTheme">${document.documentElement.dataset.theme==="dark"?"🌙":"☀️"}</button></div>
     </div>
 
-    ${alerts.map(a=>`<div class="alert ${a.bad?"bad":""}"><span>${a.bad?"⚠️":"🔔"}</span><div><div style="font-weight:700">${a.t}</div><div class="small muted">${a.s}</div></div></div>`).join("")}
+    ${alerts.map(a=>`<div class="alert ${a.bad?"bad":""}"><span>${a.bad?"️":"🔔"}</span><div><div style="font-weight:700">${a.t}</div><div class="small muted">${a.s}</div></div></div>`).join("")}
 
     ${backupBelt}
 
@@ -429,7 +444,7 @@ async function screenDash(){
     <div class="toolgrid">
       <button class="btn span2" data-action="openDrive">🚦 Режим за рулём — одной рукой</button>
       <button class="btn ghost" data-action="openFines">🚨 Штрафы</button>
-      <button class="btn ghost" data-action="openReceipts">🧾 Чеки</button>
+      <button class="btn ghost" data-action="openReceipts"> Чеки</button>
     </div>
 
     <div class="h2">последние записи</div>
@@ -538,7 +553,7 @@ async function screenStats(){
     <div class="h2">эффективность · ${monthLabel(ym)}</div>
     <div class="glass card">
       <div class="grid2"><div class="field" style="margin:0"><label>Пробег за месяц, км</label><input id="eff_km" class="input" type="number" inputmode="numeric" value="${km||""}" placeholder="0"></div><div class="field" style="margin:0"><label>Часов за рулём</label><input id="eff_hours" class="input" type="number" inputmode="decimal" value="${hours||""}" placeholder="0"></div></div>
-      <div style="height:8px"></div><button class="btn sm primary" data-action="setEff" style="width:100%">💾 Сохранить пробег и часы</button>
+      <div style="height:8px"></div><button class="btn sm primary" data-action="setEff" style="width:100%"> Сохранить пробег и часы</button>
       <div class="eff"><div class="e"><div class="v">${pH!=null?rate(pH):"—"}</div><div class="k">за час за рулём</div></div><div class="e"><div class="v">${pKr!=null?rate(pKr):"—"}</div><div class="k">за км выручки</div></div><div class="e"><div class="v">${pKc!=null?rate(pKc):"—"}</div><div class="k">за км затрат</div></div><div class="e"><div class="v">${mg!=null?mg.toFixed(0)+"%":"—"}</div><div class="k">маржа</div></div></div>
       <div class="fszn-note">💡 Разбивка по часам появится вместе с учётом смен (таймером). Сейчас — по итогу месяца.</div>
     </div>`;
@@ -594,8 +609,8 @@ function partsWear(exps, car){
 
 /* ---------- ТО / ДОКИ ---------- */
 async function screenDocs(){ const maint=(await dbAll("maintenance")).sort((a,b)=>b.date.localeCompare(a.date)); const docs=(await dbAll("documents")).sort((a,b)=>(a.expiryDate||"9").localeCompare(b.expiryDate||"9"));
-  return `<div class="h1">ТО и документы</div><div class="row" style="gap:10px;margin-top:10px"><button class="btn" data-action="openAddMaint">➕ Событие ТО</button><button class="btn" data-action="openAddDoc">📄 Документ</button></div>
-    <div class="h2">документы</div>${docs.length?`<div class="list">${docs.map(d=>{const days=d.expiryDate?Math.round((new Date(d.expiryDate)-new Date())/86400000):null;const w=days!=null&&days<=30;return `<div class="item"><div class="ic">${w?(days<0?"⛔":"⏰"):"📄"}</div><div class="meta"><div class="t">${esc(d.name)}</div><div class="s">${d.expiryDate?("до "+fmtDate(d.expiryDate)+(days!=null?(days<0?" · просрочено":" · "+days+" дн."):"")):"бессрочно"}</div></div><button class="del" data-action="delDoc" data-id="${d.id}">🗑</button></div>`;}).join("")}</div>`:`<div class="glass empty">Нет документов</div>`}
+  return `<div class="h1">ТО и документы</div><div class="row" style="gap:10px;margin-top:10px"><button class="btn" data-action="openAddMaint"> Событие ТО</button><button class="btn" data-action="openAddDoc"> Документ</button></div>
+    <div class="h2">документы</div>${docs.length?`<div class="list">${docs.map(d=>{const days=d.expiryDate?Math.round((new Date(d.expiryDate)-new Date())/86400000):null;const w=days!=null&&days<=30;return `<div class="item"><div class="ic">${w?(days<0?"⛔":""):"📄"}</div><div class="meta"><div class="t">${esc(d.name)}</div><div class="s">${d.expiryDate?("до "+fmtDate(d.expiryDate)+(days!=null?(days<0?" · просрочено":" · "+days+" дн."):"")):"бессрочно"}</div></div><button class="del" data-action="delDoc" data-id="${d.id}">🗑</button></div>`;}).join("")}</div>`:`<div class="glass empty">Нет документов</div>`}
     <div class="h2">журнал ТО</div>${maint.length?`<div class="list">${maint.map(m=>`<div class="item"><div class="ic">🔧</div><div class="meta"><div class="t">${esc(m.title)}</div><div class="s">${fmtDate(m.date)}${m.mileage?" · "+num(m.mileage)+" км":""}${m.note?" · "+esc(m.note):""}</div></div><button class="del" data-action="delMaint" data-id="${m.id}">🗑</button></div>`).join("")}</div>`:`<div class="glass empty">Нет событий</div>`}`; }
 
 /* ---------- ШТРАФЫ ---------- */
@@ -608,7 +623,7 @@ async function screenFines(){ const list=finesList(); const now=new Date(); now.
     <div class="metricrow"><div class="metric"><div class="v neg">${unpaid.length?money(unpaidSum):money(0)}</div><div class="k">не оплачено (${unpaid.length})</div></div><div class="metric"><div class="v">${money(paidYearSum)}</div><div class="k">оплачено за ${y}</div></div></div>
     <button class="btn primary" data-action="openAddFine" style="margin-top:12px">➕ Добавить штраф</button><div class="h2">список</div>
     ${sorted.length?`<div class="list">${sorted.map(f=>{const days=f.date?Math.round((now-new Date(f.date+"T00:00:00"))/86400000):null;
-      if(!f.paid) return `<div class="item"><div class="ic">🚨</div><div class="meta"><div class="t">${esc(f.name)}</div><div class="s">${f.date?`выписан ${fmtDate(f.date)}${days!=null?` · ${days} дн. назад`:""}`:"без даты"}</div></div><div class="amt neg">−${money(f.amount)}</div><button class="edit" data-action="finePaid" data-id="${f.id}" title="оплачено">✅</button><button class="del" data-action="fineDel" data-id="${f.id}">🗑</button></div>`;
+      if(!f.paid) return `<div class="item"><div class="ic">🚨</div><div class="meta"><div class="t">${esc(f.name)}</div><div class="s">${f.date?`выписан ${fmtDate(f.date)}${days!=null?` · ${days} дн. назад`:""}`:"без даты"}</div></div><div class="amt neg">−${money(f.amount)}</div><button class="edit" data-action="finePaid" data-id="${f.id}" title="оплачено">✅</button><button class="del" data-action="fineDel" data-id="${f.id}"></button></div>`;
       return `<div class="item"><div class="ic">✅</div><div class="meta"><div class="t">${esc(f.name)}</div><div class="s">оплачен ${fmtDate(f.paidDate)}</div></div><div class="amt">−${money(f.amount)}</div><button class="del" data-action="fineDel" data-id="${f.id}">🗑</button></div>`;}).join("")}</div>`:`<div class="glass empty">Штрафов нет — так держать 👍</div>`}`; }
 
 /* ---------- ЧЕКИ ---------- */
@@ -634,7 +649,7 @@ async function screenReceipts(){ const pr=periodRange(state.receiptMode,state.re
     </div>
     <div class="h2">галерея</div>${list.length?`<div class="list">${list.map(e=>{const c=CATS[e.category]||CATS.other;return `<div class="item"><img class="rthumb" src="${e.receipt}" data-action="viewReceipt" data-id="${e.id}" alt="чек"><div class="meta"><div class="t">${c.ico} ${c.t}${e.note?": "+esc(e.note):""}</div><div class="s">${fmtDate(e.date)}</div></div><div class="amt">−${money(e.amount)}</div></div>`;}).join("")}</div>`:`<div class="glass empty">За этот период чеков нет</div>`}`; }
 function receiptsCsvText(list,pr){ const sum=list.reduce((s,e)=>s+Number(e.amount||0),0); const byCat={}; list.forEach(e=>byCat[e.category]=(byCat[e.category]||0)+Number(e.amount||0));
-  const L=[["BLVCK TAXI — чеки за "+pr.label],["Фильтр",state.receiptCat==="all"?"все":(CATS[state.receiptCat]?.t||state.receiptCat)],["Сформировано",today()],[],["Дата","Категория","Заметка","Сумма "+cur()]];
+  const L=[["METR — чеки за "+pr.label],["Фильтр",state.receiptCat==="all"?"все":(CATS[state.receiptCat]?.t||state.receiptCat)],["Сформировано",today()],[],["Дата","Категория","Заметка","Сумма "+cur()]];
   list.slice().sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>L.push([e.date,(CATS[e.category]?.t||e.category),e.note||"",e.amount]));
   L.push(["","","ИТОГО",sum.toFixed(2)],[],["ПО КАТЕГОРИЯМ"]); Object.entries(byCat).forEach(([k,v])=>L.push([(CATS[k]?.t||k),v.toFixed(2)]));
   return L.map(r=>r.map(csvCell).join(";")).join("\r\n"); }
@@ -829,8 +844,8 @@ async function buildShotDoc(mode){
       fsznBlock = shotCard("ФСЗН · "+y, pct+"%", `<div class="kpi"><div class="k"><div class="v acc">${money(paid)}</div><div class="l">уплачено</div></div><div class="k"><div class="v">${money(goal)}</div><div class="l">цель за год</div></div></div>`); }
     sections = shotCard("Сводка","",kpi) + ownCard + freeBlock + catBlock + expBlock + revBlock + fineBlock + wearBlock + fsznBlock;
   }
-  const cover = `<header class="shot-cover"><div class="mk"><span class="d"></span><span class="nm">BLVCK</span><span class="ac">TAXI</span></div><h1>${coverTitle}</h1><div class="meta">Сформировано ${fmtDate(today())} · валюта ${cur_}${coverNum?" · "+esc(coverNum):""}</div></header>`;
-  const foot = `<div class="shot-foot">BLVCK TAXI · ${esc(coverTitle).toLowerCase()} · конец документа</div>`;
+  const cover = `<header class="shot-cover"><div class="mk"><span class="d"></span><span class="nm">METR</span><span class="ac">TAXI</span></div><h1>${coverTitle}</h1><div class="meta">Сформировано ${fmtDate(today())} · валюта ${cur_}${coverNum?" · "+esc(coverNum):""}</div></header>`;
+  const foot = `<div class="shot-foot">METR · ${esc(coverTitle).toLowerCase()} · конец документа</div>`;
   return SHOT_STYLE + `<div id="shotmode" style="display:flex"><div class="shot-bar"><span class="hint">Листай вниз и <b>снимай экран за экраном</b> — или отправь PDF боту кнопкой «📤»</span><button class="shot-x" data-action="shotClose">✕</button></div><div class="shot-scroll"><div class="shot-doc">${cover}${sections}${foot}</div></div></div>`;
 }
 function openShotMode(html){ let ov=$("#shotmode"); if(ov) ov.remove(); const wrap=document.createElement("div"); wrap.innerHTML=html; const node=wrap.firstElementChild; document.body.appendChild(node);
@@ -846,7 +861,7 @@ async function screenFszn(){ const s=fsznSettings(); const year=YEAR(),cq=CUR_Q(
   const qs=[]; let paidYTD=0,minYTD=0,paidAll=0,targetAll=0;
   for(let q=1;q<=4;q++){ const rec=await dbGet("fszn",`${year}-Q${q}`)||{income:0,paid:0}; const monthSum=quarterIncome(q,year); const income=monthSum>0?monthSum:(Number(rec.income)||0); const paid=Number(rec.paid)||0; const fromIncome=income>0?s.rate/100*income:0; const target=Math.max(minQ,fromIncome); let status,badge;
     if(q<cq){status=paid>=target?"good":(paid>0?"warn":"bad");badge=paid>=target?"✅ закрыто":(paid>0?"🟡 частично":" не уплачено");}
-    else if(q===cq){status=paid>=target?"good":(paid>0?"warn":"soon");badge=paid>=target?"✅ закрыто":(paid>0?"🟡 в процессе":"🔵 в процессе");}
+    else if(q===cq){status=paid>=target?"good":(paid>0?"warn":"soon");badge=paid>=target?"✅ закрыто":(paid>0?"🟡 в процессе":" в процессе");}
     else{status="soon";badge="🔮 предстоит";}
     qs.push({q,monthSum,manual:Number(rec.income)||0,paid,target,status,badge}); if(q<=cq){paidYTD+=paid;minYTD+=minQ;} paidAll+=paid;targetAll+=target; }
   const goal=Math.max(minYear,targetAll); const pctYear=goal>0?Math.min(100,Math.round(paidAll/goal*100)):0; const pctYTD=minYTD>0?Math.min(100,Math.round(paidYTD/minYTD*100)):0; const rest=Math.max(0,goal-paidAll);
@@ -882,30 +897,24 @@ async function screenSettings(){ const exps=await dbAll("expenses"); const tgNam
 
     ${TG?`<div class="h2">telegram</div><div class="glass card"><div class="row between"><span>Ты вошёл как</span><b>${esc(tgName||"—")}</b></div><p class="muted small" style="margin:8px 2px 0">Данные хранятся только в этом Telegram на этом устройстве. Чтобы бот слал файлы — нажми у него Start один раз.</p><div class="divider"></div><button class="btn" data-action="tgClose">✖️ Закрыть приложение</button></div>`:""}
 
-    <div class="h2">резервная копия</div>
+    <div class="h2">Отчёт</div>
     <div class="glass card">
-      <p class="muted small" style="margin-top:0">Копия цифр — файлом или копируемым текстом в «Избранное». Восстановить — из файла или из вставленного текста.</p>
-      <button class="btn primary" data-action="export">💾 Сохранить копию</button>
-      <div style="height:10px"></div>
-      <button class="btn" data-action="import">⬆️ Восстановить из файла</button>
-      <div style="height:10px"></div>
-      <button class="btn" data-action="openImportText">⬆️ Восстановить из текста</button>
-      <div style="height:10px"></div>
-      <button class="btn" data-action="sendReportBot">📤 Отправить отчёт боту в чат</button>
-      <div style="height:10px"></div>
-      <button class="btn" data-action="syncCloud">☁️ Синхронизировать с облаком</button>
-      <div class="fszn-note">Облако нужно, чтобы я сам присылал PDF раз в месяц. Хранится на твоём сервере. Последняя синхронизация: ${syncTxt}</div>
+      <button class="btn primary" data-action="sendReport">📤 Отправить отчёт боту в чат</button>
     </div>
 
-    <div class="h2">опасная зона</div><div class="glass card"><button class="btn danger" data-action="wipe">🧹 Удалить все данные</button><p class="muted small" style="margin:8px 2px 0">Записей расходов: ${exps.length}</p></div>
-    <p class="muted small" style="text-align:center;margin-top:18px;font-family:var(--mono)">BLVCK TAXI · офлайн · без своего облака · бесплатно</p>`; }
+    <div class="danger-zone">
+      <button class="btn btn-danger-main" data-action="wipeAll">🗑 Удалить все данные</button>
+      <div class="danger-hint">Записей расходов: ${exps.length} · это действие нельзя отменить</div>
+    </div>
+
+    <div class="app-footer"><b>METR</b> · счёт за рулём · данные только в твоём телефоне</div>`; }
 
 /* ---------- модалки ---------- */
 function openModal(html){ const m=$("#modal"); m.innerHTML=`<div class="modal">${html}</div>`; m.hidden=false; try{TG?.BackButton?.show();}catch{} }
 function closeModal(){ $("#modal").hidden=true; $("#modal").innerHTML=""; state.modalEditId=null; state.modalReceipt=null; try{TG?.BackButton?.hide();}catch{} }
 function modalFuelQuick(){ const p=fuelPresets(); openModal(`<div class="mhead"><h3>⛽ Быстрая заправка</h3><button class="x" data-action="close">×</button></div><p class="muted small" style="margin-top:0">один тап — расход записан на сегодня, без ввода цифр</p><div class="presets">${p.map(v=>`<button class="preset" data-action="fuelPreset" data-amt="${v}">${v}<span class="cur">${cur()}</span></button>`).join("")}</div><button class="btn" data-action="quick" data-cat="fuel">✍️ Другая сумма</button><div style="height:8px"></div><button class="btn ghost sm" data-action="openFuelPresets" style="width:100%">⚙️ Настроить суммы</button>`); }
-function modalFuelPresets(){ const p=fuelPresets(); openModal(`<div class="mhead"><h3>⚙️ Суммы быстрой заправки</h3><button class="x" data-action="close">×</button></div><div class="grid3"><div class="field"><label>Сумма 1</label><input id="fp0" class="input" type="number" inputmode="decimal" value="${p[0]}"></div><div class="field"><label>Сумма 2</label><input id="fp1" class="input" type="number" inputmode="decimal" value="${p[1]}"></div><div class="field"><label>Сумма 3</label><input id="fp2" class="input" type="number" inputmode="decimal" value="${p[2]}"></div></div><button class="btn primary" data-action="saveFuelPresets">Сохранить</button>`); }
-function openDrive(){ const p=fuelPresets(); const m=$("#modal"); m.innerHTML=`<div class="drive"><div class="dhead"><div class="dtitle">🚦 За рулём</div><button class="x" data-action="close">×</button></div><div class="dpresets">${p.map(v=>`<button class="dbig" data-action="fuelPreset" data-amt="${v}">⛽ ${v}<span class="cur">${cur()}</span></button>`).join("")}</div><div class="drow"><button class="dcat" data-action="driveCat" data-cat="wash">🫧 Мойка</button><button class="dcat" data-action="driveCat" data-cat="repair">🔧 Ремонт</button><button class="dcat" data-action="driveCat" data-cat="other">📦 Другое</button></div><button class="btn danger" data-action="close">✖ Выйти из режима</button></div>`; m.hidden=false; try{TG?.BackButton?.show();}catch{} }
+function modalFuelPresets(){ const p=fuelPresets(); openModal(`<div class="mhead"><h3>️ Суммы быстрой заправки</h3><button class="x" data-action="close">×</button></div><div class="grid3"><div class="field"><label>Сумма 1</label><input id="fp0" class="input" type="number" inputmode="decimal" value="${p[0]}"></div><div class="field"><label>Сумма 2</label><input id="fp1" class="input" type="number" inputmode="decimal" value="${p[1]}"></div><div class="field"><label>Сумма 3</label><input id="fp2" class="input" type="number" inputmode="decimal" value="${p[2]}"></div></div><button class="btn primary" data-action="saveFuelPresets">Сохранить</button>`); }
+function openDrive(){ const p=fuelPresets(); const m=$("#modal"); m.innerHTML=`<div class="drive"><div class="dhead"><div class="dtitle">🚦 За рулём</div><button class="x" data-action="close">×</button></div><div class="dpresets">${p.map(v=>`<button class="dbig" data-action="fuelPreset" data-amt="${v}">⛽ ${v}<span class="cur">${cur()}</span></button>`).join("")}</div><div class="drow"><button class="dcat" data-action="driveCat" data-cat="wash">🫧 Мойка</button><button class="dcat" data-action="driveCat" data-cat="repair"> Ремонт</button><button class="dcat" data-action="driveCat" data-cat="other">📦 Другое</button></div><button class="btn danger" data-action="close"> Выйти из режима</button></div>`; m.hidden=false; try{TG?.BackButton?.show();}catch{} }
 function modalExpense(cat,edit=null){
   const ecat = edit ? edit.category : cat;
   state.modalCat=ecat; state.modalEditId=edit?edit.id:null; state.modalReceipt=edit?.receipt||null;
@@ -1022,10 +1031,10 @@ async function sendReportToBot(){
 
 /* ---------- бэкап + ремень безопасности ---------- */
 const LS_KEYS=["blvck_cur","blvck_theme","blvck_is_ip","blvck_income","blvck_km","blvck_hours","blvck_fuel_presets","blvck_tax_reminders","blvck_fszn_mzp","blvck_fszn_rate","blvck_streak_best","blvck_fines","blvck_daily_rev","blvck_daily_target","blvck_tg_name","blvck_onboarded","blvck_last_backup","blvck_backup_ack","blvck_cloud_sync"];
-async function buildBackupPayloadLocal(){ const data={_app:"BLVCK TAXI",_v:3,_at:new Date().toISOString()}; for(const s of STORES) data[s]=await dbAll(s); data._ls=Object.fromEntries(LS_KEYS.map(k=>[k,localStorage.getItem(k)]).filter(([,v])=>v!=null)); return data; }
+async function buildBackupPayloadLocal(){ const data={_app:"METR",_v:3,_at:new Date().toISOString()}; for(const s of STORES) data[s]=await dbAll(s); data._ls=Object.fromEntries(LS_KEYS.map(k=>[k,localStorage.getItem(k)]).filter(([,v])=>v!=null)); return data; }
 async function exportBackup(){
   const data=await buildBackupPayloadLocal();
-  const r=await tryFile(`blvck-taxi-backup-${today()}.json`, JSON.stringify(data,null,2), "application/json");
+  const r=await tryFile(`metr-backup-${today()}.json`, JSON.stringify(data,null,2), "application/json");
   if(r.ok){ localStorage.setItem("blvck_last_backup", String(Date.now())); toast("Копия сохранена"); hapticOk(); return; }
   if(r.aborted){ return; }
   const lite={...data}; lite.expenses=(lite.expenses||[]).map(e=>{ const c={...e}; delete c.receipt; return c; });
@@ -1046,7 +1055,7 @@ async function doImportText(){ const ta=$("#imp_text"); if(!ta) return; const tx
 function dismissBackup(){ localStorage.setItem("blvck_backup_ack", String(Date.now())); toast("Отметил · напомню через 2 недели"); hapticOk(); renderAsync(); }
 function importBackup(){ $("#restoreInput").click(); }
 async function handleRestoreFile(file){ if(!file) return; try{ const data=JSON.parse(await file.text()); if(!confirm("Заменить ВСЕ текущие данные данными из файла?")) return; for(const s of STORES){ await dbClear(s); for(const v of (data[s]||[])) await dbPut(s,v); } if(data._ls&&typeof data._ls==="object"){ for(const k of LS_KEYS){ if(data._ls[k]!=null) localStorage.setItem(k,data._ls[k]); else localStorage.removeItem(k); } } applyTheme(); toast("Данные восстановлены полностью"); hapticOk(); renderAsync(); }catch(e){ toast("Ошибка файла"); hapticBad(); } }
-async function wipe(){ if(!confirm("Удалить ВСЕ данные приложения? Это необратимо.")) return; for(const s of STORES) await dbClear(s); LS_KEYS.filter(k=>k!=="blvck_theme"&&k!=="blvck_cur"&&k!=="blvck_onboarded").forEach(k=>localStorage.removeItem(k)); toast("Всё удалено"); hapticOk(); renderAsync(); }
+async function wipeAll(){ if(!confirm("Удалить ВСЕ данные приложения? Это необратимо.")) return; for(const s of STORES) await dbClear(s); LS_KEYS.filter(k=>k!=="blvck_theme"&&k!=="blvck_cur"&&k!=="blvck_onboarded").forEach(k=>localStorage.removeItem(k)); toast("Всё удалено"); hapticOk(); renderAsync(); }
 
 /* ---------- тема / валюта / ИП ---------- */
 function applyTheme(){ const t=localStorage.getItem("blvck_theme")||"dark"; document.documentElement.dataset.theme=t; const m=document.querySelector('meta[name="theme-color"]'); if(m) m.content=t==="dark"?"#0a0a0a":"#f3f2ee"; syncTgColors(); }
@@ -1080,6 +1089,7 @@ document.addEventListener("click", async (ev)=>{
     case "setExpScale": state.expScale=el.dataset.scale; renderAsync(); break;
     case "setExpCat": state.expCat=el.dataset.cat; renderAsync(); break;
     case "sendReportBot": sendReportToBot(); break;
+    case "sendReport": sendReportToBot(); break;
     case "syncCloud": syncToCloud(false).then(ok=>{ if(ok) renderAsync(); }); break;
     case "exportShotFull": exportShotFull(); break;
     case "exportShotChecks": exportShotChecks(); break;
@@ -1131,7 +1141,7 @@ document.addEventListener("click", async (ev)=>{
     case "setIP": setIP(el.dataset.v); break;
     case "export": exportBackup(); break;
     case "import": importBackup(); break;
-    case "wipe": wipe(); break;
+    case "wipeAll": wipeAll(); break;
     case "tgClose": try{TG?.close();}catch{} break;
     case "close": closeModal(); break;
   }
@@ -1141,7 +1151,6 @@ $("#modal").addEventListener("click", e=>{ if(e.target.id==="modal") closeModal(
 $("#restoreInput").addEventListener("change", e=>handleRestoreFile(e.target.files[0]));
 
 /* ---------- старт ---------- */
-/* глобальные точки расширения для модулей (tax.js / rto.js / pro.js) */
 window.BLVCK_HOOKS = window.BLVCK_HOOKS || [];
 window.BLVCK_ALERT_HOOKS = window.BLVCK_ALERT_HOOKS || [];
 window.BLVCK_PRO = window.BLVCK_PRO || { unlocked: ()=>true, openScreen: ()=>{} };
